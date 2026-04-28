@@ -1,0 +1,26 @@
+[package]
+name = "lizzieyzy-next-desktop"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "lizzieyzy_next_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+analysis-core = { path = "../../../crates/analysis-core" }
+app-model = { path = "../../../crates/app-model" }
+engine-manager = { path = "../../../crates/engine-manager" }
+katago-protocol = { path = "../../../crates/katago-protocol" }
+sgf = { path = "../../../crates/sgf" }
+serde.workspace = true
+serde_json.workspace = true
+tauri.workspace = true
+tauri-plugin-opener.workspace = true
+uuid.workspace = true

@@ -1,0 +1,11 @@
+{
+  "name": "lizzieyzy-next-tauri",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "desktop:dev": "npm --prefix apps/desktop run tauri:dev",
+    "desktop:build": "npm --prefix apps/desktop run build",
+    "desktop:tauri-build": "npm --prefix apps/desktop run tauri:build",
+    "validate": "python3 scripts/validate_scaffold.py"
+  }
+}

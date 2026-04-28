@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/desktop/src-tauri",
+  "crates/app-model",
+  "crates/go-core",
+  "crates/sgf",
+  "crates/katago-protocol",
+  "crates/analysis-core",
+  "crates/engine-manager",
+  "crates/storage",
+]
+
+[workspace.package]
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/wimi321/lizzieyzy-next-tauri"
+rust-version = "1.82"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+tauri = "2"
+tauri-build = "2"
+tauri-plugin-opener = "2"

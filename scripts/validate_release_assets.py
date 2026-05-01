@@ -134,8 +134,20 @@ class ReleaseAssetValidator:
             errors.append("bundle.active must remain true for release metadata validation")
         if bundle.get("targets") != "all":
             errors.append("bundle.targets must be all until platform artifacts are split explicitly")
-        if "icons/icon.png" not in bundle.get("icon", []):
-            errors.append("bundle.icon must include icons/icon.png")
+        required_icons = [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico",
+            "icons/icon.png",
+        ]
+        configured_icons = bundle.get("icon", [])
+        for icon in required_icons:
+            if icon not in configured_icons:
+                errors.append(f"bundle.icon must include {icon}")
+            elif not self.path(f"apps/desktop/src-tauri/{icon}").is_file():
+                errors.append(f"configured bundle icon is missing: {icon}")
         if not bundle.get("publisher"):
             errors.append("bundle.publisher is required")
         if not bundle.get("shortDescription") or not bundle.get("longDescription"):

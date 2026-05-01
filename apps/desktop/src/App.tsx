@@ -4,6 +4,7 @@ import { WinrateChart } from "./components/WinrateChart";
 import { AnalysisPanel } from "./components/AnalysisPanel";
 import { EngineSetupPanel } from "./components/EngineSetupPanel";
 import { CacheStatusBadge } from "./components/CacheStatusBadge";
+import { PreferencesPanel } from "./components/PreferencesPanel";
 import {
   analyzeKataGoOnce,
   cancelKataGoAnalysis,
@@ -18,8 +19,10 @@ import {
   startKataGoGameAnalysis
 } from "./api/backend";
 import { computeGameCacheKey, loadAnalysisCache, saveAnalysisCache } from "./api/analysisCache";
+import { loadAppPreferences, saveAppPreferences } from "./api/preferences";
 import { clampMoveNumberToPositions, createDemoGame, replayGamePositions, selectExactPosition } from "./domain/board";
 import type { AnalysisCacheRecord, CacheStatus, GameCacheKey, JsonValue } from "./domain/cache";
+import { defaultAppPreferences, normalizeAppPreferences, type AppPreferences } from "./domain/preferences";
 import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, PositionDto, ProblemMarkerDto } from "./domain/types";
 
 const demoSgf = "(;GM[1]FF[4]SZ[19]KM[7.5]PB[Lee Changho]PW[Rui Naiwei]RE[B+R];B[pd];W[dd];B[pp];W[dp];B[jq];W[qj];B[nc];W[fc];B[qf];W[cn];B[cp];W[do];B[co];W[dn];B[fq];W[eq];B[fp];W[gp];B[gq];W[hp])";
@@ -30,6 +33,7 @@ type PendingAnalysisTerminalEvent =
   | { kind: "error" | "cancelled"; message: string };
 type CacheEngineKind = "fake" | "katago";
 type CachedAnalysisPayload = { frames: AnalysisFrameDto[]; problems: ProblemMarkerDto[] };
+type PendingPreferencesSave = { version: number; preferences: AppPreferences };
 type AnalysisCacheLoadResult =
   | { status: "hit"; record: AnalysisCacheRecord; engineKind: CacheEngineKind }
   | { status: "miss" }
@@ -55,8 +59,14 @@ export function App() {
   const [cacheRecord, setCacheRecord] = useState<AnalysisCacheRecord | null>(null);
   const [cacheError, setCacheError] = useState<string | null>(null);
   const [currentCacheKey, setCurrentCacheKey] = useState<GameCacheKey | null>(null);
+  const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
+  const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
   const activeJobIdRef = useRef<string | null>(null);
   const startingAnalysisRef = useRef(false);
+  const userChangedPreferencesRef = useRef(false);
+  const preferencesSaveInFlightRef = useRef(false);
+  const preferencesSaveVersionRef = useRef(0);
+  const pendingPreferencesSaveRef = useRef<PendingPreferencesSave | null>(null);
   const pendingAnalysisProgressRef = useRef<Map<string, AnalysisProgress>>(new Map());
   const pendingAnalysisTerminalEventsRef = useRef<Map<string, PendingAnalysisTerminalEvent>>(new Map());
   const analysisCleanupRef = useRef<(() => void) | null>(null);
@@ -68,10 +78,27 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    loadAppPreferences()
+      .then((loaded) => {
+        if (!isMounted || userChangedPreferencesRef.current) return;
+        setPreferences(loaded);
+        setPreferencesStatus("Preferences loaded.");
+      })
+      .catch((error: unknown) => {
+        if (isMounted && !userChangedPreferencesRef.current) setPreferencesStatus(`Load failed: ${errorMessage(error)}`);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     return () => cleanupAnalysisListeners();
   }, []);
 
   const currentFrame = useMemo(() => frames.find((f) => f.turn === currentMove) ?? frames.at(-1), [frames, currentMove]);
+  const visibleCurrentFrame = useMemo(() => applyPreferencesToFrame(currentFrame, preferences), [currentFrame, preferences]);
   const currentPosition = useMemo(() => selectExactPosition(positions, currentMove, game.summary.board_size), [positions, currentMove, game.summary.board_size]);
   const maxMove = Math.max(positions.at(-1)?.move_number ?? 0, 1);
   const documentName = useMemo(() => currentFilePath ? fileNameFromPath(currentFilePath) : fallbackFileName ?? "Untitled SGF", [currentFilePath, fallbackFileName]);
@@ -80,6 +107,54 @@ export function App() {
   useEffect(() => {
     setSelectedCandidateIndex(null);
   }, [currentMove]);
+
+  useEffect(() => {
+    if (!preferences.showCandidates || (selectedCandidateIndex !== null && selectedCandidateIndex >= preferences.candidateLimit)) {
+      setSelectedCandidateIndex(null);
+    }
+  }, [preferences.showCandidates, preferences.candidateLimit, selectedCandidateIndex]);
+
+  function handlePreferencesChange(nextPreferences: AppPreferences) {
+    const normalized = normalizeAppPreferences(nextPreferences);
+    userChangedPreferencesRef.current = true;
+    pendingPreferencesSaveRef.current = {
+      version: preferencesSaveVersionRef.current + 1,
+      preferences: normalized
+    };
+    preferencesSaveVersionRef.current = pendingPreferencesSaveRef.current.version;
+    setPreferences(normalized);
+    setPreferencesStatus("Saving preferences...");
+    void runPreferencesSaveLoop();
+  }
+
+  async function runPreferencesSaveLoop() {
+    if (preferencesSaveInFlightRef.current) return;
+    preferencesSaveInFlightRef.current = true;
+    try {
+      while (pendingPreferencesSaveRef.current) {
+        const pending = pendingPreferencesSaveRef.current;
+        try {
+          await saveAppPreferences(pending.preferences);
+        } catch (error) {
+          if (pendingPreferencesSaveRef.current?.version === pending.version) {
+            setPreferencesStatus(`Save failed: ${errorMessage(error)}`);
+            return;
+          }
+          setPreferencesStatus("Saving preferences...");
+          continue;
+        }
+
+        if (pendingPreferencesSaveRef.current?.version === pending.version) {
+          pendingPreferencesSaveRef.current = null;
+          setPreferencesStatus("Preferences saved.");
+          return;
+        }
+        setPreferencesStatus("Saving preferences...");
+      }
+    } finally {
+      preferencesSaveInFlightRef.current = false;
+    }
+  }
 
   async function handleParseSgf() {
     try {
@@ -159,12 +234,13 @@ export function App() {
 
   async function handleRunKataGo(profile: EngineProfileDto, maxVisits: number) {
     const targetTurn = currentMove;
+    const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
     setIsKataGoRunning(true);
     setMessage(`Running KataGo analysis for move ${targetTurn}...`);
     try {
       const [parsed, replayed] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText)]);
       const turn = clampMoveNumberToPositions(replayed, Math.min(targetTurn, replayed.at(-1)?.move_number ?? parsed.moves.length));
-      const frame = await analyzeKataGoOnce(profile, sgfText, turn, maxVisits);
+      const frame = await analyzeKataGoOnce(profile, sgfText, turn, visits);
       const mergedFrames = mergeAnalysisFrame(frames, frame);
       setGame(parsed);
       setPositions(replayed);
@@ -182,6 +258,7 @@ export function App() {
 
   async function handleAnalyzeKataGoGame(profile: EngineProfileDto, maxVisits: number) {
     if (activeJobIdRef.current || startingAnalysisRef.current) return;
+    const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
     startingAnalysisRef.current = true;
     pendingAnalysisProgressRef.current.clear();
     pendingAnalysisTerminalEventsRef.current.clear();
@@ -243,7 +320,7 @@ export function App() {
       });
       cleanupAnalysisListeners();
       analysisCleanupRef.current = cleanup;
-      const jobId = await startKataGoGameAnalysis(profile, sgfText, maxVisits);
+      const jobId = await startKataGoGameAnalysis(profile, sgfText, visits);
       const pendingTerminalEvent = pendingAnalysisTerminalEventsRef.current.get(jobId);
       const pendingProgress = pendingAnalysisProgressRef.current.get(jobId);
       startingAnalysisRef.current = false;
@@ -373,6 +450,11 @@ export function App() {
   }
 
   async function checkAnalysisCacheForGame(text: string, filePath: string | null, parsed: GameDto, replayed: PositionDto[], baseMessage: string) {
+    if (!preferences.autoLoadCache) {
+      resetAnalysisCacheState();
+      setMessage(`${baseMessage} Cache auto-load is off.`);
+      return;
+    }
     setCacheStatus("checking");
     setCacheRecord(null);
     setCacheError(null);
@@ -438,6 +520,10 @@ export function App() {
     analysisProblems: ProblemMarkerDto[],
     engineKind: CacheEngineKind
   ): Promise<string> {
+    if (!preferences.autoSaveAnalysis) {
+      setCacheStatus("idle");
+      return " Cache auto-save is off.";
+    }
     setCacheStatus("saving");
     setCacheError(null);
     try {
@@ -485,7 +571,7 @@ export function App() {
     setCurrentCacheKey(null);
   }
 
-  return <main className="app-shell">
+  return <main className={`app-shell${preferences.boardTheme === "high-contrast" ? " theme-high-contrast" : ""}`}>
     <header className="topbar">
       <div>
         <h1>LizzieYzy Next</h1>
@@ -498,7 +584,7 @@ export function App() {
     </header>
     <section className="workspace">
       <div className="left-pane">
-        <BoardCanvas position={currentPosition} analysis={currentFrame} selectedCandidateIndex={selectedCandidateIndex} />
+        <BoardCanvas position={currentPosition} analysis={visibleCurrentFrame} selectedCandidateIndex={selectedCandidateIndex} />
         <WinrateChart frames={frames} currentMove={currentMove} />
         <div className="timeline-row">
           <span>Move {currentMove}</span>
@@ -507,7 +593,7 @@ export function App() {
         </div>
       </div>
       <AnalysisPanel
-        frame={currentFrame}
+        frame={visibleCurrentFrame}
         problems={problems}
         boardSize={game.summary.board_size}
         currentMove={currentMove}
@@ -548,9 +634,32 @@ export function App() {
         analysisProgress={analysisProgress}
         activeJobId={activeJobId}
       />
+      <PreferencesPanel
+        preferences={preferences}
+        status={preferencesStatus}
+        disabled={isKataGoRunning}
+        onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
+      />
       <p className="message">{message}</p>
     </section>
   </main>;
+}
+
+function applyPreferencesToFrame(frame: AnalysisFrameDto | undefined, preferences: AppPreferences): AnalysisFrameDto | undefined {
+  if (!frame) return undefined;
+  return {
+    ...frame,
+    candidates: preferences.showCandidates ? frame.candidates.slice(0, preferences.candidateLimit) : [],
+    ownership: preferences.showOwnership ? frame.ownership : null,
+    policy: preferences.showPolicy ? frame.policy : null
+  };
+}
+
+function resolveAnalysisMaxVisits(requestedMaxVisits: number | null | undefined, preferences: AppPreferences): number {
+  if (typeof requestedMaxVisits === "number" && Number.isFinite(requestedMaxVisits) && requestedMaxVisits > 0) {
+    return Math.floor(requestedMaxVisits);
+  }
+  return preferences.reviewMode === "deep" ? preferences.defaultMaxVisits * 2 : preferences.defaultMaxVisits;
 }
 
 function cachedAnalysisPayload(payload: JsonValue): CachedAnalysisPayload | null {

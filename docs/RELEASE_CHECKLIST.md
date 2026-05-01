@@ -200,6 +200,8 @@ When production packaging becomes in scope, verify:
 - Required icons and metadata are present.
 - `python3 scripts/validate_release_assets.py --verbose` passes.
 - `.github/workflows/release-dry-run.yml` passes on macOS, Linux, and Windows.
+- `.github/workflows/release.yml` is validated by `python3 scripts/validate_release_workflow.py --verbose`.
+- A `v*` tag release produces macOS, Windows, and Linux assets plus checksum files.
 - Missing signing secrets are reported as unsigned dry-run state, not treated as a publish failure.
 - Bundled KataGo/runtime assets, if included, match documented paths.
 - The app starts without a development server.
@@ -208,6 +210,7 @@ When production packaging becomes in scope, verify:
 - Linux package includes required runtime dependencies or clearly documents them.
 - Logs and error messages distinguish UI errors, Tauri command errors, engine errors, and storage/cache errors.
 - The full release process, secrets, artifact policy, and rollback plan are recorded in `docs/RELEASE_PROCESS.md`.
+- GitHub Release notes include English and Chinese summaries, signing state, checksum guidance, and known limitations.
 
 ## Release Notes Guardrails
 

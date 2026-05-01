@@ -82,6 +82,14 @@ impl Board {
         self.stones.clone()
     }
 
+    pub fn set_stone(&mut self, point: Point, color: Option<Color>) -> Result<(), RuleError> {
+        let idx = self.index(point)?;
+        self.stones[idx] = color;
+        self.ko = None;
+        self.consecutive_passes = 0;
+        Ok(())
+    }
+
     pub fn play(&mut self, color: Color, vertex: Vertex) -> Result<MoveOutcome, RuleError> {
         match vertex {
             Vertex::Pass => {
@@ -225,5 +233,24 @@ mod tests {
         b.play(Color::White, p(2, 1)).unwrap();
         b.play(Color::White, p(1, 2)).unwrap();
         assert_eq!(b.play(Color::Black, p(1, 1)).unwrap_err(), RuleError::Suicide);
+    }
+
+    #[test]
+    fn setup_can_add_replace_and_clear_stones() {
+        let mut b = Board::new(5).unwrap();
+        let point = Point { x: 2, y: 3 };
+
+        b.set_stone(point, Some(Color::Black)).unwrap();
+        assert_eq!(b.get(point).unwrap(), Some(Color::Black));
+
+        b.set_stone(point, Some(Color::White)).unwrap();
+        assert_eq!(b.get(point).unwrap(), Some(Color::White));
+
+        b.set_stone(point, None).unwrap();
+        assert_eq!(b.get(point).unwrap(), None);
+        assert_eq!(
+            b.set_stone(Point { x: 5, y: 0 }, Some(Color::Black)).unwrap_err(),
+            RuleError::OutOfBounds
+        );
     }
 }

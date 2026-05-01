@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Main window permissions for LizzieYzy Next baseline.",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": ["core:default", "opener:default", "dialog:default"]
 }

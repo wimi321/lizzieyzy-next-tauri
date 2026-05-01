@@ -34,11 +34,30 @@ pub enum MoveVertex {
     Pass,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MoveDto {
     pub color: PlayerColor,
     pub vertex: MoveVertex,
     pub move_number: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoneDto {
+    pub x: u8,
+    pub y: u8,
+    pub color: PlayerColor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PositionDto {
+    pub board_size: u8,
+    pub move_number: u32,
+    pub to_play: PlayerColor,
+    pub stones: Vec<StoneDto>,
+    pub captures_black: u32,
+    pub captures_white: u32,
+    pub last_move: Option<MoveDto>,
+    pub errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

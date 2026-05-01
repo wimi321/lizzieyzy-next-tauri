@@ -1,11 +1,97 @@
 import type { AnalysisFrameDto, ProblemMarkerDto } from "../domain/types";
 import { vertexLabel } from "../domain/board";
 
-type Props = { frame?: AnalysisFrameDto; problems: ProblemMarkerDto[]; boardSize: number };
-export function AnalysisPanel({ frame, problems, boardSize }: Props) {
+type PolicyPoint = { x: number; y: number; value: number };
+
+type Props = {
+  frame?: AnalysisFrameDto;
+  problems: ProblemMarkerDto[];
+  boardSize: number;
+  currentMove: number;
+  selectedCandidateIndex: number | null;
+  onSelectCandidate: (index: number) => void;
+  onSelectProblem: (moveNumber: number) => void;
+};
+
+export function AnalysisPanel({ frame, problems, boardSize, currentMove, selectedCandidateIndex, onSelectCandidate, onSelectProblem }: Props) {
+  const hasOwnership = (frame?.ownership?.length ?? 0) >= boardSize * boardSize;
+  const topPolicy = getTopPolicyPoints(frame?.policy, boardSize, 5);
+  const hasPolicy = topPolicy.length > 0;
+
   return <aside className="analysis-panel">
-    <section><h2>当前分析</h2>{frame ? <div className="metric-grid"><span>访问数</span><strong>{frame.visits}</strong><span>黑胜率</span><strong>{(frame.winrate_black * 100).toFixed(1)}%</strong><span>黑目差</span><strong>{frame.score_mean_black.toFixed(1)}</strong></div> : <p className="muted">尚未连接 KataGo；当前显示架构演示数据。</p>}</section>
-    <section><h2>候选点</h2><ol className="candidate-list">{(frame?.candidates ?? []).slice(0, 8).map((candidate, index) => <li key={index}><span className="candidate-move">{vertexLabel(candidate.vertex, boardSize)}</span><span>{candidate.visits} visits</span><span>{(candidate.winrate_black * 100).toFixed(1)}%</span></li>)}</ol></section>
-    <section><h2>问题手概览</h2>{problems.length === 0 ? <p className="muted">暂无明显问题手。</p> : <ol className="problem-list">{problems.slice(0, 12).map((p) => <li key={p.turn} className={`severity-${p.severity}`}><span>第 {p.turn} 手</span><strong>{p.label}</strong><small>胜率波动 {(p.winrate_loss * 100).toFixed(1)}%</small></li>)}</ol>}</section>
+    <section>
+      <h2>Position</h2>
+      {frame ? <div className="metric-grid">
+        <span>Visits</span><strong>{frame.visits.toLocaleString()}</strong>
+        <span>Black winrate</span><strong>{(frame.winrate_black * 100).toFixed(1)}%</strong>
+        <span>Score lead</span><strong>{frame.score_mean_black.toFixed(1)}</strong>
+        <span>Ownership</span><strong>{hasOwnership ? "available" : "none"}</strong>
+        <span>Policy</span><strong>{hasPolicy ? "available" : "none"}</strong>
+      </div> : <p className="muted">Run review to show candidate moves and winrate data.</p>}
+    </section>
+    <section>
+      <h2>Candidates</h2>
+      <ol className="candidate-list">{(frame?.candidates ?? []).slice(0, 8).map((candidate, index) => {
+        const pv = candidate.pv.slice(0, 6).map((vertex) => vertexLabel(vertex, boardSize));
+        const isSelected = selectedCandidateIndex === index;
+        return <li key={index}>
+          <button
+            type="button"
+            className={`candidate-button${isSelected ? " is-selected" : ""}`}
+            aria-pressed={isSelected}
+            onClick={() => onSelectCandidate(index)}
+            onFocus={() => onSelectCandidate(index)}
+            onMouseEnter={() => onSelectCandidate(index)}
+          >
+            <span className="candidate-move">{vertexLabel(candidate.vertex, boardSize)}</span>
+            <span>{candidate.visits.toLocaleString()} visits</span>
+            <span>{(candidate.winrate_black * 100).toFixed(1)}%</span>
+            {pv.length > 0 ? <span className="candidate-pv"><strong>PV</strong> {pv.join(" ")}</span> : null}
+          </button>
+        </li>;
+      })}</ol>
+    </section>
+    <section>
+      <h2>Policy</h2>
+      {hasPolicy ? <ol className="candidate-list">{topPolicy.map((point, index) => {
+        const vertex = { point: { x: point.x, y: point.y } };
+        return <li key={`${point.x}:${point.y}`}>
+          <div className="candidate-button" style={{ cursor: "default" }}>
+            <span className="candidate-move">{vertexLabel(vertex, boardSize)}</span>
+            <span>#{index + 1}</span>
+            <span>{formatPolicyValue(point.value)}</span>
+          </div>
+        </li>;
+      })}</ol> : <p className="muted">No policy data for this move.</p>}
+    </section>
+    <section>
+      <h2>Review Marks</h2>
+      {problems.length === 0 ? <p className="muted">No notable drops yet.</p> : <ol className="problem-list">{problems.slice(0, 12).map((p) => {
+        const isCurrent = currentMove === p.turn;
+        return <li key={p.turn} className={`severity-${p.severity}${isCurrent ? " is-current" : ""}`}>
+          <button type="button" className="problem-button" aria-current={isCurrent ? "step" : undefined} onClick={() => onSelectProblem(p.turn)}>
+            <span>Move {p.turn}</span>
+            <strong>{p.label}</strong>
+            <small>Winrate change {(p.winrate_loss * 100).toFixed(1)}%</small>
+          </button>
+        </li>;
+      })}</ol>}
+    </section>
   </aside>;
+}
+
+function getTopPolicyPoints(policy: number[] | null | undefined, boardSize: number, limit: number): PolicyPoint[] {
+  if (!policy || policy.length < boardSize * boardSize) return [];
+  const points: PolicyPoint[] = [];
+  for (let index = 0; index < boardSize * boardSize; index += 1) {
+    const value = policy[index];
+    if (!Number.isFinite(value) || value <= 0) continue;
+    points.push({ x: index % boardSize, y: Math.floor(index / boardSize), value });
+  }
+  return points.sort((a, b) => b.value - a.value).slice(0, limit);
+}
+
+function formatPolicyValue(value: number): string {
+  if (value <= 1) return `${(value * 100).toFixed(value >= 0.01 ? 1 : 2)}%`;
+  return value.toFixed(2);
 }

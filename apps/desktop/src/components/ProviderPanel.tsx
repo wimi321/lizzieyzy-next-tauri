@@ -62,6 +62,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardProtocolLine, setReadboardProtocolLine] = useState("");
   const [readboardProbeResult, setReadboardProbeResult] = useState<ReadboardSidecarProbeResult | null>(null);
   const [readboardSyncResult, setReadboardSyncResult] = useState<ReadboardSidecarSyncSnapshotResult | null>(null);
+  const [providerWarnings, setProviderWarnings] = useState<string[]>([]);
   const canPreviewYike = !disabled && provider === "yike" && sourceUrl.trim().length > 0;
   const canFetchYike = !disabled && provider === "yike" && descriptor !== null;
   const canFetchFox = !disabled && provider === "fox" && sourceUrl.trim().length > 0;
@@ -79,6 +80,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   function handleProviderChange(nextProvider: ProviderKind) {
     setProvider(nextProvider);
     setDescriptor(null);
+    setProviderWarnings([]);
     setOperationStatus("preview", nextProvider === "yike" ? "Yike URL preview ready." : "Fox accepts chessid or provider command input.");
     setOperationStatus("fetch", `${providerLabel(nextProvider)} fetch ready.`);
     setOperationStatus("import", `${providerLabel(nextProvider)} payload import ready.`);
@@ -90,9 +92,11 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     try {
       const nextDescriptor = await parseYikeUrl(sourceUrl);
       setDescriptor(nextDescriptor);
+      setProviderWarnings([]);
       setOperationStatus("preview", `${yikeRoomKindLabel(nextDescriptor.room_kind)} descriptor ready.`);
     } catch (error) {
       setDescriptor(null);
+      setProviderWarnings([]);
       setOperationStatus("preview", `URL preview failed: ${errorMessage(error)}`);
     }
   }
@@ -105,6 +109,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       await importFetchedPayload(result, sourceUrl.trim() || descriptor.request_url, descriptor.id);
       setOperationStatus("fetch", providerFetchStatus(result, "Yike"));
     } catch (error) {
+      setProviderWarnings([]);
       setOperationStatus("fetch", `Yike fetch failed: ${errorMessage(error)}`);
     }
   }
@@ -118,6 +123,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       await importFetchedPayload(result, foxInput.sourceUrl, foxInput.sourceId);
       setOperationStatus("fetch", providerFetchStatus(result, "Fox"));
     } catch (error) {
+      setProviderWarnings([]);
       setOperationStatus("fetch", `Fox fetch failed: ${errorMessage(error)}`);
     }
   }
@@ -128,8 +134,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     try {
       const result = await importProviderPayload(buildRequest(provider, payload, sourceUrl, descriptor));
       await onImport(result);
+      setProviderWarnings(result.warnings);
       setOperationStatus("import", importStatus(result));
     } catch (error) {
+      setProviderWarnings([]);
       setOperationStatus("import", `Import failed: ${errorMessage(error)}`);
     }
   }
@@ -173,6 +181,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     setOperationStatus("import", `Importing fetched ${providerLabel(result.provider)} payload...`);
     const imported = await importProviderPayload(buildFetchImportRequest(result, fallbackSourceUrl, fallbackSourceId));
     await onImport(imported);
+    setProviderWarnings([...result.warnings, ...imported.warnings]);
     setOperationStatus("import", importStatus(imported));
   }
 
@@ -205,6 +214,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           onChange={(event) => {
             setSourceUrl(event.target.value);
             setDescriptor(null);
+            setProviderWarnings([]);
           }}
         />
       </label>
@@ -238,11 +248,15 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           spellCheck={false}
           aria-label="Provider payload or SGF"
           placeholder='Paste raw SGF or JSON with "sgf", "clean_sgf", or "chess".'
-          onChange={(event) => setPayload(event.target.value)}
+          onChange={(event) => {
+            setPayload(event.target.value);
+            setProviderWarnings([]);
+          }}
         />
       </label>
       <button onClick={() => void handleImport()} disabled={!canImport}>Import pasted payload</button>
       <p className="provider-status" title={statuses.import}>{statuses.import}</p>
+      <WarningList label="Provider warnings" warnings={providerWarnings} />
 
       <div className="provider-readboard">
         <div className="provider-subheader">
@@ -281,6 +295,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             </div>
           </dl>
         ) : null}
+        <WarningList label="Readboard probe warnings" warnings={readboardProbeResult?.warnings ?? []} />
         <label className="provider-payload-label">
           <span>Protocol preview line</span>
           <textarea
@@ -311,8 +326,24 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             </div>
           </dl>
         ) : null}
+        <WarningList label="Readboard snapshot warnings" warnings={readboardSyncResult?.warnings ?? []} />
       </div>
     </section>
+  );
+}
+
+function WarningList({ label, warnings }: { label: string; warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="warning-list" role="status" aria-label={label}>
+      <strong>{label}</strong>
+      <ul>
+        {warnings.slice(0, 5).map((warning, index) => (
+          <li key={`${index}:${warning}`} title={warning}>{warning}</li>
+        ))}
+      </ul>
+      {warnings.length > 5 ? <small>{warnings.length - 5} more warning(s)</small> : null}
+    </div>
   );
 }
 

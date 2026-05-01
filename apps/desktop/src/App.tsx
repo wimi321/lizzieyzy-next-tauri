@@ -171,7 +171,10 @@ export function App() {
       setMessage(loadedMessage);
       await checkAnalysisCacheForGame(sgfText, currentFilePath, parsed, replayed, loadedMessage);
     } catch (error) {
-      setMessage(errorMessage(error));
+      clearReviewData();
+      resetAnalysisCacheState();
+      setCurrentMove(0);
+      setMessage(`Parse failed: ${errorMessage(error)}`);
     }
   }
 
@@ -563,7 +566,7 @@ export function App() {
         engineKind,
         source: engineKind,
         moveCount: parsed.summary.move_count,
-        analyzedMoveCount: analysisFrames.length,
+        analyzedMoveCount: countAnalyzedMoves(analysisFrames, parsed.summary.move_count),
         payload
       });
       const record: AnalysisCacheRecord = {
@@ -574,7 +577,7 @@ export function App() {
         engineKind,
         source: engineKind,
         moveCount: parsed.summary.move_count,
-        analyzedMoveCount: analysisFrames.length,
+        analyzedMoveCount: countAnalyzedMoves(analysisFrames, parsed.summary.move_count),
         payload,
         createdAt: saved.updatedAt,
         updatedAt: saved.updatedAt
@@ -595,6 +598,14 @@ export function App() {
     setCacheRecord(null);
     setCacheError(null);
     setCurrentCacheKey(null);
+  }
+
+  function clearReviewData() {
+    setFrames([]);
+    setProblems([]);
+    setSelectedCandidateIndex(null);
+    setAnalysisProgress(null);
+    setCacheRecord(null);
   }
 
   return <main className={`app-shell${preferences.boardTheme === "high-contrast" ? " theme-high-contrast" : ""}`}>
@@ -637,7 +648,10 @@ export function App() {
         <textarea value={sgfText} onChange={(e) => {
           setSgfText(e.target.value);
           setDirty(true);
+          clearReviewData();
           resetAnalysisCacheState();
+          setCurrentMove(0);
+          setMessage("SGF edited. Parse SGF or run review to refresh.");
         }} spellCheck={false} aria-label="SGF source" />
         <div className="button-row">
           <button onClick={() => void handleOpenSgfDocument()} disabled={isKataGoRunning}>Open</button>
@@ -704,6 +718,11 @@ function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
 
 function mergeAnalysisFrame(frames: AnalysisFrameDto[], frame: AnalysisFrameDto): AnalysisFrameDto[] {
   return [...frames.filter((item) => item.turn !== frame.turn), frame].sort((a, b) => a.turn - b.turn);
+}
+
+function countAnalyzedMoves(frames: AnalysisFrameDto[], moveCount: number): number {
+  const turns = new Set(frames.map((frame) => frame.turn).filter((turn) => turn > 0 && turn <= moveCount));
+  return turns.size;
 }
 
 function errorMessage(error: unknown): string {

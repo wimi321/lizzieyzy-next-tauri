@@ -1,16 +1,24 @@
 use app_model::{
     AnalysisFrameDto, AppHealthDto, CandidateMoveDto, EngineBackend, EngineProfileDto, MoveVertex, PointDto,
-    PositionDto,
+    PositionDto, ProviderError, ProviderErrorKind, ProviderFetchMethod, ProviderFetchRequest,
+    ProviderFetchResult, ProviderGameMetadata, ProviderImportRequest, ProviderImportResult, ProviderKind,
+    ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest,
+    ReadboardSidecarSyncSnapshotResult,
 };
 use engine_manager::{
     build_command_spec, check_assets, AnalysisBatchRunOptions, AnalysisCancelToken, AssetCheck, CommandSpec,
     EngineManagerError,
 };
+use go_core::ReadBoardLocalContext;
 use katago_protocol::{AnalysisBatchQueryOptions, AnalysisQueryOptions};
+use provider_core::{
+    invalid_payload, invalid_request, invalid_url, timeout, transport_failed, ProviderResult,
+    ProviderTransport,
+};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -20,8 +28,189 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 const ENGINE_PROFILE_FILE: &str = "lizzieyzy-next-engine-profile.json";
+const APP_PREFERENCES_FILE: &str = "lizzieyzy-next-app-preferences.json";
 const ANALYSIS_CACHE_DB_FILE: &str = "analysis-cache.sqlite3";
 const DEFAULT_ENGINE_PROFILE_ID: &str = "default";
+const DEFAULT_PROVIDER_HTTP_TIMEOUT_MS: u64 = 30_000;
+
+#[derive(Debug, Default)]
+struct ReqwestProviderTransport;
+
+impl ProviderTransport for ReqwestProviderTransport {
+    fn fetch(&self, request: &ProviderFetchRequest) -> ProviderResult<ProviderFetchResult> {
+        if !is_http_url(&request.url) {
+            return Err(invalid_url(format!(
+                "provider transport only supports http(s) URLs: {}",
+                request.url
+            )));
+        }
+        let client = reqwest::blocking::Client::builder()
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .build()
+            .map_err(map_reqwest_error)?;
+        let method = match request.method {
+            ProviderFetchMethod::Get => reqwest::Method::GET,
+            ProviderFetchMethod::Post => reqwest::Method::POST,
+        };
+        let mut builder = client
+            .request(method, &request.url)
+            .timeout(Duration::from_millis(
+                request.timeout_ms.unwrap_or(DEFAULT_PROVIDER_HTTP_TIMEOUT_MS),
+            ));
+        for (name, value) in &request.headers {
+            builder = builder.header(
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|err| {
+                    invalid_request(format!("invalid provider request header `{name}`: {err}"))
+                })?,
+                reqwest::header::HeaderValue::from_str(value).map_err(|err| {
+                    invalid_request(format!(
+                        "invalid provider request header value for `{name}`: {err}"
+                    ))
+                })?,
+            );
+        }
+        if let Some(body) = &request.body {
+            builder = builder.body(body.clone());
+        }
+
+        let response = builder.send().map_err(map_reqwest_error)?;
+        let url = response.url().to_string();
+        let status_code = response.status().as_u16();
+        let headers = response_headers(response.headers());
+        let content_type = headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            .map(|(_, value)| value.clone());
+        let payload = response.text().map_err(map_reqwest_error)?;
+
+        Ok(ProviderFetchResult {
+            provider: request.provider,
+            url,
+            status_code,
+            payload,
+            headers,
+            content_type,
+            metadata: ProviderGameMetadata {
+                source_url: request.source_url.clone(),
+                request_url: Some(request.url.clone()),
+                source_id: request.source_id.clone(),
+                ..ProviderGameMetadata::default()
+            },
+            warnings: Vec::new(),
+        })
+    }
+}
+
+fn map_reqwest_error(error: reqwest::Error) -> ProviderError {
+    if error.is_timeout() {
+        return timeout(format!("provider request timed out: {error}"));
+    }
+    if error.is_builder() || error.is_request() {
+        return invalid_request(format!("provider request could not be built: {error}"));
+    }
+    transport_failed(format!("provider request failed: {error}"))
+}
+
+fn response_headers(headers: &reqwest::header::HeaderMap) -> BTreeMap<String, String> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+fn prepare_yike_fetch_request(mut request: ProviderFetchRequest) -> ProviderFetchRequest {
+    let signature = provider_yike::YikeRequestSignature::now();
+    let signed_headers = provider_yike::signed_headers(signature.current_time_millis, signature.nonce);
+    for (name, value) in signed_headers {
+        insert_header_if_missing(&mut request.headers, &name, value);
+    }
+    request
+}
+
+fn fetch_yike_with_transport<T: ProviderTransport + ?Sized>(
+    request: ProviderFetchRequest,
+    transport: &T,
+) -> ProviderResult<ProviderFetchResult> {
+    let result = transport.fetch(&prepare_yike_fetch_request(request))?;
+    ensure_provider_http_success(&result, "Yike provider fetch failed")?;
+    validate_yike_fetch_payload(&result)?;
+    Ok(result)
+}
+
+fn validate_yike_fetch_payload(result: &ProviderFetchResult) -> ProviderResult<()> {
+    let url = result.url.to_ascii_lowercase();
+    let request_url = result
+        .metadata
+        .request_url
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if url.contains("/golive/list") || request_url.contains("/golive/list") {
+        provider_yike::parse_live_list_json(&result.payload).map(|_| ())
+    } else if url.contains("/golives/")
+        || url.contains("/golive/dtl")
+        || request_url.contains("/golives/")
+        || request_url.contains("/golive/dtl")
+    {
+        provider_yike::parse_live_detail_json(&result.payload).map(|_| ())
+    } else {
+        Err(invalid_payload(format!(
+            "unsupported Yike fetch response URL for runtime validation: {}",
+            result.url
+        )))
+    }
+}
+
+fn prepare_fox_http_fetch_request(mut request: ProviderFetchRequest) -> ProviderFetchRequest {
+    insert_header_if_missing(
+        &mut request.headers,
+        "User-Agent",
+        provider_fox::FOX_MOBILE_USER_AGENT.to_string(),
+    );
+    request
+}
+
+fn fetch_fox_with_transport<T: ProviderTransport + ?Sized>(
+    request: ProviderFetchRequest,
+    transport: &T,
+) -> ProviderResult<ProviderFetchResult> {
+    if is_http_url(&request.url) {
+        let mut result = transport.fetch(&prepare_fox_http_fetch_request(request))?;
+        ensure_provider_http_success(&result, "Fox provider fetch failed")?;
+        result.warnings.push(
+            "Fox HTTP URL fetched directly; provider command normalization was not applied.".to_string(),
+        );
+        return Ok(result);
+    }
+    provider_fox::fetch_command(&request.url, transport)
+}
+
+fn ensure_provider_http_success(result: &ProviderFetchResult, context: &str) -> ProviderResult<()> {
+    if !(200..400).contains(&result.status_code) {
+        return Err(transport_failed(format!(
+            "{context}: HTTP {} for {}",
+            result.status_code, result.url
+        )));
+    }
+    Ok(())
+}
+
+fn insert_header_if_missing(headers: &mut BTreeMap<String, String>, name: &str, value: String) {
+    if !headers.keys().any(|key| key.eq_ignore_ascii_case(name)) {
+        headers.insert(name.to_string(), value);
+    }
+}
+
+fn is_http_url(url: &str) -> bool {
+    reqwest::Url::parse(url)
+        .map(|url| matches!(url.scheme(), "http" | "https"))
+        .unwrap_or(false)
+}
 
 #[derive(Default)]
 struct AnalysisJobRegistry {
@@ -45,6 +234,29 @@ struct EngineProfileRecordDto {
 struct EngineProfilesSettingsDto {
     selected_profile_id: String,
     profiles: Vec<EngineProfileRecordDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppPreferencesDto {
+    #[serde(default = "default_show_ownership")]
+    show_ownership: bool,
+    #[serde(default = "default_show_policy")]
+    show_policy: bool,
+    #[serde(default = "default_show_candidates")]
+    show_candidates: bool,
+    #[serde(default = "default_candidate_limit")]
+    candidate_limit: u32,
+    #[serde(default = "default_auto_load_cache")]
+    auto_load_cache: bool,
+    #[serde(default = "default_auto_save_analysis")]
+    auto_save_analysis: bool,
+    #[serde(default = "default_max_visits")]
+    default_max_visits: u32,
+    #[serde(default = "default_review_mode")]
+    review_mode: String,
+    #[serde(default = "default_board_theme")]
+    board_theme: String,
 }
 
 struct PreparedBatchAnalysis {
@@ -137,6 +349,101 @@ fn parse_sgf_summary(sgf_text: String) -> Result<app_model::GameDto, String> {
 }
 
 #[tauri::command]
+fn provider_parse_yike_url(raw_url: String) -> Result<provider_yike::YikeUrlDescriptor, ProviderError> {
+    provider_yike::parse_yike_url(&raw_url)
+}
+
+#[tauri::command]
+fn provider_import_from_payload(
+    request: ProviderImportRequest,
+) -> Result<ProviderImportResult, ProviderError> {
+    let result = match request.provider {
+        ProviderKind::Yike => provider_yike::import_payload(request),
+        ProviderKind::Fox => provider_fox::import_payload(request),
+    }?;
+    enrich_provider_import_result(result)
+}
+
+#[tauri::command]
+fn provider_fetch_yike(request: ProviderFetchRequest) -> Result<ProviderFetchResult, ProviderError> {
+    validate_provider_fetch_request(&request, ProviderKind::Yike, "provider_fetch_yike")?;
+    let transport = ReqwestProviderTransport;
+    fetch_yike_with_transport(request, &transport)
+}
+
+#[tauri::command]
+fn provider_fetch_fox(request: ProviderFetchRequest) -> Result<ProviderFetchResult, ProviderError> {
+    validate_provider_fetch_request(&request, ProviderKind::Fox, "provider_fetch_fox")?;
+    let transport = ReqwestProviderTransport;
+    fetch_fox_with_transport(request, &transport)
+}
+
+#[tauri::command]
+fn readboard_sidecar_probe(
+    request: ReadboardSidecarProbeRequest,
+) -> Result<ReadboardSidecarProbeResult, ProviderError> {
+    validate_timeout_ms(request.timeout_ms, "readboard_sidecar_probe")?;
+    Ok(readboard_sidecar::probe_readboard_sidecar(
+        &request,
+        &readboard_sidecar::ReadboardSidecarOptions::default(),
+    )
+    .into_dto())
+}
+
+#[tauri::command]
+fn readboard_sidecar_sync_snapshot(
+    request: ReadboardSidecarSyncSnapshotRequest,
+) -> Result<ReadboardSidecarSyncSnapshotResult, ProviderError> {
+    validate_timeout_ms(request.timeout_ms, "readboard_sidecar_sync_snapshot")?;
+    if request
+        .image_path
+        .as_deref()
+        .is_none_or(|value| value.trim().is_empty())
+        && request
+            .image_base64
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        && request
+            .sgf_text
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err(ProviderError {
+            kind: ProviderErrorKind::InvalidRequest,
+            message: "readboard_sidecar_sync_snapshot requires image_path, image_base64, or sgf_text"
+                .to_string(),
+        });
+    }
+    if let Some(protocol_line) = request
+        .sgf_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let parsed = readboard_sidecar::parse_snapshot_line(protocol_line).map_err(readboard_error)?;
+        let local = ReadBoardLocalContext {
+            board_size: parsed.snapshot.board_size,
+            positions: Vec::new(),
+            current_index: 0,
+            main_end_index: 0,
+        };
+        let first_sync = request
+            .metadata
+            .get("first_sync")
+            .map(|value| value != "false" && value != "0")
+            .unwrap_or(true);
+        return readboard_sidecar::sync_snapshot_line(&request, protocol_line, first_sync, local)
+            .map(|outcome| outcome.into_dto())
+            .map_err(readboard_error);
+    }
+    Err(ProviderError {
+        kind: ProviderErrorKind::RuntimeUnavailable,
+        message: "readboard image OCR runtime is unavailable; provide sgf_text as an offline snapshot protocol line"
+            .to_string(),
+    })
+}
+
+#[tauri::command]
 fn replay_sgf_positions(sgf_text: String) -> Result<Vec<PositionDto>, String> {
     sgf::replay_sgf_positions(&sgf_text).map_err(|err| err.to_string())
 }
@@ -198,6 +505,31 @@ fn engine_asset_checks(profile: EngineProfileDto) -> Vec<AssetCheck> {
         ensure_asset_check(&mut checks, &profile.config_path, "config");
     }
     checks
+}
+
+#[tauri::command]
+fn load_app_preferences(app_handle: AppHandle) -> Result<AppPreferencesDto, String> {
+    let path = app_preferences_path(&app_handle)?;
+    match fs::read_to_string(&path) {
+        Ok(contents) => serde_json::from_str::<AppPreferencesDto>(&contents)
+            .map_err(|err| format!("failed to parse {}: {err}", path.display()))
+            .map(normalize_app_preferences),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(default_app_preferences()),
+        Err(err) => Err(format!("failed to read {}: {err}", path.display())),
+    }
+}
+
+#[tauri::command]
+fn save_app_preferences(
+    app_handle: AppHandle,
+    preferences: AppPreferencesDto,
+) -> Result<AppPreferencesDto, String> {
+    let preferences = normalize_app_preferences(preferences);
+    let path = app_preferences_path(&app_handle)?;
+    let json = serde_json::to_string_pretty(&preferences)
+        .map_err(|err| format!("failed to serialize app preferences: {err}"))?;
+    fs::write(&path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    Ok(preferences)
 }
 
 #[tauri::command]
@@ -657,6 +989,68 @@ fn ensure_asset_check(checks: &mut Vec<AssetCheck>, path: &Option<String>, label
     });
 }
 
+fn normalize_app_preferences(mut preferences: AppPreferencesDto) -> AppPreferencesDto {
+    preferences.candidate_limit = preferences.candidate_limit.clamp(1, 20);
+    preferences.default_max_visits = preferences.default_max_visits.clamp(1, 1_000_000);
+    if preferences.review_mode != "deep" {
+        preferences.review_mode = default_review_mode();
+    }
+    if preferences.board_theme != "high-contrast" {
+        preferences.board_theme = default_board_theme();
+    }
+    preferences
+}
+
+fn default_app_preferences() -> AppPreferencesDto {
+    AppPreferencesDto {
+        show_ownership: default_show_ownership(),
+        show_policy: default_show_policy(),
+        show_candidates: default_show_candidates(),
+        candidate_limit: default_candidate_limit(),
+        auto_load_cache: default_auto_load_cache(),
+        auto_save_analysis: default_auto_save_analysis(),
+        default_max_visits: default_max_visits(),
+        review_mode: default_review_mode(),
+        board_theme: default_board_theme(),
+    }
+}
+
+fn default_show_ownership() -> bool {
+    true
+}
+
+fn default_show_policy() -> bool {
+    true
+}
+
+fn default_show_candidates() -> bool {
+    true
+}
+
+fn default_candidate_limit() -> u32 {
+    8
+}
+
+fn default_auto_load_cache() -> bool {
+    true
+}
+
+fn default_auto_save_analysis() -> bool {
+    true
+}
+
+fn default_max_visits() -> u32 {
+    800
+}
+
+fn default_review_mode() -> String {
+    "quick".to_string()
+}
+
+fn default_board_theme() -> String {
+    "classic".to_string()
+}
+
 fn selected_engine_profile_record(settings: &EngineProfilesSettingsDto) -> Option<&EngineProfileRecordDto> {
     settings
         .profiles
@@ -793,6 +1187,20 @@ fn legacy_engine_profile_path() -> Result<PathBuf, String> {
     std::env::current_dir()
         .map(|dir| dir.join(ENGINE_PROFILE_FILE))
         .map_err(|err| format!("failed to resolve current directory for legacy engine profile: {err}"))
+}
+
+fn app_preferences_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|err| format!("failed to resolve app data directory for app preferences: {err}"))?;
+    fs::create_dir_all(&dir).map_err(|err| {
+        format!(
+            "failed to create app preferences directory {}: {err}",
+            dir.display()
+        )
+    })?;
+    Ok(dir.join(APP_PREFERENCES_FILE))
 }
 
 fn analysis_cache_db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
@@ -1416,6 +1824,73 @@ fn non_empty_path(path: String) -> Result<PathBuf, String> {
     Ok(PathBuf::from(trimmed))
 }
 
+fn enrich_provider_import_result(
+    mut result: ProviderImportResult,
+) -> Result<ProviderImportResult, ProviderError> {
+    let document = sgf::parse_sgf(&result.sgf_text).map_err(|err| ProviderError {
+        kind: ProviderErrorKind::ParseFailed,
+        message: format!("failed to parse imported provider SGF: {err}"),
+    })?;
+    result.summary.provider = result.provider;
+    result.summary.board_size = Some(document.board_size);
+    result.summary.komi = Some(document.komi);
+    result.summary.handicap = document.handicap;
+    result.summary.black_name = document.black_name;
+    result.summary.white_name = document.white_name;
+    result.summary.result = document.result;
+    result.summary.move_count = Some(document.moves.len());
+    Ok(result)
+}
+
+fn validate_provider_fetch_request(
+    request: &ProviderFetchRequest,
+    expected_provider: ProviderKind,
+    command_name: &str,
+) -> Result<(), ProviderError> {
+    if request.provider != expected_provider {
+        return Err(ProviderError {
+            kind: ProviderErrorKind::InvalidRequest,
+            message: format!("{command_name} received provider {:?}", request.provider),
+        });
+    }
+    if request.url.trim().is_empty() {
+        return Err(ProviderError {
+            kind: ProviderErrorKind::InvalidRequest,
+            message: format!("{command_name} requires a non-empty url"),
+        });
+    }
+    validate_timeout_ms(request.timeout_ms, command_name)
+}
+
+fn validate_timeout_ms(timeout_ms: Option<u64>, command_name: &str) -> Result<(), ProviderError> {
+    if timeout_ms == Some(0) {
+        return Err(ProviderError {
+            kind: ProviderErrorKind::InvalidRequest,
+            message: format!("{command_name} timeout_ms must be greater than zero"),
+        });
+    }
+    Ok(())
+}
+
+fn readboard_error(error: readboard_sidecar::ReadboardSidecarError) -> ProviderError {
+    let kind = match &error {
+        readboard_sidecar::ReadboardSidecarError::MissingLaunchTarget => {
+            ProviderErrorKind::RuntimeUnavailable
+        }
+        readboard_sidecar::ReadboardSidecarError::EmptyProtocolLine
+        | readboard_sidecar::ReadboardSidecarError::MissingField(_)
+        | readboard_sidecar::ReadboardSidecarError::InvalidField { .. }
+        | readboard_sidecar::ReadboardSidecarError::DuplicateField { .. } => {
+            ProviderErrorKind::InvalidPayload
+        }
+        readboard_sidecar::ReadboardSidecarError::Sync(_) => ProviderErrorKind::ParseFailed,
+    };
+    ProviderError {
+        kind,
+        message: error.to_string(),
+    }
+}
+
 fn demo_candidates(turn: u32, board_size: u8) -> Vec<CandidateMoveDto> {
     let anchors = [(15usize, 3usize), (3, 15), (15, 15), (3, 3), (9, 9), (10, 15)];
     anchors
@@ -1443,6 +1918,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             health,
             parse_sgf_summary,
+            provider_parse_yike_url,
+            provider_import_from_payload,
+            provider_fetch_yike,
+            provider_fetch_fox,
+            readboard_sidecar_probe,
+            readboard_sidecar_sync_snapshot,
             replay_sgf_positions,
             read_sgf_file,
             write_sgf_file,
@@ -1450,6 +1931,8 @@ pub fn run() {
             classify_problems,
             katago_launch_plan,
             engine_asset_checks,
+            load_app_preferences,
+            save_app_preferences,
             load_engine_profile_settings,
             save_engine_profile_settings,
             load_engine_profiles_settings,
@@ -1496,6 +1979,208 @@ mod tests {
         assert_eq!(query["includeOwnership"], true);
         assert_eq!(query["includePolicy"], true);
         assert_eq!(query["analyzeTurns"], serde_json::json!([0, 1, 2]));
+    }
+
+    #[test]
+    fn provider_fetch_yike_adds_missing_signature_headers_without_network() {
+        let mut request = provider_fetch_request(ProviderKind::Yike);
+        request
+            .headers
+            .insert("AppKey".to_string(), "caller-app-key".to_string());
+
+        let prepared = prepare_yike_fetch_request(request);
+
+        assert_eq!(
+            prepared.headers.get("AppKey").map(String::as_str),
+            Some("caller-app-key")
+        );
+        assert!(prepared.headers.contains_key("CurTime"));
+        assert!(prepared.headers.contains_key("CheckSum"));
+        assert!(prepared.headers.contains_key("Nonce"));
+        assert!(prepared.headers.contains_key("accesstoken"));
+    }
+
+    #[test]
+    fn provider_fetch_fox_http_adds_default_user_agent_without_network() {
+        let request = provider_fetch_request(ProviderKind::Fox);
+
+        let prepared = prepare_fox_http_fetch_request(request);
+
+        assert_eq!(
+            prepared.headers.get("User-Agent").map(String::as_str),
+            Some(provider_fox::FOX_MOBILE_USER_AGENT)
+        );
+    }
+
+    #[test]
+    fn provider_fetch_yike_validates_detail_payload_and_preserves_signature_headers_without_network() {
+        let mut request = provider_fetch_request(ProviderKind::Yike);
+        request.url = "https://api-new.yikeweiqi.com/v1/golives/186031".to_string();
+        request
+            .headers
+            .insert("AppKey".to_string(), "caller-app-key".to_string());
+        let transport = provider_core::RecordingProviderTransport::with_result(Ok(provider_fetch_result(
+            ProviderKind::Yike,
+            "https://api-new.yikeweiqi.com/v1/golives/186031",
+            200,
+            r#"{"status":0,"result":{"sgf":"(;GM[1]SZ[19];B[aa])","status":2}}"#,
+        )));
+
+        let result = fetch_yike_with_transport(request, &transport).unwrap();
+
+        assert_eq!(result.status_code, 200);
+        let requests = transport.requests().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].headers.get("AppKey").map(String::as_str),
+            Some("caller-app-key")
+        );
+        assert!(requests[0].headers.contains_key("CurTime"));
+        assert!(requests[0].headers.contains_key("CheckSum"));
+        assert!(requests[0].headers.contains_key("Nonce"));
+        assert!(requests[0].headers.contains_key("accesstoken"));
+    }
+
+    #[test]
+    fn provider_fetch_yike_maps_http_and_bad_json_without_network() {
+        let mut request = provider_fetch_request(ProviderKind::Yike);
+        request.url = "https://api-new.yikeweiqi.com/v1/golives/186031".to_string();
+        let transport = provider_core::StaticProviderTransport::ok(provider_fetch_result(
+            ProviderKind::Yike,
+            "https://api-new.yikeweiqi.com/v1/golives/186031",
+            503,
+            "service unavailable",
+        ));
+
+        let error = fetch_yike_with_transport(request.clone(), &transport).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::TransportFailed);
+        assert!(error.message.contains("HTTP 503"));
+
+        let transport = provider_core::StaticProviderTransport::ok(provider_fetch_result(
+            ProviderKind::Yike,
+            "https://api-new.yikeweiqi.com/v1/golives/186031",
+            200,
+            "{",
+        ));
+
+        let error = fetch_yike_with_transport(request, &transport).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidPayload);
+    }
+
+    #[test]
+    fn provider_fetch_yike_validates_list_payload_without_network() {
+        let mut request = provider_fetch_request(ProviderKind::Yike);
+        request.url = "https://api.yikeweiqi.com/v2/golive/list?p=1&since=0&official=&version=2".to_string();
+        let transport = provider_core::StaticProviderTransport::ok(provider_fetch_result(
+            ProviderKind::Yike,
+            &request.url,
+            200,
+            r#"{"Status":1200,"Result":{"since":12,"list":[]}}"#,
+        ));
+
+        let result = fetch_yike_with_transport(request, &transport).unwrap();
+
+        assert_eq!(result.status_code, 200);
+    }
+
+    #[test]
+    fn provider_fetch_fox_http_checks_status_and_warns_without_network() {
+        let mut request = provider_fetch_request(ProviderKind::Fox);
+        request.url = "https://example.test/fox".to_string();
+        let transport = provider_core::StaticProviderTransport::ok(provider_fetch_result(
+            ProviderKind::Fox,
+            "https://example.test/fox",
+            500,
+            "server error",
+        ));
+
+        let error = fetch_fox_with_transport(request.clone(), &transport).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::TransportFailed);
+        assert!(error.message.contains("HTTP 500"));
+
+        let transport = provider_core::StaticProviderTransport::ok(provider_fetch_result(
+            ProviderKind::Fox,
+            "https://example.test/fox",
+            200,
+            "{}",
+        ));
+        let result = fetch_fox_with_transport(request, &transport).unwrap();
+
+        assert!(result.warnings.iter().any(|warning| warning.contains("directly")));
+    }
+
+    #[test]
+    fn provider_fetch_commands_validate_provider_before_runtime() {
+        let error = provider_fetch_yike(provider_fetch_request(ProviderKind::Fox)).unwrap_err();
+
+        assert_eq!(error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(error.message.contains("provider_fetch_yike"));
+    }
+
+    #[test]
+    fn provider_fetch_fox_non_http_uses_command_parser_without_network() {
+        let mut request = provider_fetch_request(ProviderKind::Fox);
+        request.url = "not-a-fox-command".to_string();
+
+        let error = provider_fetch_fox(request).unwrap_err();
+
+        assert_eq!(error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(error.message.contains("Fox command"));
+    }
+
+    #[test]
+    fn readboard_sidecar_probe_returns_structured_runtime_status() {
+        let result = readboard_sidecar_probe(ReadboardSidecarProbeRequest {
+            endpoint: Some("local-test-endpoint".to_string()),
+            timeout_ms: Some(100),
+        })
+        .unwrap();
+
+        assert!(!result.available);
+        assert_eq!(result.endpoint.as_deref(), Some("local-test-endpoint"));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("UnsupportedEndpoint")));
+    }
+
+    #[test]
+    fn readboard_sidecar_sync_snapshot_supports_offline_protocol_line() {
+        let result = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
+            endpoint: None,
+            snapshot_id: Some("snapshot-1".to_string()),
+            image_path: None,
+            image_base64: None,
+            sgf_text: Some("snapshot board_size=2 move_number=1 codes=3000".to_string()),
+            metadata: std::collections::BTreeMap::new(),
+            timeout_ms: Some(100),
+        })
+        .unwrap();
+
+        assert_eq!(result.snapshot_id, "snapshot-1");
+        let position = result.position.unwrap();
+        assert_eq!(position.board_size, 2);
+        assert_eq!(position.move_number, 1);
+        assert_eq!(position.stones.len(), 1);
+    }
+
+    #[test]
+    fn readboard_sidecar_sync_snapshot_reports_image_runtime_unavailable() {
+        let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
+            endpoint: Some("http://127.0.0.1:39081".to_string()),
+            snapshot_id: Some("snapshot-1".to_string()),
+            image_path: Some("/tmp/board.png".to_string()),
+            image_base64: None,
+            sgf_text: None,
+            metadata: std::collections::BTreeMap::new(),
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+
+        assert_eq!(sync_error.kind, ProviderErrorKind::RuntimeUnavailable);
+        assert!(sync_error
+            .message
+            .contains("readboard image OCR runtime is unavailable"));
     }
 
     #[test]
@@ -1565,5 +2250,39 @@ mod tests {
         assert_eq!(job_count, 1);
         assert_eq!(position_count, payload["frames"].as_array().unwrap().len() as i64);
         assert_eq!(full_payload_rows, 1);
+    }
+
+    fn provider_fetch_request(provider: ProviderKind) -> ProviderFetchRequest {
+        ProviderFetchRequest {
+            provider,
+            url: "https://example.test/provider".to_string(),
+            method: app_model::ProviderFetchMethod::Get,
+            headers: std::collections::BTreeMap::new(),
+            body: None,
+            source_url: None,
+            source_id: None,
+            timeout_ms: Some(100),
+        }
+    }
+
+    fn provider_fetch_result(
+        provider: ProviderKind,
+        url: &str,
+        status_code: u16,
+        payload: &str,
+    ) -> ProviderFetchResult {
+        ProviderFetchResult {
+            provider,
+            url: url.to_string(),
+            status_code,
+            payload: payload.to_string(),
+            headers: std::collections::BTreeMap::new(),
+            content_type: Some("application/json".to_string()),
+            metadata: ProviderGameMetadata {
+                request_url: Some(url.to_string()),
+                ..ProviderGameMetadata::default()
+            },
+            warnings: Vec::new(),
+        }
     }
 }

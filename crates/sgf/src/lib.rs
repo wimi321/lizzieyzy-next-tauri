@@ -39,6 +39,97 @@ pub enum SgfError {
     UnsupportedBoardSize(u8),
 }
 
+const FOX_ROOT_PROPERTY_ORDER: &[&str] = &[
+    "GM", "FF", "CA", "AP", "ST", "RU", "SZ", "KM", "HA", "TM", "TC", "TT", "OT", "EV", "RO", "PC", "DT",
+    "GN", "GC", "PB", "BR", "PW", "WR", "RE", "US", "SO", "CP", "AN", "ON", "BT", "WT", "PL", "C", "AB",
+    "AW", "AE", "RN", "RL",
+];
+
+const FOX_ROOT_MULTI_VALUE_PROPERTIES: &[&str] = &["AB", "AW", "AE"];
+
+/// Keep the first child variation as the mainline and drop sibling variations.
+///
+/// This is intentionally text-based so parentheses and escaped brackets inside
+/// property values do not affect tree selection.
+pub fn normalize_yike_sgf_mainline(input: &str) -> String {
+    if input.is_empty() {
+        return input.to_string();
+    }
+    let Some(start) = input.chars().position(|c| c == '(') else {
+        return input.to_string();
+    };
+    let chars: Vec<char> = input.chars().collect();
+    match parse_yike_game_tree(&chars, start) {
+        Some((text, _)) => text,
+        None => input.to_string(),
+    }
+}
+
+/// Remove Fox payload backslashes that occur outside SGF property values.
+///
+/// Backslash escapes inside property values are preserved, including escaped
+/// closing brackets.
+pub fn sanitize_fox_sgf(input: &str) -> String {
+    if input.trim().is_empty() {
+        return input.to_string();
+    }
+
+    let text = input.replace('\u{FEFF}', "").trim().to_string();
+    let chars: Vec<char> = text.chars().collect();
+    let mut output = String::with_capacity(text.len());
+    let mut inside_value = false;
+    let mut index = 0;
+    while index < chars.len() {
+        let current = chars[index];
+        if inside_value {
+            output.push(current);
+            if current == '\\' && index + 1 < chars.len() {
+                index += 1;
+                output.push(chars[index]);
+            } else if current == ']' {
+                inside_value = false;
+            }
+            index += 1;
+            continue;
+        }
+
+        if current == '\\' {
+            index += 1;
+            continue;
+        }
+        output.push(current);
+        if current == '[' {
+            inside_value = true;
+        }
+        index += 1;
+    }
+    output
+}
+
+/// Normalize Fox SGF into a single-mainline, provider-friendly SGF string.
+///
+/// The normalizer sanitizes Fox payload escapes, promotes leading setup nodes
+/// into the root, keeps common game/player metadata, and drops sibling
+/// variations in favor of the first playable mainline.
+pub fn normalize_fox_sgf(input: &str) -> String {
+    let sanitized = sanitize_fox_sgf(input);
+    if sanitized.trim().is_empty() {
+        return sanitized;
+    }
+
+    let Ok(document) = parse_sgf(&sanitized) else {
+        return sanitized;
+    };
+    let Some(root) = document.root else {
+        return sanitized;
+    };
+    let normalized = SgfDocument {
+        root: Some(build_fox_normalized_root(&root)),
+        ..document
+    };
+    serialize_sgf_document(&normalized).unwrap_or(sanitized)
+}
+
 pub fn parse_sgf(input: &str) -> Result<SgfDocument, SgfError> {
     if input.trim().is_empty() {
         return Err(SgfError::Empty);
@@ -248,6 +339,662 @@ pub fn to_game_dto(doc: SgfDocument) -> GameDto {
             move_count: doc.moves.len(),
         },
         moves: doc.moves,
+    }
+}
+
+fn parse_yike_game_tree(chars: &[char], start: usize) -> Option<(String, usize)> {
+    if chars.get(start) != Some(&'(') {
+        return None;
+    }
+
+    let mut output = String::from("(");
+    let mut in_value = false;
+    let mut escaping = false;
+    let mut copied_first_child_tree = false;
+    let mut index = start + 1;
+
+    while index < chars.len() {
+        let ch = chars[index];
+        if in_value {
+            output.push(ch);
+            if escaping {
+                escaping = false;
+            } else if ch == '\\' {
+                escaping = true;
+            } else if ch == ']' {
+                in_value = false;
+            }
+            index += 1;
+            continue;
+        }
+
+        match ch {
+            '[' => {
+                in_value = true;
+                output.push(ch);
+                index += 1;
+            }
+            '(' => {
+                let (child, next_index) = parse_yike_game_tree(chars, index)?;
+                if !copied_first_child_tree {
+                    if child.len() >= 2 {
+                        output.push_str(&child[1..child.len() - 1]);
+                    }
+                    copied_first_child_tree = true;
+                }
+                index = next_index;
+            }
+            ')' => {
+                output.push(ch);
+                return Some((output, index + 1));
+            }
+            _ => {
+                output.push(ch);
+                index += 1;
+            }
+        }
+    }
+
+    None
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FoxMove {
+    color: String,
+    coordinate: String,
+}
+
+#[derive(Debug, Clone)]
+struct FoxWindow {
+    index: usize,
+    context: Vec<FoxMove>,
+    sequence: Vec<FoxMove>,
+    skip_sequence: Vec<FoxMove>,
+    augmented: Vec<FoxMove>,
+}
+
+#[derive(Debug, Clone)]
+struct FoxCandidate {
+    index: usize,
+    target: Vec<FoxMove>,
+    overlap: usize,
+    uses_context: bool,
+    append_size: usize,
+    variant_rank: i32,
+}
+
+impl FoxWindow {
+    fn new(index: usize, context: Vec<FoxMove>, sequence: Vec<FoxMove>) -> Self {
+        let skip_sequence = if sequence.len() > 1 {
+            sequence[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+        let mut augmented = Vec::with_capacity(context.len() + sequence.len());
+        augmented.extend(context.iter().cloned());
+        augmented.extend(sequence.iter().cloned());
+        Self {
+            index,
+            context,
+            sequence,
+            skip_sequence,
+            augmented,
+        }
+    }
+}
+
+fn build_fox_normalized_root(root: &SgfNode) -> SgfNode {
+    let mainline = mainline_nodes(root);
+    let root_properties = build_fox_root_properties(&mainline);
+    let root_moves = extract_fox_moves(&root.properties);
+    let default_mainline_moves = mainline
+        .iter()
+        .skip(1)
+        .flat_map(|node| extract_fox_moves(&node.properties))
+        .collect::<Vec<_>>();
+    let mainline_moves = recover_preferred_fox_moves(root, &default_mainline_moves, &root_moves);
+    let next_color = mainline_moves.first().map(|sgf_move| sgf_move.color.as_str());
+    let root_prefix = choose_compatible_fox_root_prefix(&root_moves, next_color);
+    let moves = normalize_fox_moves(&root_prefix, &mainline_moves);
+    build_fox_root_tree(root_properties, &moves)
+}
+
+fn build_fox_root_properties(mainline: &[&SgfNode]) -> Vec<SgfProperty> {
+    let mut collected = Vec::new();
+    for (index, node) in mainline.iter().enumerate() {
+        if index > 0 && has_move_property(node) {
+            break;
+        }
+        collected.extend(node.properties.iter().cloned());
+    }
+    build_clean_fox_root_properties(&collected)
+}
+
+fn build_clean_fox_root_properties(properties: &[SgfProperty]) -> Vec<SgfProperty> {
+    let mut single_value_properties = std::collections::HashMap::<String, SgfProperty>::new();
+    let mut multi_value_properties = std::collections::HashMap::<String, Vec<String>>::new();
+
+    for property in properties {
+        if !is_fox_root_property(&property.key) || property.values.is_empty() {
+            continue;
+        }
+
+        if FOX_ROOT_MULTI_VALUE_PROPERTIES.contains(&property.key.as_str()) {
+            multi_value_properties
+                .entry(property.key.clone())
+                .or_default()
+                .extend(property.values.iter().cloned());
+        } else {
+            let existing = single_value_properties.get(&property.key);
+            if existing.is_none() || property_has_content(property) {
+                single_value_properties.insert(property.key.clone(), property.clone());
+            }
+        }
+    }
+
+    ensure_default_fox_root_property(&mut single_value_properties, "GM", "1");
+    ensure_default_fox_root_property(&mut single_value_properties, "FF", "4");
+    ensure_default_fox_root_property(&mut single_value_properties, "CA", "UTF-8");
+    ensure_default_fox_root_property(&mut single_value_properties, "SZ", "19");
+
+    let mut ordered = Vec::new();
+    for key in FOX_ROOT_PROPERTY_ORDER {
+        if FOX_ROOT_MULTI_VALUE_PROPERTIES.contains(key) {
+            if let Some(values) = multi_value_properties.remove(*key) {
+                if !values.is_empty() {
+                    ordered.push(SgfProperty {
+                        key: (*key).to_string(),
+                        values,
+                    });
+                }
+            }
+            continue;
+        }
+        if let Some(property) = single_value_properties.remove(*key) {
+            ordered.push(property);
+        }
+    }
+    ordered
+}
+
+fn is_fox_root_property(key: &str) -> bool {
+    FOX_ROOT_PROPERTY_ORDER.contains(&key)
+}
+
+fn ensure_default_fox_root_property(
+    properties: &mut std::collections::HashMap<String, SgfProperty>,
+    key: &str,
+    value: &str,
+) {
+    properties.entry(key.to_string()).or_insert_with(|| SgfProperty {
+        key: key.to_string(),
+        values: vec![value.to_string()],
+    });
+}
+
+fn property_has_content(property: &SgfProperty) -> bool {
+    property.values.iter().any(|value| !value.trim().is_empty())
+}
+
+fn extract_fox_moves(properties: &[SgfProperty]) -> Vec<FoxMove> {
+    properties
+        .iter()
+        .filter(|property| property.key == "B" || property.key == "W")
+        .flat_map(|property| {
+            property.values.iter().map(|value| FoxMove {
+                color: property.key.clone(),
+                coordinate: value.clone(),
+            })
+        })
+        .collect()
+}
+
+fn recover_preferred_fox_moves(
+    root: &SgfNode,
+    default_moves: &[FoxMove],
+    root_moves: &[FoxMove],
+) -> Vec<FoxMove> {
+    if !looks_like_windowed_fox(root) {
+        return default_moves.to_vec();
+    }
+
+    let windows = extract_fox_windows(&root.children);
+    if windows.len() < 5 {
+        return default_moves.to_vec();
+    }
+    let recovered = recover_windowed_fox_moves(&windows, root_moves);
+    if recovered.len() >= 15.max(default_moves.len() + 4) {
+        recovered
+    } else {
+        default_moves.to_vec()
+    }
+}
+
+fn looks_like_windowed_fox(root: &SgfNode) -> bool {
+    if root.children.len() < 20 {
+        return false;
+    }
+    let candidate_children = root
+        .children
+        .iter()
+        .filter(|child| {
+            let move_nodes = count_mainline_nodes_with_moves(child);
+            !has_sibling_variations(child) && (7..=10).contains(&move_nodes)
+        })
+        .count();
+    candidate_children >= 10.max(root.children.len() / 3)
+}
+
+fn count_mainline_nodes_with_moves(node: &SgfNode) -> usize {
+    mainline_nodes(node)
+        .iter()
+        .filter(|node| !extract_fox_moves(&node.properties).is_empty())
+        .count()
+}
+
+fn has_sibling_variations(node: &SgfNode) -> bool {
+    node.children.len() > 1 || node.children.iter().any(has_sibling_variations)
+}
+
+fn extract_fox_windows(children: &[SgfNode]) -> Vec<FoxWindow> {
+    children
+        .iter()
+        .enumerate()
+        .filter_map(|(index, child)| {
+            let mut context = Vec::new();
+            let mut sequence = Vec::new();
+            let mut first_node = true;
+            for node in mainline_nodes(child) {
+                let moves = extract_fox_moves(&node.properties);
+                if moves.is_empty() {
+                    continue;
+                }
+                if first_node && moves.len() >= 2 {
+                    sequence.push(moves[0].clone());
+                    context.push(moves[1].clone());
+                } else {
+                    sequence.push(moves[0].clone());
+                }
+                first_node = false;
+            }
+            if sequence.is_empty() {
+                None
+            } else {
+                Some(FoxWindow::new(index, context, sequence))
+            }
+        })
+        .collect()
+}
+
+fn recover_windowed_fox_moves(windows: &[FoxWindow], root_moves: &[FoxMove]) -> Vec<FoxMove> {
+    let seeds = pick_seed_fox_windows(windows, root_moves);
+    if seeds.is_empty() {
+        return Vec::new();
+    }
+    let root_prefixes = build_fox_root_prefix_candidates(root_moves);
+    let mut best_moves = Vec::new();
+    let mut best_score = i32::MIN;
+    let mut best_priority = i32::MIN;
+    for root_prefix in root_prefixes {
+        for seed in &seeds {
+            let priority = fox_seed_priority(seed, root_moves);
+            let attempt = build_windowed_fox_sequence(seed, windows, &root_prefix);
+            if attempt.is_empty() {
+                continue;
+            }
+            let score = score_recovered_fox_moves(&attempt, &root_prefix, root_moves);
+            if score > best_score
+                || (score == best_score && priority > best_priority)
+                || (score == best_score && priority == best_priority && attempt.len() > best_moves.len())
+            {
+                best_moves = attempt;
+                best_score = score;
+                best_priority = priority;
+            }
+        }
+    }
+    best_moves
+}
+
+fn build_fox_root_prefix_candidates(root_moves: &[FoxMove]) -> Vec<Vec<FoxMove>> {
+    let mut candidates = Vec::new();
+    add_fox_root_prefix_candidate(&mut candidates, root_moves.to_vec());
+    if let Some(last) = root_moves.last() {
+        add_fox_root_prefix_candidate(&mut candidates, vec![last.clone()]);
+    }
+    if root_moves.len() > 1 {
+        let mut reversed = root_moves.to_vec();
+        reversed.reverse();
+        add_fox_root_prefix_candidate(&mut candidates, reversed);
+    }
+    add_fox_root_prefix_candidate(&mut candidates, Vec::new());
+    if candidates.is_empty() {
+        candidates.push(Vec::new());
+    }
+    candidates
+}
+
+fn add_fox_root_prefix_candidate(candidates: &mut Vec<Vec<FoxMove>>, prefix: Vec<FoxMove>) {
+    if !prefix.is_empty() && !fox_moves_are_alternating(&prefix) {
+        return;
+    }
+    if !candidates.iter().any(|candidate| candidate == &prefix) {
+        candidates.push(prefix);
+    }
+}
+
+fn pick_seed_fox_windows(windows: &[FoxWindow], root_moves: &[FoxMove]) -> Vec<FoxWindow> {
+    let mut ordered = windows.to_vec();
+    ordered.sort_by(|left, right| {
+        fox_seed_priority(right, root_moves)
+            .cmp(&fox_seed_priority(left, root_moves))
+            .then_with(|| left.index.cmp(&right.index))
+    });
+    ordered.truncate(16);
+    ordered
+}
+
+fn fox_seed_priority(window: &FoxWindow, root_moves: &[FoxMove]) -> i32 {
+    let last_root_color = root_moves.last().map(|sgf_move| sgf_move.color.as_str());
+    let last_root_move = root_moves.last();
+    if !window.context.is_empty() && last_root_move == window.context.first() {
+        return 4;
+    }
+    if window.context.is_empty()
+        && !window.sequence.is_empty()
+        && last_root_color.is_some_and(|color| color != window.sequence[0].color)
+    {
+        return 3;
+    }
+    if !window.sequence.is_empty() && last_root_color.is_some_and(|color| color != window.sequence[0].color) {
+        return 2;
+    }
+    if window.context.is_empty() {
+        return 1;
+    }
+    0
+}
+
+fn build_windowed_fox_sequence(
+    seed: &FoxWindow,
+    windows: &[FoxWindow],
+    root_prefix: &[FoxMove],
+) -> Vec<FoxMove> {
+    let mut current = root_prefix.to_vec();
+    let seed_overlap = if root_prefix.is_empty() {
+        0
+    } else {
+        compute_fox_overlap(root_prefix, &seed.sequence)
+    };
+    if !root_prefix.is_empty() && !can_append_fox_moves(root_prefix, &seed.sequence, seed_overlap) {
+        return Vec::new();
+    }
+    current.extend(seed.sequence[seed_overlap..].iter().cloned());
+    if !fox_moves_are_alternating(&current) {
+        return Vec::new();
+    }
+
+    let mut used = std::collections::HashSet::from([seed.index]);
+    while current.len() < 600 {
+        let mut best = None;
+        for window in windows {
+            if used.contains(&window.index) {
+                continue;
+            }
+            best = select_better_fox_candidate(
+                best,
+                build_fox_candidate(&current, &window.sequence, window.index, false, 3),
+            );
+            if !window.skip_sequence.is_empty() {
+                best = select_better_fox_candidate(
+                    best,
+                    build_fox_candidate(&current, &window.skip_sequence, window.index, false, 2),
+                );
+            }
+            if !window.context.is_empty() {
+                best = select_better_fox_candidate(
+                    best,
+                    build_fox_candidate(&current, &window.augmented, window.index, true, 1),
+                );
+            }
+        }
+        let Some(best) = best else {
+            break;
+        };
+        if best.overlap < 2 {
+            break;
+        }
+        current.extend(best.target[best.overlap..].iter().cloned());
+        used.insert(best.index);
+    }
+
+    if current.len() <= root_prefix.len() {
+        Vec::new()
+    } else {
+        current[root_prefix.len()..].to_vec()
+    }
+}
+
+fn score_recovered_fox_moves(
+    recovered_moves: &[FoxMove],
+    root_prefix: &[FoxMove],
+    root_moves: &[FoxMove],
+) -> i32 {
+    let mut score = recovered_moves.len() as i32 * 100;
+    score += root_prefix.len() as i32 * 8;
+    if !root_prefix.is_empty()
+        && recovered_moves.len() > root_prefix.len()
+        && recovered_moves[0].color != root_prefix[root_prefix.len() - 1].color
+    {
+        score += 24;
+    }
+    score -= repeat_fox_penalty(recovered_moves);
+    if !root_moves.is_empty()
+        && recovered_moves.len() >= root_moves.len()
+        && &recovered_moves[..root_moves.len()] == root_moves
+    {
+        score += 20;
+    }
+    score
+}
+
+fn repeat_fox_penalty(moves: &[FoxMove]) -> i32 {
+    let mut penalty = 0;
+    for index in 0..moves.len() {
+        for previous in index.saturating_sub(12)..index {
+            if moves[index] == moves[previous] {
+                penalty += 12.max(120 - (index - previous) as i32 * 6);
+            }
+        }
+    }
+    for block_size in 2..=4 {
+        penalty += repeated_fox_block_penalty(moves, block_size);
+    }
+    penalty
+}
+
+fn repeated_fox_block_penalty(moves: &[FoxMove], block_size: usize) -> i32 {
+    if moves.len() < block_size * 2 {
+        return 0;
+    }
+    let mut penalty = 0;
+    let mut first_seen = std::collections::HashMap::<String, usize>::new();
+    for index in 0..=moves.len() - block_size {
+        let key = fox_moves_block_key(moves, index, block_size);
+        if let Some(previous_index) = first_seen.insert(key, index) {
+            if index - previous_index <= 16 {
+                penalty += block_size as i32 * 180;
+            }
+        }
+    }
+    penalty
+}
+
+fn fox_moves_block_key(moves: &[FoxMove], start: usize, block_size: usize) -> String {
+    let mut key = String::with_capacity(block_size * 8);
+    for sgf_move in &moves[start..start + block_size] {
+        key.push_str(&sgf_move.color);
+        key.push(':');
+        key.push_str(&sgf_move.coordinate);
+        key.push('|');
+    }
+    key
+}
+
+fn build_fox_candidate(
+    current: &[FoxMove],
+    target: &[FoxMove],
+    index: usize,
+    uses_context: bool,
+    variant_rank: i32,
+) -> Option<FoxCandidate> {
+    if target.is_empty() {
+        return None;
+    }
+    let overlap = compute_fox_overlap(current, target);
+    if overlap == 0 || !can_append_fox_moves(current, target, overlap) {
+        return None;
+    }
+    Some(FoxCandidate {
+        index,
+        target: target.to_vec(),
+        overlap,
+        uses_context,
+        append_size: target.len() - overlap,
+        variant_rank,
+    })
+}
+
+fn select_better_fox_candidate(
+    current: Option<FoxCandidate>,
+    next: Option<FoxCandidate>,
+) -> Option<FoxCandidate> {
+    let Some(next) = next else {
+        return current;
+    };
+    let Some(current) = current else {
+        return Some(next);
+    };
+    if next.overlap != current.overlap {
+        return Some(if next.overlap > current.overlap {
+            next
+        } else {
+            current
+        });
+    }
+    if next.append_size != current.append_size {
+        return Some(if next.append_size > current.append_size {
+            next
+        } else {
+            current
+        });
+    }
+    if next.variant_rank != current.variant_rank {
+        return Some(if next.variant_rank > current.variant_rank {
+            next
+        } else {
+            current
+        });
+    }
+    if next.uses_context != current.uses_context {
+        return Some(if current.uses_context { current } else { next });
+    }
+    Some(if next.index < current.index { next } else { current })
+}
+
+fn compute_fox_overlap(current: &[FoxMove], target: &[FoxMove]) -> usize {
+    let mut best = 0;
+    let max = current.len().min(target.len());
+    for size in 1..=max {
+        if current[current.len() - size..] == target[..size] {
+            best = size;
+        }
+    }
+    best
+}
+
+fn can_append_fox_moves(current: &[FoxMove], target: &[FoxMove], overlap: usize) -> bool {
+    if overlap >= target.len() {
+        return false;
+    }
+    let appended = &target[overlap..];
+    if appended.is_empty() {
+        return false;
+    }
+    if !current.is_empty() && current[current.len() - 1].color == appended[0].color {
+        return false;
+    }
+    fox_moves_are_alternating(appended)
+}
+
+fn choose_compatible_fox_root_prefix(root_moves: &[FoxMove], next_color: Option<&str>) -> Vec<FoxMove> {
+    let mut best = Vec::new();
+    for index in 1..=root_moves.len() {
+        let prefix = &root_moves[..index];
+        if !fox_moves_are_alternating(prefix) {
+            continue;
+        }
+        if next_color.is_some_and(|color| color == prefix[prefix.len() - 1].color) {
+            continue;
+        }
+        if prefix.len() > best.len() {
+            best = prefix.to_vec();
+        }
+    }
+    if !best.is_empty() {
+        return best;
+    }
+    for index in 1..=root_moves.len() {
+        let prefix = &root_moves[..index];
+        if fox_moves_are_alternating(prefix) && prefix.len() > best.len() {
+            best = prefix.to_vec();
+        }
+    }
+    best
+}
+
+fn fox_moves_are_alternating(moves: &[FoxMove]) -> bool {
+    moves.windows(2).all(|window| window[0].color != window[1].color)
+}
+
+fn normalize_fox_moves(root_moves: &[FoxMove], mainline_moves: &[FoxMove]) -> Vec<FoxMove> {
+    let mut normalized = Vec::new();
+    let mut last_color = append_normalized_fox_moves(&mut normalized, root_moves, None);
+    append_normalized_fox_moves(&mut normalized, mainline_moves, last_color.take());
+    normalized
+}
+
+fn append_normalized_fox_moves(
+    target: &mut Vec<FoxMove>,
+    source: &[FoxMove],
+    last_color: Option<String>,
+) -> Option<String> {
+    let mut current_last_color = last_color;
+    for sgf_move in source {
+        if current_last_color.as_ref() != Some(&sgf_move.color) {
+            target.push(sgf_move.clone());
+            current_last_color = Some(sgf_move.color.clone());
+        }
+    }
+    current_last_color
+}
+
+fn build_fox_root_tree(root_properties: Vec<SgfProperty>, moves: &[FoxMove]) -> SgfNode {
+    let mut next = None;
+    for sgf_move in moves.iter().rev() {
+        let children = next.into_iter().collect();
+        next = Some(SgfNode {
+            properties: vec![SgfProperty {
+                key: sgf_move.color.clone(),
+                values: vec![sgf_move.coordinate.clone()],
+            }],
+            children,
+        });
+    }
+
+    SgfNode {
+        properties: root_properties,
+        children: next.into_iter().collect(),
     }
 }
 
@@ -773,6 +1520,95 @@ mod tests {
     }
 
     #[test]
+    fn yike_normalizer_keeps_first_variation_and_ignores_property_text() {
+        let sgf = "(;GM[1]SZ[19]C[text (not a tree) \\] ok];B[aa](;W[bb];B[cc])(;W[dd];B[ee]);W[ff])";
+
+        assert_eq!(
+            normalize_yike_sgf_mainline(sgf),
+            "(;GM[1]SZ[19]C[text (not a tree) \\] ok];B[aa];W[bb];B[cc];W[ff])"
+        );
+    }
+
+    #[test]
+    fn fox_sanitizer_removes_backslashes_only_outside_values() {
+        let sgf = r#"\(;C[keep \\ and \] bracket] \;B[aa]\)"#;
+
+        assert_eq!(sanitize_fox_sgf(sgf), r#"(;C[keep \\ and \] bracket] ;B[aa])"#);
+    }
+
+    #[test]
+    fn fox_normalizer_promotes_setup_and_keeps_single_replayable_mainline() {
+        let input = r#"\(;SZ[5]PB[Black]PW[White]RE[B+R]C[root (ok) \] text];AB[aa][bb]AW[cc]AE[bb]PL[W];W[dd](;B[]C[first])(;B[ee]C[sibling])\)"#;
+
+        let normalized = normalize_fox_sgf(input);
+
+        assert_eq!(
+            normalized,
+            "(;GM[1]FF[4]CA[UTF-8]SZ[5]PB[Black]PW[White]RE[B+R]PL[W]C[root (ok) \\] text]AB[aa][bb]AW[cc]AE[bb];W[dd];B[])"
+        );
+        assert!(!normalized.contains("sibling"));
+
+        let doc = parse_sgf(&normalized).unwrap();
+        assert_eq!(doc.board_size, 5);
+        assert_eq!(doc.black_name.as_deref(), Some("Black"));
+        assert_eq!(doc.white_name.as_deref(), Some("White"));
+        assert_eq!(doc.result.as_deref(), Some("B+R"));
+        assert_eq!(
+            property_values(doc.root.as_ref().unwrap(), "C").unwrap(),
+            &vec!["root (ok) ] text".to_string()]
+        );
+        assert_eq!(doc.moves.len(), 2);
+        assert_eq!(doc.moves[0].color, PlayerColor::White);
+        assert!(matches!(doc.moves[1].vertex, MoveVertex::Pass));
+
+        let serialized = serialize_sgf_document(&doc).unwrap();
+        let reparsed = parse_sgf(&serialized).unwrap();
+        assert_eq!(reparsed.root, doc.root);
+        assert_eq!(reparsed.moves, doc.moves);
+
+        let positions = replay_sgf_positions(&normalized).unwrap();
+        assert_eq!(positions.len(), 3);
+        assert_eq!(positions[0].to_play, PlayerColor::White);
+        assert!(has_stone(&positions[0], 0, 0, PlayerColor::Black));
+        assert!(has_stone(&positions[0], 2, 2, PlayerColor::White));
+        assert!(!positions[0]
+            .stones
+            .iter()
+            .any(|stone| stone.x == 1 && stone.y == 1));
+        assert!(matches!(
+            positions[2].last_move.as_ref().unwrap().vertex,
+            MoveVertex::Pass
+        ));
+        assert!(positions.iter().all(|position| position.errors.is_empty()));
+    }
+
+    #[test]
+    fn fox_normalizer_recovers_windowed_mainline_chunks() {
+        let mut input = String::from("(;SZ[19]");
+        for start in (0..80).step_by(4).take(20) {
+            input.push('(');
+            for index in start..start + 8 {
+                let color = if index % 2 == 0 { "B" } else { "W" };
+                input.push(';');
+                input.push_str(color);
+                input.push('[');
+                input.push_str(&test_sgf_coord(index));
+                input.push(']');
+            }
+            input.push(')');
+        }
+        input.push(')');
+
+        let normalized = normalize_fox_sgf(&input);
+        let doc = parse_sgf(&normalized).unwrap();
+
+        assert_eq!(normalized.matches('(').count(), 1);
+        assert_eq!(doc.moves.len(), 84);
+        assert_eq!(doc.moves[0].vertex, MoveVertex::Point(PointDto { x: 0, y: 0 }));
+        assert_eq!(doc.moves[83].vertex, MoveVertex::Point(PointDto { x: 7, y: 4 }));
+    }
+
+    #[test]
     fn roundtrips_variations_comments_setup_and_pl() {
         let input = include_str!("../../../tests/golden/sgf_compat_variations.sgf");
         let doc = parse_sgf(input).unwrap();
@@ -808,6 +1644,122 @@ mod tests {
     }
 
     #[test]
+    fn roundtrips_ff4_common_properties_unknowns_markup_timing_and_branches() {
+        let input = include_str!("../../../tests/golden/sgf_ff4_compat.sgf").trim();
+        let doc = parse_sgf(input).unwrap();
+
+        assert_eq!(doc.board_size, 9);
+        assert_eq!(doc.komi, 6.5);
+        assert_eq!(doc.handicap, Some(2));
+        assert_eq!(doc.black_name.as_deref(), Some("A]lice"));
+        assert_eq!(doc.white_name.as_deref(), Some("Bob\\Lee"));
+        assert_eq!(doc.result.as_deref(), Some("W+2.5"));
+        assert_eq!(doc.moves.len(), 2);
+        assert_eq!(doc.moves[0].color, PlayerColor::White);
+        assert_eq!(doc.moves[0].vertex, MoveVertex::Point(PointDto { x: 3, y: 3 }));
+        assert_eq!(doc.moves[1].color, PlayerColor::Black);
+        assert_eq!(doc.moves[1].vertex, MoveVertex::Point(PointDto { x: 4, y: 4 }));
+
+        let root = doc.root.as_ref().unwrap();
+        let root_keys: Vec<&str> = root
+            .properties
+            .iter()
+            .map(|property| property.key.as_str())
+            .collect();
+        assert_eq!(
+            root_keys,
+            vec![
+                "FF", "GM", "SZ", "KM", "HA", "PB", "PW", "BR", "WR", "RE", "DT", "EV", "RO", "PC", "RU",
+                "OT", "TM", "C", "XY", "AB", "AW", "AE", "PL", "TR", "SQ", "CR", "MA", "LB", "AR", "LN",
+                "SL",
+            ]
+        );
+        assert_eq!(property_values(root, "BR").unwrap(), &vec!["1d".to_string()]);
+        assert_eq!(property_values(root, "WR").unwrap(), &vec!["2k".to_string()]);
+        assert_eq!(
+            property_values(root, "DT").unwrap(),
+            &vec!["2026-04-30".to_string()]
+        );
+        assert_eq!(
+            property_values(root, "EV").unwrap(),
+            &vec!["Test Cup".to_string()]
+        );
+        assert_eq!(property_values(root, "RO").unwrap(), &vec!["R1".to_string()]);
+        assert_eq!(
+            property_values(root, "PC").unwrap(),
+            &vec!["Shanghai".to_string()]
+        );
+        assert_eq!(property_values(root, "RU").unwrap(), &vec!["Chinese".to_string()]);
+        assert_eq!(
+            property_values(root, "OT").unwrap(),
+            &vec!["byo-yomi".to_string()]
+        );
+        assert_eq!(property_values(root, "TM").unwrap(), &vec!["3600".to_string()]);
+        assert_eq!(
+            property_values(root, "C").unwrap(),
+            &vec!["root ] comment\\done".to_string()]
+        );
+        assert_eq!(
+            property_values(root, "XY").unwrap(),
+            &vec![
+                "alpha".to_string(),
+                "beta]two".to_string(),
+                "slash\\end".to_string(),
+            ]
+        );
+        assert_eq!(
+            property_values(root, "TR").unwrap(),
+            &vec!["aa".to_string(), "bb".to_string()]
+        );
+        assert_eq!(
+            property_values(root, "LB").unwrap(),
+            &vec!["aa:A".to_string(), "bb:B]2".to_string()]
+        );
+        assert_eq!(property_values(root, "AR").unwrap(), &vec!["aa:bb".to_string()]);
+        assert_eq!(property_values(root, "LN").unwrap(), &vec!["cc:dd".to_string()]);
+        assert_eq!(property_values(root, "SL").unwrap(), &vec!["ee".to_string()]);
+
+        let move_node = &root.children[0];
+        assert_eq!(
+            property_values(move_node, "N").unwrap(),
+            &vec!["move 1".to_string()]
+        );
+        assert_eq!(
+            property_values(move_node, "C").unwrap(),
+            &vec!["hello]world".to_string()]
+        );
+        assert_eq!(property_values(move_node, "GB").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "GW").unwrap(), &vec!["2".to_string()]);
+        assert_eq!(property_values(move_node, "DM").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "HO").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "BM").unwrap(), &vec!["2".to_string()]);
+        assert_eq!(property_values(move_node, "TE").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "IT").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "DO").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(
+            property_values(move_node, "BL").unwrap(),
+            &vec!["3550.5".to_string()]
+        );
+        assert_eq!(
+            property_values(move_node, "WL").unwrap(),
+            &vec!["3600".to_string()]
+        );
+        assert_eq!(property_values(move_node, "OB").unwrap(), &vec!["5".to_string()]);
+        assert_eq!(property_values(move_node, "OW").unwrap(), &vec!["4".to_string()]);
+        assert_eq!(move_node.children.len(), 2);
+        assert_eq!(
+            property_values(&move_node.children[1], "ZZ").unwrap(),
+            &vec!["unknown".to_string(), "multi".to_string()]
+        );
+
+        let serialized = serialize_sgf_document(&doc).unwrap();
+        assert_eq!(serialized, input);
+        let reparsed = parse_sgf(&serialized).unwrap();
+        assert_eq!(reparsed.root, doc.root);
+        assert_eq!(reparsed.moves, doc.moves);
+    }
+
+    #[test]
     fn replay_applies_setup_stones_and_player_to_play() {
         let input = include_str!("../../../tests/golden/sgf_compat_variations.sgf");
         let positions = replay_sgf_positions(input).unwrap();
@@ -832,6 +1784,28 @@ mod tests {
         assert!(positions.iter().all(|position| position.errors.is_empty()));
     }
 
+    #[test]
+    fn replay_ignores_ff4_annotations_markup_timing_and_unknown_properties() {
+        let input = include_str!("../../../tests/golden/sgf_ff4_compat.sgf");
+        let positions = replay_sgf_positions(input).unwrap();
+
+        assert_eq!(positions.len(), 3);
+        let initial = &positions[0];
+        assert_eq!(initial.to_play, PlayerColor::White);
+        assert!(has_stone(initial, 0, 0, PlayerColor::Black));
+        assert!(has_stone(initial, 2, 2, PlayerColor::White));
+        assert!(!initial.stones.iter().any(|stone| stone.x == 1 && stone.y == 1));
+
+        let first_move = &positions[1];
+        assert_eq!(first_move.last_move.as_ref().unwrap().color, PlayerColor::White);
+        assert!(has_stone(first_move, 3, 3, PlayerColor::White));
+
+        let branch_move = &positions[2];
+        assert_eq!(branch_move.last_move.as_ref().unwrap().color, PlayerColor::Black);
+        assert!(has_stone(branch_move, 4, 4, PlayerColor::Black));
+        assert!(positions.iter().all(|position| position.errors.is_empty()));
+    }
+
     fn assert_initial_position(positions: &[PositionDto]) {
         let initial = positions.first().unwrap();
         assert_eq!(initial.move_number, 0);
@@ -848,5 +1822,11 @@ mod tests {
             .stones
             .iter()
             .any(|stone| stone.x == x && stone.y == y && stone.color == color)
+    }
+
+    fn test_sgf_coord(index: usize) -> String {
+        let x = (index % 19) as u8;
+        let y = (index / 19) as u8;
+        format!("{}{}", char::from(b'a' + x), char::from(b'a' + y))
     }
 }

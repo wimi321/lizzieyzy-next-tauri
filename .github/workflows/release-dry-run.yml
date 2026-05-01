@@ -1,0 +1,144 @@
+name: release-dry-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tauri_build:
+        description: "Run tauri build --no-bundle as the release compile dry-run"
+        required: true
+        default: true
+        type: boolean
+      upload_artifacts:
+        description: "Upload dry-run summaries and build outputs"
+        required: true
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Release dry-run (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS
+            os: macos-latest
+          - label: Linux
+            os: ubuntu-latest
+          - label: Windows
+            os: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry and build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Print toolchain versions
+        run: |
+          python --version
+          node --version
+          npm --version
+          rustc --version
+          cargo --version
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Validate Tauri config JSON
+        run: python -m json.tool apps/desktop/src-tauri/tauri.conf.json > /dev/null
+
+      - name: Validate scaffold contract
+        run: python scripts/validate_scaffold.py --verbose
+
+      - name: Validate release asset preflight
+        run: python scripts/validate_release_assets.py --verbose --summary-dir release-dry-run
+
+      - name: Build frontend
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Report signing and release mode
+        env:
+          MACOS_SIGNING_READY: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+          WINDOWS_SIGNING_READY: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+          TAURI_UPDATER_SIGNING_READY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          mkdir -p release-dry-run
+          {
+            echo "# Release dry-run summary"
+            echo
+            echo "- Ref: ${GITHUB_REF}"
+            echo "- SHA: ${GITHUB_SHA}"
+            echo "- Runner OS: ${RUNNER_OS}"
+            echo "- Tauri bundle mode: compile-only dry-run; no GitHub release is created"
+            echo "- macOS signing secrets present: ${MACOS_SIGNING_READY}"
+            echo "- Windows signing secrets present: ${WINDOWS_SIGNING_READY}"
+            echo "- Tauri updater signing key present: ${TAURI_UPDATER_SIGNING_READY}"
+            echo "- Signing/notarization/publish step: skipped by design for dry-run"
+          } | tee "release-dry-run/${RUNNER_OS}-summary.md"
+
+      - name: Tauri compile dry-run
+        if: github.event_name != 'workflow_dispatch' || inputs.run_tauri_build
+        working-directory: apps/desktop
+        run: npm run tauri:build -- --no-bundle --ci --no-sign
+
+      - name: Upload dry-run artifacts
+        if: github.event_name != 'workflow_dispatch' || inputs.upload_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run-${{ runner.os }}
+          if-no-files-found: warn
+          path: |
+            release-dry-run/**
+            apps/desktop/dist/**
+            target/release/lizzieyzy-next-desktop*
+            target/release/bundle/**

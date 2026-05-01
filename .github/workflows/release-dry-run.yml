@@ -99,6 +99,9 @@ jobs:
       - name: Validate scaffold contract
         run: python scripts/validate_scaffold.py --verbose
 
+      - name: Validate release asset preflight
+        run: python scripts/validate_release_assets.py --verbose --summary-dir release-dry-run
+
       - name: Build frontend
         working-directory: apps/desktop
         run: npm run build

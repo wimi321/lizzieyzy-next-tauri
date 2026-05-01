@@ -1,6 +1,6 @@
 use app_model::{
     AnalysisFrameDto, AppHealthDto, CandidateMoveDto, EngineBackend, EngineProfileDto, MoveVertex, PointDto,
-    PositionDto,
+    PositionDto, ProviderError, ProviderErrorKind, ProviderImportRequest, ProviderImportResult, ProviderKind,
 };
 use engine_manager::{
     build_command_spec, check_assets, AnalysisBatchRunOptions, AnalysisCancelToken, AssetCheck, CommandSpec,
@@ -158,6 +158,22 @@ fn health() -> AppHealthDto {
 fn parse_sgf_summary(sgf_text: String) -> Result<app_model::GameDto, String> {
     let document = sgf::parse_sgf(&sgf_text).map_err(|err| err.to_string())?;
     Ok(sgf::to_game_dto(document))
+}
+
+#[tauri::command]
+fn provider_parse_yike_url(raw_url: String) -> Result<provider_yike::YikeUrlDescriptor, ProviderError> {
+    provider_yike::parse_yike_url(&raw_url)
+}
+
+#[tauri::command]
+fn provider_import_from_payload(
+    request: ProviderImportRequest,
+) -> Result<ProviderImportResult, ProviderError> {
+    let result = match request.provider {
+        ProviderKind::Yike => provider_yike::import_payload(request),
+        ProviderKind::Fox => provider_fox::import_payload(request),
+    }?;
+    enrich_provider_import_result(result)
 }
 
 #[tauri::command]
@@ -1541,6 +1557,24 @@ fn non_empty_path(path: String) -> Result<PathBuf, String> {
     Ok(PathBuf::from(trimmed))
 }
 
+fn enrich_provider_import_result(
+    mut result: ProviderImportResult,
+) -> Result<ProviderImportResult, ProviderError> {
+    let document = sgf::parse_sgf(&result.sgf_text).map_err(|err| ProviderError {
+        kind: ProviderErrorKind::ParseFailed,
+        message: format!("failed to parse imported provider SGF: {err}"),
+    })?;
+    result.summary.provider = result.provider;
+    result.summary.board_size = Some(document.board_size);
+    result.summary.komi = Some(document.komi);
+    result.summary.handicap = document.handicap;
+    result.summary.black_name = document.black_name;
+    result.summary.white_name = document.white_name;
+    result.summary.result = document.result;
+    result.summary.move_count = Some(document.moves.len());
+    Ok(result)
+}
+
 fn demo_candidates(turn: u32, board_size: u8) -> Vec<CandidateMoveDto> {
     let anchors = [(15usize, 3usize), (3, 15), (15, 15), (3, 3), (9, 9), (10, 15)];
     anchors
@@ -1568,6 +1602,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             health,
             parse_sgf_summary,
+            provider_parse_yike_url,
+            provider_import_from_payload,
             replay_sgf_positions,
             read_sgf_file,
             write_sgf_file,

@@ -18,6 +18,8 @@ analysis-core = { path = "../../../crates/analysis-core" }
 app-model = { path = "../../../crates/app-model" }
 engine-manager = { path = "../../../crates/engine-manager" }
 katago-protocol = { path = "../../../crates/katago-protocol" }
+provider-fox = { path = "../../../crates/provider-fox" }
+provider-yike = { path = "../../../crates/provider-yike" }
 sgf = { path = "../../../crates/sgf" }
 storage = { path = "../../../crates/storage" }
 rusqlite.workspace = true

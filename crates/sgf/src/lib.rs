@@ -808,6 +808,122 @@ mod tests {
     }
 
     #[test]
+    fn roundtrips_ff4_common_properties_unknowns_markup_timing_and_branches() {
+        let input = include_str!("../../../tests/golden/sgf_ff4_compat.sgf").trim();
+        let doc = parse_sgf(input).unwrap();
+
+        assert_eq!(doc.board_size, 9);
+        assert_eq!(doc.komi, 6.5);
+        assert_eq!(doc.handicap, Some(2));
+        assert_eq!(doc.black_name.as_deref(), Some("A]lice"));
+        assert_eq!(doc.white_name.as_deref(), Some("Bob\\Lee"));
+        assert_eq!(doc.result.as_deref(), Some("W+2.5"));
+        assert_eq!(doc.moves.len(), 2);
+        assert_eq!(doc.moves[0].color, PlayerColor::White);
+        assert_eq!(doc.moves[0].vertex, MoveVertex::Point(PointDto { x: 3, y: 3 }));
+        assert_eq!(doc.moves[1].color, PlayerColor::Black);
+        assert_eq!(doc.moves[1].vertex, MoveVertex::Point(PointDto { x: 4, y: 4 }));
+
+        let root = doc.root.as_ref().unwrap();
+        let root_keys: Vec<&str> = root
+            .properties
+            .iter()
+            .map(|property| property.key.as_str())
+            .collect();
+        assert_eq!(
+            root_keys,
+            vec![
+                "FF", "GM", "SZ", "KM", "HA", "PB", "PW", "BR", "WR", "RE", "DT", "EV", "RO", "PC", "RU",
+                "OT", "TM", "C", "XY", "AB", "AW", "AE", "PL", "TR", "SQ", "CR", "MA", "LB", "AR", "LN",
+                "SL",
+            ]
+        );
+        assert_eq!(property_values(root, "BR").unwrap(), &vec!["1d".to_string()]);
+        assert_eq!(property_values(root, "WR").unwrap(), &vec!["2k".to_string()]);
+        assert_eq!(
+            property_values(root, "DT").unwrap(),
+            &vec!["2026-04-30".to_string()]
+        );
+        assert_eq!(
+            property_values(root, "EV").unwrap(),
+            &vec!["Test Cup".to_string()]
+        );
+        assert_eq!(property_values(root, "RO").unwrap(), &vec!["R1".to_string()]);
+        assert_eq!(
+            property_values(root, "PC").unwrap(),
+            &vec!["Shanghai".to_string()]
+        );
+        assert_eq!(property_values(root, "RU").unwrap(), &vec!["Chinese".to_string()]);
+        assert_eq!(
+            property_values(root, "OT").unwrap(),
+            &vec!["byo-yomi".to_string()]
+        );
+        assert_eq!(property_values(root, "TM").unwrap(), &vec!["3600".to_string()]);
+        assert_eq!(
+            property_values(root, "C").unwrap(),
+            &vec!["root ] comment\\done".to_string()]
+        );
+        assert_eq!(
+            property_values(root, "XY").unwrap(),
+            &vec![
+                "alpha".to_string(),
+                "beta]two".to_string(),
+                "slash\\end".to_string(),
+            ]
+        );
+        assert_eq!(
+            property_values(root, "TR").unwrap(),
+            &vec!["aa".to_string(), "bb".to_string()]
+        );
+        assert_eq!(
+            property_values(root, "LB").unwrap(),
+            &vec!["aa:A".to_string(), "bb:B]2".to_string()]
+        );
+        assert_eq!(property_values(root, "AR").unwrap(), &vec!["aa:bb".to_string()]);
+        assert_eq!(property_values(root, "LN").unwrap(), &vec!["cc:dd".to_string()]);
+        assert_eq!(property_values(root, "SL").unwrap(), &vec!["ee".to_string()]);
+
+        let move_node = &root.children[0];
+        assert_eq!(
+            property_values(move_node, "N").unwrap(),
+            &vec!["move 1".to_string()]
+        );
+        assert_eq!(
+            property_values(move_node, "C").unwrap(),
+            &vec!["hello]world".to_string()]
+        );
+        assert_eq!(property_values(move_node, "GB").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "GW").unwrap(), &vec!["2".to_string()]);
+        assert_eq!(property_values(move_node, "DM").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "HO").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "BM").unwrap(), &vec!["2".to_string()]);
+        assert_eq!(property_values(move_node, "TE").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "IT").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(property_values(move_node, "DO").unwrap(), &vec!["1".to_string()]);
+        assert_eq!(
+            property_values(move_node, "BL").unwrap(),
+            &vec!["3550.5".to_string()]
+        );
+        assert_eq!(
+            property_values(move_node, "WL").unwrap(),
+            &vec!["3600".to_string()]
+        );
+        assert_eq!(property_values(move_node, "OB").unwrap(), &vec!["5".to_string()]);
+        assert_eq!(property_values(move_node, "OW").unwrap(), &vec!["4".to_string()]);
+        assert_eq!(move_node.children.len(), 2);
+        assert_eq!(
+            property_values(&move_node.children[1], "ZZ").unwrap(),
+            &vec!["unknown".to_string(), "multi".to_string()]
+        );
+
+        let serialized = serialize_sgf_document(&doc).unwrap();
+        assert_eq!(serialized, input);
+        let reparsed = parse_sgf(&serialized).unwrap();
+        assert_eq!(reparsed.root, doc.root);
+        assert_eq!(reparsed.moves, doc.moves);
+    }
+
+    #[test]
     fn replay_applies_setup_stones_and_player_to_play() {
         let input = include_str!("../../../tests/golden/sgf_compat_variations.sgf");
         let positions = replay_sgf_positions(input).unwrap();
@@ -829,6 +945,28 @@ mod tests {
             positions[3].last_move.as_ref().unwrap().vertex,
             MoveVertex::Pass
         ));
+        assert!(positions.iter().all(|position| position.errors.is_empty()));
+    }
+
+    #[test]
+    fn replay_ignores_ff4_annotations_markup_timing_and_unknown_properties() {
+        let input = include_str!("../../../tests/golden/sgf_ff4_compat.sgf");
+        let positions = replay_sgf_positions(input).unwrap();
+
+        assert_eq!(positions.len(), 3);
+        let initial = &positions[0];
+        assert_eq!(initial.to_play, PlayerColor::White);
+        assert!(has_stone(initial, 0, 0, PlayerColor::Black));
+        assert!(has_stone(initial, 2, 2, PlayerColor::White));
+        assert!(!initial.stones.iter().any(|stone| stone.x == 1 && stone.y == 1));
+
+        let first_move = &positions[1];
+        assert_eq!(first_move.last_move.as_ref().unwrap().color, PlayerColor::White);
+        assert!(has_stone(first_move, 3, 3, PlayerColor::White));
+
+        let branch_move = &positions[2];
+        assert_eq!(branch_move.last_move.as_ref().unwrap().color, PlayerColor::Black);
+        assert!(has_stone(branch_move, 4, 4, PlayerColor::Black));
         assert!(positions.iter().all(|position| position.errors.is_empty()));
     }
 

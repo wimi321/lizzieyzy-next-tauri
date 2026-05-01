@@ -20,8 +20,12 @@ engine-manager = { path = "../../../crates/engine-manager" }
 katago-protocol = { path = "../../../crates/katago-protocol" }
 provider-fox = { path = "../../../crates/provider-fox" }
 provider-yike = { path = "../../../crates/provider-yike" }
+provider-core = { path = "../../../crates/provider-core" }
+go-core = { path = "../../../crates/go-core" }
+readboard-sidecar = { path = "../../../crates/readboard-sidecar" }
 sgf = { path = "../../../crates/sgf" }
 storage = { path = "../../../crates/storage" }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -8,6 +8,7 @@ members = [
   "crates/provider-core",
   "crates/provider-yike",
   "crates/provider-fox",
+  "crates/readboard-sidecar",
   "crates/katago-protocol",
   "crates/analysis-core",
   "crates/engine-manager",

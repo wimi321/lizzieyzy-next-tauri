@@ -19,14 +19,16 @@ Implemented in the Next workspace:
 - SQLite analysis cache with cache key computation, lookup, save, and delete commands.
 - Scaffold validation, Rust tests, and frontend build checks wired for local and CI use.
 - Release preflight validation for Tauri metadata and the safe dry-run workflow.
+- Multi-platform GitHub Release workflow for macOS, Windows, and Linux CI-built assets.
+- Bilingual English/Chinese release notes for `v0.1.0`.
 
 Not yet claimed as complete in the Next workspace:
 
 - Full legacy Java/Swing feature parity.
 - Fox/Yike online game providers as live external-network integrations.
 - readboard live sidecar integration in a real target environment.
-- Production packaging, signing, notarization, and release publication for the Tauri app.
-- End-to-end installer smoke coverage across all target platforms.
+- Production signing/notarization for macOS and Windows unless maintainer secrets are configured.
+- End-to-end clean-machine installer smoke coverage across all target platforms.
 - Complete migration of every legacy setting, layout preference, and analysis workflow.
 
 Provider and readboard work in this batch should be treated as offline contract/domain-command coverage until the owning implementation has live environment evidence. Do not describe live provider login, external network capture, or readboard sidecar operation as shipped from this repository alone.
@@ -67,6 +69,7 @@ Run release asset preflight from the repository root:
 
 ```bash
 python3 scripts/validate_release_assets.py --verbose
+python3 scripts/validate_release_workflow.py --verbose
 ```
 
 Run the Rust checks:
@@ -120,7 +123,7 @@ Use `docs/DEVELOPMENT.md` for the full checklist. The short acceptance path is:
 CI should be read as scaffold and regression coverage for the Next workspace, not as proof of full legacy parity. The important gates are:
 
 - scaffold validation,
-- release asset preflight,
+- release asset preflight and production release workflow contract validation,
 - frontend dependency install and build,
 - Rust formatting,
 - Rust clippy,
@@ -128,7 +131,16 @@ CI should be read as scaffold and regression coverage for the Next workspace, no
 
 Provider contract tests and readboard domain tests are accepted through the Rust workspace test gate when those modules land; the handoff should name the exact package or test filter and must not count a zero-test filter as evidence. Release dry-run acceptance is `.github/workflows/release-dry-run.yml` plus `python3 scripts/validate_release_assets.py --verbose`; the workflow uploads diagnostic artifacts and must not create a GitHub release.
 
-Passing CI means the current Tauri/Rust/TypeScript baseline is structurally healthy. It does not mean live Fox/Yike/readboard integrations or production Tauri release packaging have shipped.
+Passing CI means the current Tauri/Rust/TypeScript baseline is structurally healthy. It does not mean live Fox/Yike/readboard integrations, platform signing, notarization, or clean-machine installer smoke checks have completed.
+
+## Releases
+
+`v0.1.0` is the first public Tauri release candidate for this repository. Release notes are bilingual:
+
+- [Release notes v0.1.0](.github/RELEASE_NOTES_v0.1.0.md)
+- [Changelog](CHANGELOG.md)
+
+The production release workflow is `.github/workflows/release.yml`. It runs on `v*` tags, builds macOS, Windows, and Linux Tauri bundles, collects assets, writes SHA-256 checksum files, and publishes a GitHub Release. Assets generated without signing or notarization secrets are clearly marked as unsigned release-candidate artifacts.
 
 ## Documentation
 

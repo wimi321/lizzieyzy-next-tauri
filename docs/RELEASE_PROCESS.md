@@ -1,6 +1,6 @@
 # Release Process
 
-This process covers production release preparation for the LizzieYzy Next Tauri 2 desktop workspace. It is intentionally dry-run first: the current workflow validates release readiness and uploads diagnostic artifacts, but it does not create tags, GitHub releases, or signed public installers.
+This process covers production release preparation for the LizzieYzy Next Tauri 2 desktop workspace. The repository keeps a safe dry-run workflow for readiness checks and a tag-driven release workflow for public release-candidate assets.
 
 ## Release Gates
 
@@ -44,11 +44,23 @@ The workflow runs a macOS, Linux, and Windows matrix that checks out the reposit
 
 The workflow deliberately uses `contents: read` and does not create or mutate releases. Missing signing secrets are reported in the dry-run summary and do not fail the job.
 
+## GitHub Actions Release
+
+Workflow: `.github/workflows/release.yml`
+
+Trigger:
+
+- Push a tag matching `v*`.
+
+The release workflow runs macOS, Linux, and Windows jobs, installs platform dependencies, validates scaffold/release contracts, builds Tauri bundles with `npm run tauri:build -- --ci --no-sign`, collects installer artifacts from `target/release/bundle`, generates per-platform SHA-256 checksum files, and publishes a GitHub Release with aggregate checksums.
+
+Release assets built without signing/notarization secrets are public validation artifacts. Do not present them as signed production installers. Configure platform signing and notarization before promoting a candidate to a stable production release.
+
 ## Version and Tag Policy
 
 - Keep `apps/desktop/package.json`, `apps/desktop/package-lock.json`, `apps/desktop/src-tauri/Cargo.toml`, and `apps/desktop/src-tauri/tauri.conf.json` versions aligned before a real release.
 - Use annotated tags in the form `vMAJOR.MINOR.PATCH` for public candidates.
-- Do not create a tag until the release dry-run has passed for the target commit.
+- Do not create a public tag until CI, local smoke checks, and release workflow validation pass for the target commit.
 - Do not retarget or force-push a published release tag. Create a new patch tag instead.
 
 ## Required Secrets
@@ -93,19 +105,21 @@ The dry-run uploads:
 - any compile-only desktop binary matching `target/release/lizzieyzy-next-desktop*`
 - `target/release/bundle/**` if a future workflow enables bundling
 
-For a public release, expected platform artifacts are:
+For the `v0.1.0` public validation release, expected platform artifacts are unsigned CI-built bundles:
 
-- macOS: `.app` inside `.dmg`, signed and notarized.
-- Windows: NSIS/MSI installer or portable executable, signed.
+- macOS: `.app` inside `.dmg`, unsigned and not notarized unless signing secrets are configured.
+- Windows: NSIS/MSI installer or portable executable, unsigned unless signing secrets are configured.
 - Linux: AppImage, deb, or rpm, with runtime dependencies documented.
 
 Every uploaded artifact should be tied to the exact tag, commit SHA, platform, and signing state in the release notes.
+
+The production workflow also uploads `SHA256SUMS.txt` and `SHA256SUMS-<platform>.txt` files for download verification.
 
 The expected dry-run artifact contract is `lizzieyzy-next-desktop-<version>-<platform>-dry-run` as a naming stem for handoff records, plus metadata for commit SHA and signing state. Current workflow uploads diagnostic artifacts only; production installer naming must be verified again before a public release workflow is introduced.
 
 ## Signing and Notarization Policy
 
-Unsigned dry-run artifacts are for engineering validation only. Do not publish them as production downloads.
+Unsigned dry-run artifacts are for engineering validation only. The `v0.1.0` tag workflow may publish unsigned public validation artifacts, but the release notes must keep them marked as unsigned prerelease assets.
 
 macOS production artifacts must use hardened runtime and notarization. After notarization, staple the ticket and smoke-test the app on a clean macOS machine before publishing.
 

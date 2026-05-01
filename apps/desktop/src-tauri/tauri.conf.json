@@ -34,6 +34,11 @@
     "shortDescription": "Desktop Go review workspace powered by Tauri, Rust, and TypeScript.",
     "longDescription": "LizzieYzy Next is the Tauri 2 desktop workspace for SGF review, KataGo-backed analysis, profiles, and local analysis cache validation.",
     "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
       "icons/icon.png"
     ],
     "macOS": {

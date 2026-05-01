@@ -74,6 +74,18 @@ class ValidateReleaseAssetsTests(unittest.TestCase):
             self.assertIn("identifier must be org.lizzieyzy.next", failures["tauri_release_metadata"])
             self.assertIn("versions must match", failures["tauri_release_metadata"])
 
+    def test_rejects_missing_configured_bundle_icon(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._create_release_contract(root)
+            (root / "apps/desktop/src-tauri/icons/icon.ico").unlink()
+
+            results = validate_release_assets.ReleaseAssetValidator(root).run()
+
+            failures = {result.name: result.detail for result in results if not result.ok}
+            self.assertIn("tauri_release_metadata", failures)
+            self.assertIn("configured bundle icon is missing: icons/icon.ico", failures["tauri_release_metadata"])
+
     def _create_release_contract(self, root: Path) -> None:
         write_json(
             root / "apps/desktop/src-tauri/tauri.conf.json",
@@ -91,13 +103,31 @@ class ValidateReleaseAssetsTests(unittest.TestCase):
                     "publisher": "LizzieYzy Next contributors",
                     "shortDescription": "Desktop Go review workspace.",
                     "longDescription": "Desktop Go review workspace powered by Tauri.",
-                    "icon": ["icons/icon.png"],
+                    "icon": [
+                        "icons/32x32.png",
+                        "icons/128x128.png",
+                        "icons/128x128@2x.png",
+                        "icons/icon.icns",
+                        "icons/icon.ico",
+                        "icons/icon.png",
+                    ],
                     "macOS": {"hardenedRuntime": True},
                     "windows": {"webviewInstallMode": {"type": "downloadBootstrapper"}},
                     "linux": {"deb": {"section": "utils"}},
                 },
             },
         )
+        for icon in [
+            "32x32.png",
+            "128x128.png",
+            "128x128@2x.png",
+            "icon.icns",
+            "icon.ico",
+            "icon.png",
+        ]:
+            icon_path = root / "apps/desktop/src-tauri/icons" / icon
+            icon_path.parent.mkdir(parents=True, exist_ok=True)
+            icon_path.write_bytes(b"icon")
         write_json(
             root / "apps/desktop/package.json",
             {"name": "lizzieyzy-next-desktop", "version": "0.1.0"},

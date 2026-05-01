@@ -12,7 +12,7 @@ Use this guide when changing:
 - Rust crates under `crates/*`,
 - SGF, KataGo, engine profile, asset check, and cache behavior.
 
-Do not treat a passing Next smoke run as full legacy parity. Fox/Yike providers, readboard integration, and Tauri production release packaging are still pending.
+Do not treat a passing Next smoke run as full legacy parity. Provider/readboard work in this batch may provide offline contracts and domain commands, but live Fox/Yike network behavior, live readboard sidecar operation, and Tauri production release packaging still require environment-specific validation.
 
 ## Required Local Baseline
 
@@ -20,6 +20,7 @@ From the repository root, always run:
 
 ```bash
 python3 scripts/validate_scaffold.py --verbose
+python3 scripts/validate_release_assets.py --verbose
 ```
 
 For code changes, also run the relevant checks:
@@ -39,6 +40,12 @@ npm run build
 ```
 
 For documentation-only changes, scaffold validation is still required because it is the shared acceptance gate for the current handoff package.
+
+Provider/readboard acceptance entry points:
+
+- Provider contract tests: run the Rust workspace tests that own the provider contract modules and record the exact package or filter. `cargo test --workspace` is the baseline; a focused filter only counts if it runs non-zero provider tests.
+- Readboard domain tests: run the Rust workspace tests that own readboard parsing/command behavior and record the exact package or filter. Live sidecar checks require a real readboard environment and should be listed separately.
+- Release dry-run: run `python3 scripts/validate_release_assets.py --verbose` locally and use `.github/workflows/release-dry-run.yml` for the cross-platform compile-only dry-run.
 
 ## Running The Next App
 
@@ -159,7 +166,7 @@ When updating docs for this handoff package, keep these claims accurate:
 
 - Do not claim a Tauri release has been published unless release artifacts exist.
 - Do not claim full Java/Swing parity.
-- Do not claim Fox/Yike/readboard migration is complete.
+- Do not claim Fox/Yike/readboard live migration is complete without external-network or sidecar evidence.
 - Distinguish browser preview behavior from native Tauri desktop behavior.
 - Report the exact validation command and result in the handoff.
 

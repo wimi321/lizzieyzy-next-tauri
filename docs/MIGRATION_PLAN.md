@@ -2,7 +2,7 @@
 
 This plan tracks the migration from the Java/Swing maintenance line to the LizzieYzy Next desktop architecture built with Tauri 2, Rust, and TypeScript. The legacy application remains the stable release baseline until the Next workspace proves the required user workflows through tests, fixtures, and smoke checks.
 
-The current state is useful and testable, but it is not full legacy parity. In particular, Fox/Yike providers, readboard integration, and production Tauri release packaging are still pending.
+The current state is useful and testable, but it is not full legacy parity. Core Tauri/Rust/TypeScript flows can be built and run locally. Provider/readboard work in this batch should be treated as offline contract and command coverage until Fox/Yike live network behavior, readboard live sidecar behavior, and production Tauri release packaging have environment-specific validation.
 
 ## Completed In The Next Workspace
 
@@ -55,9 +55,9 @@ The current state is useful and testable, but it is not full legacy parity. In p
 
 ### Legacy Feature Parity
 
-- Fox provider migration.
-- Yike provider migration.
-- readboard integration.
+- Fox provider live external-network validation.
+- Yike provider live external-network validation.
+- readboard live sidecar validation.
 - Legacy capture/import helpers beyond the SGF flows already present.
 - Full settings migration from Java/Swing configuration files.
 - Complete layout/theme parity.
@@ -68,7 +68,7 @@ The current state is useful and testable, but it is not full legacy parity. In p
 - Tauri release packaging for Windows, macOS, and Linux.
 - Platform signing, notarization, installer metadata, and update strategy.
 - Bundled KataGo/runtime asset layout for the Tauri application.
-- Release artifact validation for the Tauri app.
+- Release artifact validation for the Tauri app beyond the current dry-run preflight.
 - Platform-specific installer smoke coverage.
 
 ### Test And Acceptance Coverage
@@ -77,7 +77,9 @@ The current state is useful and testable, but it is not full legacy parity. In p
 - UI automation for the primary desktop smoke flow.
 - Engine integration tests that can run against a controlled KataGo fixture or mock process.
 - Cache migration tests once the storage schema stabilizes beyond the current MVP.
-- Provider contract tests before Fox/Yike/readboard work is considered done.
+- Provider contract tests before Fox/Yike provider work is considered done.
+- Readboard domain tests before readboard command work is considered done.
+- Live environment smoke checks before provider/readboard work is described as shipped.
 
 ## Phase Status
 
@@ -86,8 +88,8 @@ The current state is useful and testable, but it is not full legacy parity. In p
 | Phase 0: Scaffold Contract | Complete | Structural validator, workspace, frontend, Tauri backend, docs, and golden fixture are present. |
 | Phase 1: Core Runtime Parity | Mostly complete | SGF parse/replay/serialize, Go rules, DTOs, and UI rendering are wired. Remaining work is broader fixture coverage and legacy edge cases. |
 | Phase 2: KataGo Analysis | Implemented MVP | One-shot and full-game batch analysis exist with progress and cancellation. More resilience and integration coverage are still needed. |
-| Phase 3: Storage And Providers | Partial | SQLite analysis cache and engine profile persistence are present. Fox/Yike/readboard providers are not migrated. |
-| Phase 4: Packaging And Release | Not complete | Tauri production packaging and release publication are still future work. |
+| Phase 3: Storage And Providers | Partial | SQLite analysis cache and engine profile persistence are present. Provider/readboard offline contracts may land in this batch, but live Fox/Yike network and readboard sidecar validation are still pending. |
+| Phase 4: Packaging And Release | Not complete | Release preflight and dry-run checks exist. Tauri production packaging and release publication are still future work. |
 
 ## Acceptance Gates
 
@@ -95,6 +97,7 @@ Baseline structural acceptance:
 
 ```bash
 python3 scripts/validate_scaffold.py --verbose
+python3 scripts/validate_release_assets.py --verbose
 ```
 
 Recommended local engineering acceptance:
@@ -110,11 +113,14 @@ npm run build
 
 Manual smoke acceptance is tracked in [DEVELOPMENT.md](DEVELOPMENT.md) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). The smoke flow must include SGF open, engine profile configuration, asset checks, one-shot analysis, full-game analysis, cancellation, cache hit verification, and SGF save.
 
+Provider/readboard acceptance must name the concrete Rust package or test filter used for provider contract tests and readboard domain tests. A focused filter that runs zero tests is not acceptance evidence. Release acceptance starts with `python3 scripts/validate_release_assets.py --verbose` and the `.github/workflows/release-dry-run.yml` compile-only dry-run; neither path publishes production artifacts.
+
 ## Parallel Agent Rules
 
 - Worker-1 owns Rust workspace, Tauri backend, and crates.
 - Worker-2 owns TypeScript frontend and package/build files.
 - Worker-3 owns README, validation, smoke/release documentation, scaffold tests, and Next architecture/migration docs.
+- Worker-4 owns release workflows, release preflight, release docs, and CI acceptance documentation.
 - Reviewers may inspect all files but should not silently rewrite another worker's area.
 - Integration should prefer additive fixes and avoid reverting unrelated changes.
 

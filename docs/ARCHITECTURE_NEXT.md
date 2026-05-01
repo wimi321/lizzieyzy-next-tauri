@@ -93,6 +93,7 @@ The cache key is derived from parsed SGF content and the raw SGF hash. Cache rec
 - Rust crates inherit workspace edition/rust-version metadata.
 - Golden SGF fixtures live under `tests/golden`.
 - CI and local acceptance run scaffold validation before deeper Node and Rust checks.
+- Release acceptance runs `scripts/validate_release_assets.py` to verify Tauri metadata, bundle identifiers, dry-run artifact expectations, and the safe release workflow.
 
 ## Boundaries
 
@@ -100,8 +101,9 @@ The cache key is derived from parsed SGF content and the raw SGF hash. Cache rec
 - Tauri commands should return structured DTOs or explicit string errors.
 - SGF, Go rules, KataGo protocol, analysis classification, engine execution, and storage should remain separate domains.
 - Provider integrations such as Fox, Yike, and readboard should be modeled as providers or sidecars behind Rust/TypeScript boundaries, not as UI-specific shortcuts.
+- Provider/readboard code should have offline contract or domain tests before being wired into release claims. Live Fox/Yike network behavior and live readboard sidecar behavior require separate environment validation.
 - Java/Swing files are behavior references during this migration track and should not be edited for Next scaffold validation.
 
 ## Release Readiness Meaning
 
-Passing scaffold validation and CI means the Next architecture is structurally healthy. It does not mean the Tauri app has shipped, reached full Java/Swing parity, or completed Fox/Yike/readboard migration.
+Passing scaffold validation and CI means the Next architecture is structurally healthy. Passing release preflight means the Tauri config and release dry-run workflow still match the expected safe metadata contract. Neither result means the Tauri app has shipped, reached full Java/Swing parity, completed live Fox/Yike/readboard migration, or produced signed production installers.

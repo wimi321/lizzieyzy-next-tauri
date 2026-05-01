@@ -18,6 +18,7 @@ From the repository root:
 
 ```bash
 python3 scripts/validate_scaffold.py --verbose
+python3 scripts/validate_release_assets.py --verbose
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
@@ -47,7 +48,13 @@ cd apps/desktop
 npm run tauri:build -- --no-bundle --ci --no-sign
 ```
 
-The GitHub Actions dry-run workflow is `.github/workflows/release-dry-run.yml`. It can be triggered manually or by pushing a `v*` tag, validates macOS/Linux/Windows setup, and uploads dry-run summaries without creating a GitHub release.
+The GitHub Actions dry-run workflow is `.github/workflows/release-dry-run.yml`. It can be triggered manually or by pushing a `v*` tag, validates macOS/Linux/Windows setup, runs release preflight, and uploads dry-run summaries without creating a GitHub release.
+
+Provider/readboard acceptance:
+
+- Provider contract tests must run through the Rust workspace test gate, with the exact package or filter recorded in the handoff. A zero-test focused filter is not evidence.
+- Readboard domain tests must run through the Rust workspace test gate, with live sidecar checks recorded separately when a real readboard environment is available.
+- Offline provider/readboard contracts are not the same as live Fox/Yike external-network or readboard sidecar validation.
 
 ## Manual Desktop Smoke
 
@@ -133,6 +140,7 @@ When production packaging becomes in scope, verify:
 - App identifier remains `org.lizzieyzy.next`.
 - Frontend output is built from `apps/desktop/dist`.
 - Required icons and metadata are present.
+- `python3 scripts/validate_release_assets.py --verbose` passes.
 - `.github/workflows/release-dry-run.yml` passes on macOS, Linux, and Windows.
 - Missing signing secrets are reported as unsigned dry-run state, not treated as a publish failure.
 - Bundled KataGo/runtime assets, if included, match documented paths.
@@ -174,9 +182,12 @@ Config:
 
 Automated checks:
 - python3 scripts/validate_scaffold.py --verbose: PASS/FAIL
+- python3 scripts/validate_release_assets.py --verbose: PASS/FAIL
 - cargo fmt --all --check: PASS/FAIL/SKIPPED
 - cargo clippy --workspace --all-targets -- -D warnings: PASS/FAIL/SKIPPED
 - cargo test --workspace: PASS/FAIL/SKIPPED
+- provider contract tests: PASS/FAIL/SKIPPED, package/filter:
+- readboard domain tests: PASS/FAIL/SKIPPED, package/filter:
 - npm ci: PASS/FAIL/SKIPPED
 - npm run build: PASS/FAIL/SKIPPED
 - npm run tauri:build: PASS/FAIL/SKIPPED

@@ -1,0 +1,249 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  ProviderGameMetadata,
+  ProviderImportRequest,
+  ProviderImportResult,
+  YikeRoomKind,
+  YikeUrlDescriptor
+} from "../domain/providers";
+
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: unknown;
+  }
+}
+
+const isTauriRuntime = () => typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
+
+export async function parseYikeUrl(rawUrl: string): Promise<YikeUrlDescriptor> {
+  if (!isTauriRuntime()) return parseYikeUrlLocally(rawUrl);
+  return await invoke<YikeUrlDescriptor>("provider_parse_yike_url", { rawUrl });
+}
+
+export async function importProviderPayload(request: ProviderImportRequest): Promise<ProviderImportResult> {
+  if (!isTauriRuntime()) return importProviderPayloadLocally(request);
+  return await invoke<ProviderImportResult>("provider_import_from_payload", { request });
+}
+
+function importProviderPayloadLocally(request: ProviderImportRequest): ProviderImportResult {
+  const sgfText = extractSgfFromPayload(request.payload);
+  const metadata = normalizeMetadata({
+    ...request.metadata,
+    source_url: request.metadata.source_url ?? request.source_url ?? null,
+    source_id: request.metadata.source_id ?? request.source_id ?? null,
+    extra: request.metadata.extra ?? {}
+  });
+  return {
+    provider: request.provider,
+    sgf_text: sgfText,
+    summary: {
+      provider: request.provider,
+      source_id: metadata.source_id,
+      board_size: numberProperty(sgfText, "SZ"),
+      komi: numberProperty(sgfText, "KM"),
+      black_name: textProperty(sgfText, "PB"),
+      white_name: textProperty(sgfText, "PW"),
+      result: textProperty(sgfText, "RE"),
+      move_count: countMoves(sgfText)
+    },
+    metadata,
+    warnings: ["Browser preview imported local payload only; provider network retrieval is handled by the desktop backend contract."]
+  };
+}
+
+function parseYikeUrlLocally(rawUrl: string): YikeUrlDescriptor {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) throw new Error("Enter a Yike URL to preview.");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error(unsupportedYikePreviewMessage());
+  }
+
+  if (!isYikeHost(parsed.hostname)) throw new Error(unsupportedYikePreviewMessage());
+
+  const descriptor = parseYikeRoute(parsed);
+  if (!descriptor) throw new Error(unsupportedYikePreviewMessage());
+  return descriptor;
+}
+
+function parseYikeRoute(parsed: URL): YikeUrlDescriptor | null {
+  for (const route of yikeRouteCandidates(parsed)) {
+    const liveDescriptor = parseYikeLiveRoute(route);
+    if (liveDescriptor) return liveDescriptor;
+
+    const gameDescriptor = parseYikeGameRoute(route);
+    if (gameDescriptor) return gameDescriptor;
+  }
+
+  const hallRoomId = yikeHallRoomId(parsed);
+  if (hallRoomId) return yikeGameRoomDescriptor(hallRoomId);
+  return null;
+}
+
+function parseYikeLiveRoute(route: string): YikeUrlDescriptor | null {
+  const match = /^\/?live\/(new-room|room)\/(\d+)(?:\/(\d+)\/(\d+))?\/?$/.exec(route);
+  if (!match) return null;
+
+  const [, roomType, id, suffixKind, suffixRoom] = match;
+  if (suffixKind !== undefined && suffixRoom !== undefined && !isZeroSuffix(suffixKind, suffixRoom) && Number(suffixRoom) <= 0) {
+    return null;
+  }
+
+  if (roomType === "new-room") {
+    return {
+      provider: "yike",
+      room_kind: "new_live_room",
+      id,
+      room_id: isZeroSuffix(suffixKind, suffixRoom) ? Number(id) : numberOrFallback(suffixRoom, Number(id)),
+      request_url: `https://api-new.yikeweiqi.com/v1/golives/${id}`
+    };
+  }
+
+  const suffixRoomId = numberOrFallback(suffixRoom, Number(id));
+  const roomKind: YikeRoomKind = suffixKind === undefined || suffixRoomId <= 0 ? "old_live_board" : "old_live_room";
+  return {
+    provider: "yike",
+    room_kind: roomKind,
+    id,
+    room_id: roomKind === "old_live_room" ? suffixRoomId : Number(id),
+    request_url: roomKind === "old_live_room"
+      ? `https://api.yikeweiqi.com/golive/dtl?id=${id}&flag=1`
+      : `https://api.yikeweiqi.com/golive/dtl?id=${id}`
+  };
+}
+
+function parseYikeGameRoute(route: string): YikeUrlDescriptor | null {
+  const match = /^\/?game\/[a-zA-Z]+\/\d+\/(\d+)\/?$/.exec(route);
+  return match ? yikeGameRoomDescriptor(match[1]) : null;
+}
+
+function yikeGameRoomDescriptor(roomId: string): YikeUrlDescriptor {
+  return {
+    provider: "yike",
+    room_kind: "game_room",
+    id: roomId,
+    room_id: Number(roomId),
+    request_url: `https://api.yikeweiqi.com/golive/dtl?id=${roomId}`
+  };
+}
+
+function yikeRouteCandidates(parsed: URL): string[] {
+  const routes = [parsed.pathname];
+  if (parsed.hash.startsWith("#")) {
+    const hash = parsed.hash.slice(1);
+    const hashPath = hash.split("?")[0];
+    if (hashPath) routes.push(hashPath);
+  }
+  return routes.map((route) => safeDecodeURIComponent(route).replace(/^\/+/, ""));
+}
+
+function yikeHallRoomId(parsed: URL): string | null {
+  const roomId = hallRoomIdFromSearch(parsed.searchParams);
+  if (roomId) return roomId;
+
+  const hashQuery = parsed.hash.split("?")[1];
+  if (!hashQuery) return null;
+  return hallRoomIdFromSearch(new URLSearchParams(hashQuery));
+}
+
+function hallRoomIdFromSearch(searchParams: URLSearchParams): string | null {
+  const roomId = searchParams.get("room");
+  if (!roomId || !/^\d+$/.test(roomId) || !searchParams.has("hall")) return null;
+  return roomId;
+}
+
+function isYikeHost(hostname: string): boolean {
+  const lowerHostname = hostname.toLowerCase();
+  return lowerHostname === "yikeweiqi.com" || lowerHostname.endsWith(".yikeweiqi.com");
+}
+
+function numberOrFallback(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function isZeroSuffix(suffixKind: string | undefined, suffixRoom: string | undefined): boolean {
+  return suffixKind === "0" && suffixRoom === "0";
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function unsupportedYikePreviewMessage(): string {
+  return "Browser preview only recognizes supported yikeweiqi.com live, game, or hall URLs. The desktop backend may support exact parsing for this URL, and payload or SGF import still works offline.";
+}
+
+function extractSgfFromPayload(payload: string): string {
+  const trimmed = payload.trim();
+  if (!trimmed) throw new Error("Paste provider payload or SGF before importing.");
+  if (trimmed.startsWith("(")) return trimmed;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    throw new Error(`Provider payload is not SGF or JSON: ${errorMessage(error)}`);
+  }
+
+  const sgf = firstJsonString(parsed, ["sgf", "clean_sgf", "chess"]);
+  if (!sgf) throw new Error("Provider payload JSON does not contain sgf, clean_sgf, or chess.");
+  if (!sgf.trimStart().startsWith("(")) throw new Error("The provider payload field does not contain SGF text.");
+  return sgf.trim();
+}
+
+function firstJsonString(value: unknown, keys: string[]): string | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const result = firstJsonString(item, keys);
+      if (result) return result;
+    }
+    return null;
+  }
+  if (!isRecord(value)) return null;
+  for (const key of keys) {
+    const rawValue = value[key];
+    if (typeof rawValue === "string" && rawValue.trim()) return rawValue.trim();
+  }
+  for (const rawValue of Object.values(value)) {
+    const result = firstJsonString(rawValue, keys);
+    if (result) return result;
+  }
+  return null;
+}
+
+function normalizeMetadata(metadata: ProviderGameMetadata): ProviderGameMetadata {
+  return { ...metadata, extra: metadata.extra ?? {} };
+}
+
+function countMoves(sgfText: string): number {
+  return sgfText.match(/;[BW]\[[^\]]*\]/gi)?.length ?? 0;
+}
+
+function numberProperty(text: string, property: string): number | null {
+  const value = textProperty(text, property);
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function textProperty(text: string, property: string): string | null {
+  const match = new RegExp(`${property}\\[([^\\]]*)\\]`, "i").exec(text);
+  return match?.[1] ?? null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

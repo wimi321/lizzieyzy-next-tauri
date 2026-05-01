@@ -278,8 +278,9 @@ button.problem-button {
 
 .bottom-dock {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) minmax(260px, 300px);
+  grid-template-columns: minmax(260px, 1fr) minmax(250px, 320px) minmax(300px, 360px) minmax(240px, 300px);
   gap: 12px;
+  align-items: start;
   padding: 12px;
 }
 
@@ -348,6 +349,7 @@ textarea {
   cursor: pointer;
 }
 
+.provider-panel,
 .engine-setup-panel,
 .preferences-panel {
   display: grid;
@@ -365,6 +367,7 @@ textarea {
   gap: 8px;
 }
 
+.provider-panel label,
 .engine-setup-panel label,
 .preferences-panel label {
   display: grid;
@@ -372,6 +375,7 @@ textarea {
   min-width: 0;
 }
 
+.provider-panel span,
 .engine-setup-panel span,
 .preferences-panel span {
   color: #475569;
@@ -379,6 +383,8 @@ textarea {
   font-weight: 800;
 }
 
+.provider-panel input,
+.provider-panel select,
 .engine-setup-panel input,
 .engine-setup-panel select,
 .preferences-panel input,
@@ -392,6 +398,87 @@ textarea {
   color: #111827;
   padding: 6px 8px;
   font-size: 12px;
+}
+
+.provider-panel {
+  align-content: start;
+}
+
+.provider-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.provider-header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.provider-header span {
+  max-width: 170px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.provider-grid button,
+.provider-panel > button {
+  min-width: 0;
+  height: 32px;
+  padding: 6px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.provider-panel > button {
+  width: 100%;
+}
+
+.provider-payload {
+  height: 88px;
+  min-height: 72px;
+}
+
+.provider-preview {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.provider-preview div {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.provider-preview dt {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.provider-preview dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #111827;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preferences-panel {
@@ -530,5 +617,23 @@ button.path-picker-button {
   .board-canvas {
     min-width: 360px;
     min-height: 360px;
+  }
+
+  .bottom-dock {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 330px) minmax(230px, 280px);
+  }
+
+  .provider-panel {
+    grid-column: 1;
+  }
+
+  .engine-setup-panel {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .preferences-panel {
+    grid-column: 3;
+    grid-row: 1 / span 2;
   }
 }

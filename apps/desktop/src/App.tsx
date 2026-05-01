@@ -5,6 +5,7 @@ import { AnalysisPanel } from "./components/AnalysisPanel";
 import { EngineSetupPanel } from "./components/EngineSetupPanel";
 import { CacheStatusBadge } from "./components/CacheStatusBadge";
 import { PreferencesPanel } from "./components/PreferencesPanel";
+import { ProviderPanel } from "./components/ProviderPanel";
 import {
   analyzeKataGoOnce,
   cancelKataGoAnalysis,
@@ -23,6 +24,7 @@ import { loadAppPreferences, saveAppPreferences } from "./api/preferences";
 import { clampMoveNumberToPositions, createDemoGame, replayGamePositions, selectExactPosition } from "./domain/board";
 import type { AnalysisCacheRecord, CacheStatus, GameCacheKey, JsonValue } from "./domain/cache";
 import { defaultAppPreferences, normalizeAppPreferences, type AppPreferences } from "./domain/preferences";
+import { providerDocumentName, providerLabel, providerSourceLabel, type ProviderImportResult } from "./domain/providers";
 import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, PositionDto, ProblemMarkerDto } from "./domain/types";
 
 const demoSgf = "(;GM[1]FF[4]SZ[19]KM[7.5]PB[Lee Changho]PW[Rui Naiwei]RE[B+R];B[pd];W[dd];B[pp];W[dp];B[jq];W[qj];B[nc];W[fc];B[qf];W[cn];B[cp];W[do];B[co];W[dn];B[fq];W[eq];B[fp];W[gp];B[gq];W[hp])";
@@ -382,6 +384,30 @@ export function App() {
     }
   }
 
+  async function handleProviderImport(result: ProviderImportResult) {
+    try {
+      const [parsed, replayed] = await Promise.all([parseSgfSummary(result.sgf_text), replaySgfPositions(result.sgf_text)]);
+      const source = providerSourceLabel(result);
+      const warningText = result.warnings.length > 0 ? ` ${result.warnings.length} provider warning(s).` : "";
+      const importedMessage = `Imported ${providerLabel(result.provider)} provider payload from ${source}: ${parsed.summary.move_count} moves.${warningText}`;
+      setSgfText(result.sgf_text);
+      setCurrentFilePath(null);
+      setFallbackFileName(providerDocumentName(result));
+      setDirty(false);
+      setGame(parsed);
+      setPositions(replayed);
+      setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
+      setFrames([]);
+      setProblems([]);
+      setSelectedCandidateIndex(null);
+      setMessage(importedMessage);
+      await checkAnalysisCacheForGame(result.sgf_text, null, parsed, replayed, importedMessage);
+    } catch (error) {
+      setMessage(`Provider import failed: ${errorMessage(error)}`);
+      throw error;
+    }
+  }
+
   async function loadSample() {
     const [parsed, replayed] = await Promise.all([parseSgfSummary(demoSgf), replaySgfPositions(demoSgf)]);
     const sampleMessage = `Sample SGF restored: ${parsed.summary.move_count} moves.`;
@@ -626,6 +652,7 @@ export function App() {
           <button onClick={handleFakeAnalyze} disabled={isKataGoRunning}>Run review</button>
         </div>
       </div>
+      <ProviderPanel disabled={isKataGoRunning} onImport={handleProviderImport} />
       <EngineSetupPanel
         disabled={isKataGoRunning}
         onRun={handleRunKataGo}

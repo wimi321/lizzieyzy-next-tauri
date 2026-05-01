@@ -1,0 +1,153 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: 22
+  PYTHON_VERSION: "3.12"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+          - platform: macos
+            runner: macos-latest
+          - platform: windows-x64
+            runner: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Validate release contracts
+        run: |
+          python scripts/validate_scaffold.py --verbose
+          python scripts/validate_release_assets.py --verbose
+          python scripts/validate_release_workflow.py --verbose
+
+      - name: Build Tauri bundle
+        working-directory: apps/desktop
+        run: npm run tauri:build -- --ci --no-sign
+
+      - name: Collect release assets and checksums
+        run: |
+          python scripts/collect_release_assets.py \
+            --bundle-dir target/release/bundle \
+            --out-dir release-assets/${{ matrix.platform }} \
+            --platform ${{ matrix.platform }}
+
+      - name: Upload platform release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.platform }}
+          path: release-assets/${{ matrix.platform }}/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: dist/release-assets
+          merge-multiple: true
+
+      - name: Build aggregate checksums
+        run: |
+          cd dist/release-assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Compose release notes
+        run: |
+          release_notes=".github/RELEASE_NOTES_${GITHUB_REF_NAME}.md"
+          if [[ ! -f "$release_notes" ]]; then
+            release_notes=".github/RELEASE_NOTES_v0.1.0.md"
+          fi
+          {
+            cat "$release_notes"
+            echo
+            echo "## Signing status"
+            echo
+            echo "These assets are unsigned CI-built packages. Treat this release as a public multi-platform validation release until signing and notarization secrets are configured."
+            echo
+            echo "## Checksums"
+            echo
+            echo "Use \`SHA256SUMS.txt\` plus each platform-specific \`SHA256SUMS-<platform>.txt\` file to verify downloaded assets."
+          } > release-body.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LizzieYzy Next ${{ github.ref_name }}
+          body_path: release-body.md
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          append_body: true
+          files: dist/release-assets/*
+          fail_on_unmatched_files: true

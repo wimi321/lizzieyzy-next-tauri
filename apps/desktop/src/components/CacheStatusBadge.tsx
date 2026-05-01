@@ -54,9 +54,11 @@ export function CacheStatusBadge({ status, record = null, error = null }: Props)
 }
 
 function cacheRecordMetadata(record: AnalysisCacheRecord): string {
+  const analyzedMoves = Math.min(record.analyzedMoveCount, record.moveCount);
+  const frameDetail = record.analyzedMoveCount > record.moveCount ? ` (${record.analyzedMoveCount} frames)` : "";
   const parts = [
     record.engineKind,
-    `${record.analyzedMoveCount}/${record.moveCount} moves`,
+    `${analyzedMoves}/${record.moveCount} moves${frameDetail}`,
     formatUpdatedAt(record.updatedAt)
   ].filter(Boolean);
   return parts.join(" | ");
@@ -65,7 +67,7 @@ function cacheRecordMetadata(record: AnalysisCacheRecord): string {
 function formatUpdatedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
+  return date.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",

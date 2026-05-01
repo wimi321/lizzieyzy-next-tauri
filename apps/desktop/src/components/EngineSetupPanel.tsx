@@ -281,7 +281,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
           <input type="number" min={1} step={1} value={maxVisits} onChange={(event) => setMaxVisits(event.target.value)} />
         </label>
         <button onClick={handleRun} disabled={!canRun}>{disabled ? "Running..." : "Run KataGo"}</button>
-        <button onClick={handleAnalyzeGame} disabled={!canRun} title="全盘分析">{disabled ? "Running..." : "Analyze game"}</button>
+        <button onClick={handleAnalyzeGame} disabled={!canRun} title="Analyze every move">{disabled ? "Running..." : "Analyze game"}</button>
         {isAnalysisActive && <button onClick={() => void onCancelAnalysis?.()} disabled={!onCancelAnalysis}>Cancel</button>}
         <button onClick={() => void handleSaveProfile()} disabled={!canSave}>Save profile</button>
         <button onClick={() => void handleCheckAssets()} disabled={disabled}>Check assets</button>

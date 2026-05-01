@@ -12,7 +12,7 @@ Use this guide when changing:
 - Rust crates under `crates/*`,
 - SGF, KataGo, engine profile, asset check, and cache behavior.
 
-Do not treat a passing Next smoke run as full legacy parity. Provider/readboard work in this batch may provide offline contracts and domain commands, but live Fox/Yike network behavior, live readboard sidecar operation, and Tauri production release packaging still require environment-specific validation.
+Do not treat a passing Next smoke run as full legacy parity. Provider/readboard work in this batch may provide offline contracts and runtime path plumbing, but live Fox/Yike network behavior, live readboard sidecar operation, and Tauri production release packaging still require environment-specific validation.
 
 ## Required Local Baseline
 
@@ -44,7 +44,10 @@ For documentation-only changes, scaffold validation is still required because it
 Provider/readboard acceptance entry points:
 
 - Provider contract tests: run the Rust workspace tests that own the provider contract modules and record the exact package or filter. `cargo test --workspace` is the baseline; a focused filter only counts if it runs non-zero provider tests.
-- Readboard domain tests: run the Rust workspace tests that own readboard parsing/command behavior and record the exact package or filter. Live sidecar checks require a real readboard environment and should be listed separately.
+- Provider runtime path checks: verify `provider_fetch_yike` and `provider_fetch_fox` return structured success/error results through the intended Rust/TypeScript boundary. This is still offline/local evidence unless real provider services are contacted.
+- Readboard domain tests: run the Rust workspace tests that own readboard parsing/command behavior and record the exact package or filter.
+- Readboard sidecar path checks: verify `readboard_sidecar_probe` and `readboard_sidecar_sync_snapshot` return structured ready/not-ready/sync results through the intended boundary. Live sidecar checks require a real readboard environment and should be listed separately.
+- UI path checks: ProviderPanel is the expected UI surface for provider fetch, readboard probe, and readboard sync controls. If a batch only exposes payload import or URL preview, record fetch/probe/sync UI as pending rather than implying live support.
 - Release dry-run: run `python3 scripts/validate_release_assets.py --verbose` locally and use `.github/workflows/release-dry-run.yml` for the cross-platform compile-only dry-run.
 
 ## Running The Next App
@@ -159,6 +162,78 @@ Expected result: repeated loading of the same SGF can reuse cached analysis inst
 - Confirm parse/replay still succeeds and move count remains stable.
 
 Expected result: SGF write validates parseability and can round-trip through native open.
+
+## Provider And Sidecar Smoke Flow
+
+Run this only in an environment with the required provider accounts, network access, target client state, and readboard sidecar installed. Record skipped items explicitly; skipped live checks do not invalidate offline contract work, but they do block live-support claims.
+
+Repository-level checks may show that the commands and UI route exist and return typed success, typed error, or runtime unavailable results. Live checks require real services or processes. Keep those two result columns separate in the handoff.
+
+### 1. Yike Runtime Fetch
+
+- Start the Tauri desktop runtime and configure the Yike provider inputs required by the implementation.
+- Trigger `provider_fetch_yike` from ProviderPanel or the intended debug/test harness for a real Yike game, game list, or supported provider resource.
+- Record account/session type, network path, request target, result count, and latency.
+- Repeat with an expired or missing session if the implementation supports that state.
+
+Expected result: successful fetches return normalized DTOs, and auth/network failures return structured errors without stale cached data being presented as live data.
+
+### 2. Fox Runtime Fetch
+
+- Start the Tauri desktop runtime with the real Fox prerequisites in place.
+- Trigger `provider_fetch_fox` from ProviderPanel or the intended debug/test harness for each supported command shape: `chessid`, `uid`, and `user_name`.
+- Record target client/session state, result count, latency, and any provider-specific prerequisites.
+- Repeat with the target client unavailable or credentials/session invalid.
+
+Expected result: successful fetches return normalized DTOs, and unavailable client/session/network states produce actionable errors.
+
+### 3. readboard Sidecar Probe
+
+- Start the readboard sidecar expected by the current implementation.
+- Probe the sidecar from the Tauri runtime.
+- Record sidecar version, port/path, process state, and probe latency.
+- Stop the sidecar and repeat the probe.
+
+Expected result: the app distinguishes ready, not running, incompatible, and timeout states.
+
+### 4. readboard Sync
+
+- With the sidecar running, sync against a real target board/client state.
+- Exercise protocol line sync through `readboard_sidecar_sync_snapshot` using the supported protocol-line input or sidecar response path.
+- Confirm board size, stones, move state, coordinates, and player-to-play if available.
+- Restart the sidecar or change the target board state and sync again.
+
+Expected result: sync responses normalize into app DTOs and do not leave stale board state after restart, target change, or timeout.
+
+### 5. Image OCR Unsupported Path
+
+- Request a sync with image-only input when image OCR is not available in the current runtime.
+- Confirm the response is a structured unsupported/not-implemented error that names the readboard/OCR boundary.
+- Confirm no board state is replaced by stale or guessed data.
+
+Expected result: image OCR unavailability is explicit and recoverable. It is not reported as a successful sidecar sync.
+
+### 6. Failure Modes
+
+- Exercise missing provider configuration, bad credentials/session, network loss, provider timeout, malformed provider payload, missing sidecar, sidecar crash, sidecar timeout, and cancellation/retry.
+- Confirm logs and UI messages identify the failing boundary: provider auth, provider network, sidecar process, sidecar protocol, Tauri command, or DTO normalization.
+
+Expected result: failure states are structured, recoverable where expected, and not described as successful live support.
+
+## Provider And Sidecar Manual Matrix
+
+| Scenario | Repository/Local Expected Result | Live Environment Expected Result |
+| --- | --- | --- |
+| Yike fetch success | `provider_fetch_yike` validates provider/timeout and reaches the Yike runtime path with typed success, typed error, or runtime unavailable results. | Real Yike resource fetch returns normalized DTOs with source metadata, result count, and latency recorded. |
+| Yike fetch failure | Missing URL, wrong provider, timeout, malformed payload, or unavailable runtime returns `ProviderError` without stale success data. | Bad auth/session, blocked network, provider timeout, or malformed live response returns structured auth/network/payload errors. |
+| Fox `chessid` fetch success | `provider_fetch_fox` accepts the `chessid` command shape and reaches the Fox runtime path with typed success, typed error, or runtime unavailable results. | Real `chessid` fetch returns normalized SGF/provider DTOs and records prerequisites and latency. |
+| Fox `uid` fetch success | `provider_fetch_fox` accepts the `uid` command shape and reaches the Fox runtime path with typed success, typed error, or runtime unavailable results. | Real `uid` fetch resolves the expected game/list payload and normalizes it without UI-only shortcuts. |
+| Fox `user_name` fetch success | `provider_fetch_fox` accepts the `user_name` command shape and reaches the Fox runtime path with typed success, typed error, or runtime unavailable results. | Real nickname lookup resolves to the expected account/game payload and records ambiguous/not-found behavior. |
+| Fox fetch failure | Missing URL/command, wrong provider, timeout, bad command, malformed payload, or unavailable runtime returns `ProviderError`. | Unavailable client/session, bad account, blocked network, timeout, or provider payload change returns structured errors. |
+| readboard probe missing | `readboard_sidecar_probe` validates timeout and reports not-ready/runtime unavailable as a structured result or error. | Stopped or unreachable sidecar reports not running/unreachable/timeout without changing board state. |
+| readboard probe present | Probe path is callable through the intended boundary. | Running sidecar reports ready with version/path/latency recorded. |
+| readboard protocol line sync | `readboard_sidecar_sync_snapshot` validates input and protocol-line parsing returns DTOs or typed protocol errors. | Sidecar sync reflects board size, stones, move state, and player-to-play from the real target board. |
+| image OCR unavailable | Image-only sync returns a structured unsupported/not-implemented error when OCR is unavailable. | Live OCR may only be marked PASS with an OCR-capable runtime and image fixture evidence; otherwise mark SKIPPED/UNSUPPORTED. |
 
 ## Documentation Acceptance
 

@@ -3,6 +3,7 @@
   "productName": "LizzieYzy Next",
   "version": "0.1.0",
   "identifier": "org.lizzieyzy.next",
+  "mainBinaryName": "lizzieyzy-next-desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -27,6 +28,38 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "category": "Utility"
+    "publisher": "LizzieYzy Next contributors",
+    "copyright": "Copyright (c) 2026 LizzieYzy Next contributors",
+    "category": "Utility",
+    "shortDescription": "Desktop Go review workspace powered by Tauri, Rust, and TypeScript.",
+    "longDescription": "LizzieYzy Next is the Tauri 2 desktop workspace for SGF review, KataGo-backed analysis, profiles, and local analysis cache validation.",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "bundleName": "LizzieYzy Next",
+      "minimumSystemVersion": "10.13",
+      "hardenedRuntime": true
+    },
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "section": "utils",
+        "priority": "optional"
+      },
+      "rpm": {
+        "epoch": 0,
+        "release": "1"
+      }
+    }
   }
 }

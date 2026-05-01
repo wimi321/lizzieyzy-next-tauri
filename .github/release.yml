@@ -1,0 +1,25 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot
+  categories:
+    - title: Desktop Release Engineering
+      labels:
+        - release
+        - packaging
+        - desktop
+    - title: Runtime Changes
+      labels:
+        - runtime
+        - tauri
+        - rust
+        - frontend
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Other Changes
+      labels:
+        - "*"

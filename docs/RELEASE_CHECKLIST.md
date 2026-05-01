@@ -40,6 +40,15 @@ npm run tauri:build
 
 If `npm run tauri:build` is not being run for the current handoff, document that packaging was not validated.
 
+Release engineering dry-run:
+
+```bash
+cd apps/desktop
+npm run tauri:build -- --no-bundle --ci --no-sign
+```
+
+The GitHub Actions dry-run workflow is `.github/workflows/release-dry-run.yml`. It can be triggered manually or by pushing a `v*` tag, validates macOS/Linux/Windows setup, and uploads dry-run summaries without creating a GitHub release.
+
 ## Manual Desktop Smoke
 
 Run under the native desktop runtime:
@@ -124,12 +133,15 @@ When production packaging becomes in scope, verify:
 - App identifier remains `org.lizzieyzy.next`.
 - Frontend output is built from `apps/desktop/dist`.
 - Required icons and metadata are present.
+- `.github/workflows/release-dry-run.yml` passes on macOS, Linux, and Windows.
+- Missing signing secrets are reported as unsigned dry-run state, not treated as a publish failure.
 - Bundled KataGo/runtime assets, if included, match documented paths.
 - The app starts without a development server.
 - Windows installer or portable package opens on a clean machine.
 - macOS app handles Gatekeeper/signing/notarization according to the documented release policy.
 - Linux package includes required runtime dependencies or clearly documents them.
 - Logs and error messages distinguish UI errors, Tauri command errors, engine errors, and storage/cache errors.
+- The full release process, secrets, artifact policy, and rollback plan are recorded in `docs/RELEASE_PROCESS.md`.
 
 ## Release Notes Guardrails
 

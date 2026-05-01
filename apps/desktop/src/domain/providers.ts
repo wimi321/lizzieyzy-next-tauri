@@ -1,5 +1,8 @@
+import type { PositionDto } from "./types";
+
 export type ProviderKind = "yike" | "fox";
 export type YikeRoomKind = "old_live_room" | "old_live_board" | "game_room" | "new_live_room";
+export type ProviderFetchMethod = "get" | "post";
 
 export type ProviderGameMetadata = {
   source_url?: string | null;
@@ -37,6 +40,56 @@ export type ProviderImportResult = {
   sgf_text: string;
   summary: ProviderGameSummary;
   metadata: ProviderGameMetadata;
+  warnings: string[];
+};
+
+export type ProviderFetchRequest = {
+  provider: ProviderKind;
+  url: string;
+  method: ProviderFetchMethod;
+  headers: Record<string, string>;
+  body?: string | null;
+  source_url?: string | null;
+  source_id?: string | null;
+  timeout_ms?: number | null;
+};
+
+export type ProviderFetchResult = {
+  provider: ProviderKind;
+  url: string;
+  status_code: number;
+  payload: string;
+  headers: Record<string, string>;
+  content_type?: string | null;
+  metadata: ProviderGameMetadata;
+  warnings: string[];
+};
+
+export type ReadboardSidecarProbeRequest = {
+  endpoint?: string | null;
+  timeout_ms?: number | null;
+};
+
+export type ReadboardSidecarProbeResult = {
+  available: boolean;
+  endpoint?: string | null;
+  version?: string | null;
+  warnings: string[];
+};
+
+export type ReadboardSidecarSyncSnapshotRequest = {
+  endpoint?: string | null;
+  snapshot_id?: string | null;
+  image_path?: string | null;
+  image_base64?: string | null;
+  sgf_text?: string | null;
+  metadata: Record<string, string>;
+  timeout_ms?: number | null;
+};
+
+export type ReadboardSidecarSyncSnapshotResult = {
+  snapshot_id: string;
+  position?: PositionDto | null;
   warnings: string[];
 };
 

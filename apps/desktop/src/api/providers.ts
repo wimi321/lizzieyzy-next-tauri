@@ -1,8 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ProviderGameMetadata,
+  ProviderFetchRequest,
+  ProviderFetchResult,
   ProviderImportRequest,
   ProviderImportResult,
+  ReadboardSidecarProbeRequest,
+  ReadboardSidecarProbeResult,
+  ReadboardSidecarSyncSnapshotRequest,
+  ReadboardSidecarSyncSnapshotResult,
   YikeRoomKind,
   YikeUrlDescriptor
 } from "../domain/providers";
@@ -23,6 +29,37 @@ export async function parseYikeUrl(rawUrl: string): Promise<YikeUrlDescriptor> {
 export async function importProviderPayload(request: ProviderImportRequest): Promise<ProviderImportResult> {
   if (!isTauriRuntime()) return importProviderPayloadLocally(request);
   return await invoke<ProviderImportResult>("provider_import_from_payload", { request });
+}
+
+export async function fetchYikeProvider(request: ProviderFetchRequest): Promise<ProviderFetchResult> {
+  if (!isTauriRuntime()) throw new Error("Yike fetch requires the desktop Tauri runtime; browser preview can only import pasted payloads.");
+  return await invoke<ProviderFetchResult>("provider_fetch_yike", { request });
+}
+
+export async function fetchFoxProvider(request: ProviderFetchRequest): Promise<ProviderFetchResult> {
+  if (!isTauriRuntime()) throw new Error("Fox fetch requires the desktop Tauri runtime; browser preview can only import pasted payloads.");
+  return await invoke<ProviderFetchResult>("provider_fetch_fox", { request });
+}
+
+export async function probeReadboardSidecar(request: ReadboardSidecarProbeRequest): Promise<ReadboardSidecarProbeResult> {
+  if (!isTauriRuntime()) {
+    return {
+      available: false,
+      endpoint: request.endpoint?.trim() || null,
+      version: null,
+      warnings: ["Readboard sidecar probing requires the desktop Tauri runtime; browser preview cannot reach the local sidecar."]
+    };
+  }
+  return await invoke<ReadboardSidecarProbeResult>("readboard_sidecar_probe", { request });
+}
+
+export async function syncReadboardSidecarSnapshot(
+  request: ReadboardSidecarSyncSnapshotRequest
+): Promise<ReadboardSidecarSyncSnapshotResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("Readboard protocol preview requires the desktop Tauri runtime; browser preview cannot reach the local sidecar.");
+  }
+  return await invoke<ReadboardSidecarSyncSnapshotResult>("readboard_sidecar_sync_snapshot", { request });
 }
 
 function importProviderPayloadLocally(request: ProviderImportRequest): ProviderImportResult {

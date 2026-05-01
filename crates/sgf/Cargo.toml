@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 app-model = { path = "../app-model" }
+go-core = { path = "../go-core" }
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

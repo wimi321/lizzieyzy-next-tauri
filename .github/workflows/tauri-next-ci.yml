@@ -2,39 +2,121 @@ name: tauri-next-ci
 
 on:
   push:
-    branches: [main, dev]
+    branches:
+      - main
+      - dev
+      - "codex/**"
+    paths:
+      - ".github/workflows/tauri-next-ci.yml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "docs/ARCHITECTURE_NEXT.md"
+      - "docs/MIGRATION_PLAN.md"
+      - "docs/AGENT_EXECUTION_SUMMARY.md"
+      - "scripts/validate_scaffold.py"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
   pull_request:
-    branches: [main, dev]
+    branches:
+      - main
+      - dev
+      - "codex/**"
+    paths:
+      - ".github/workflows/tauri-next-ci.yml"
+      - "apps/desktop/**"
+      - "crates/**"
+      - "docs/ARCHITECTURE_NEXT.md"
+      - "docs/MIGRATION_PLAN.md"
+      - "docs/AGENT_EXECUTION_SUMMARY.md"
+      - "scripts/validate_scaffold.py"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: tauri-next-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  validate-scaffold:
+  scaffold:
+    name: Scaffold validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run validator unit tests
+        run: python3 -m unittest discover -s tests -p "test_*.py"
+
+      - name: Validate scaffold contract
+        run: python3 scripts/validate_scaffold.py --verbose
+
+  node-build:
+    name: Node build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: scaffold
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript UI
+        run: npm run build
+
+  rust:
+    name: Rust fmt, clippy, and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: scaffold
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install Linux Tauri dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             libgtk-3-dev \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
-      - name: Validate scaffold
-        run: python3 scripts/validate_scaffold.py
-      - name: Install frontend dependencies
-        working-directory: apps/desktop
-        run: npm ci
-      - name: Build frontend
-        working-directory: apps/desktop
-        run: npm run build
-      - name: Rust fmt
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Cargo registry and build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Check formatting
         run: cargo fmt --all --check
-      - name: Rust clippy
+
+      - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Rust tests
+
+      - name: Run Rust tests
         run: cargo test --workspace

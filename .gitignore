@@ -3,6 +3,7 @@
 **/node_modules/
 **/dist/
 **/.tauri/
+.playwright-cli/
 apps/desktop/src-tauri/gen/
 .DS_Store
 *.log

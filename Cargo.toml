@@ -14,7 +14,7 @@ members = [
 [workspace.package]
 edition = "2021"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/wimi321/lizzieyzy-next-tauri"
+repository = "https://github.com/wimi321/lizzieyzy-next"
 rust-version = "1.82"
 
 [workspace.dependencies]
@@ -25,4 +25,5 @@ uuid = { version = "1", features = ["v4", "serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri = "2"
 tauri-build = "2"
+tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"

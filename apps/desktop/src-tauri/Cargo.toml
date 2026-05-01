@@ -19,8 +19,11 @@ app-model = { path = "../../../crates/app-model" }
 engine-manager = { path = "../../../crates/engine-manager" }
 katago-protocol = { path = "../../../crates/katago-protocol" }
 sgf = { path = "../../../crates/sgf" }
+storage = { path = "../../../crates/storage" }
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
+tauri-plugin-dialog.workspace = true
 tauri-plugin-opener.workspace = true
 uuid.workspace = true

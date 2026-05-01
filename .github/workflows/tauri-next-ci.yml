@@ -8,7 +8,11 @@ on:
       - "codex/**"
     paths:
       - ".github/workflows/tauri-next-ci.yml"
+      - ".github/workflows/release.yml"
+      - ".github/release.yml"
+      - ".github/RELEASE_NOTES_*"
       - "README.md"
+      - "CHANGELOG.md"
       - "apps/desktop/**"
       - "crates/**"
       - "docs/ARCHITECTURE_NEXT.md"
@@ -18,6 +22,8 @@ on:
       - "docs/AGENT_EXECUTION_SUMMARY.md"
       - "scripts/validate_scaffold.py"
       - "scripts/validate_release_assets.py"
+      - "scripts/validate_release_workflow.py"
+      - "scripts/collect_release_assets.py"
       - "tests/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -28,7 +34,11 @@ on:
       - "codex/**"
     paths:
       - ".github/workflows/tauri-next-ci.yml"
+      - ".github/workflows/release.yml"
+      - ".github/release.yml"
+      - ".github/RELEASE_NOTES_*"
       - "README.md"
+      - "CHANGELOG.md"
       - "apps/desktop/**"
       - "crates/**"
       - "docs/ARCHITECTURE_NEXT.md"
@@ -38,6 +48,8 @@ on:
       - "docs/AGENT_EXECUTION_SUMMARY.md"
       - "scripts/validate_scaffold.py"
       - "scripts/validate_release_assets.py"
+      - "scripts/validate_release_workflow.py"
+      - "scripts/collect_release_assets.py"
       - "tests/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -68,6 +80,9 @@ jobs:
 
       - name: Validate release preflight contract
         run: python3 scripts/validate_release_assets.py --verbose
+
+      - name: Validate production release workflow contract
+        run: python3 scripts/validate_release_workflow.py --verbose
 
   node-build:
     name: Node build

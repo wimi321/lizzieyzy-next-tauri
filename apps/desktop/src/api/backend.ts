@@ -207,6 +207,18 @@ export async function replaySgfPositions(sgfText: string): Promise<PositionDto[]
   }
 }
 
+export async function updateSgfNodeComment(sgfText: string, nodeId: string, comment: string | null): Promise<string> {
+  if (!isTauriRuntime()) {
+    throw new Error("Editing SGF node comments requires the Tauri desktop backend. Browser preview cannot persist branch-safe SGF edits.");
+  }
+  return await invoke<string>("update_sgf_node_comment", { sgfText, nodeId, comment });
+}
+
+export async function replaySgfPositionAtNode(sgfText: string, nodeId: string): Promise<PositionDto> {
+  if (!isTauriRuntime()) return replayBrowserSgfPositionAtNode(sgfText, nodeId);
+  return await invoke<PositionDto>("replay_sgf_position_at_node", { sgfText, nodeId });
+}
+
 export async function classifyProblems(frames: AnalysisFrameDto[]): Promise<ProblemMarkerDto[]> {
   if (!isTauriRuntime()) return classifyProblemFrames(frames);
   try {
@@ -505,6 +517,28 @@ function buildBrowserSgfTree(game: GameDto): SgfTreeDto {
   });
 
   return { root_id: rootId, nodes };
+}
+
+function replayBrowserSgfPositionAtNode(sgfText: string, nodeId: string): PositionDto {
+  const game = parseSgfLocally(sgfText);
+  const tree = buildBrowserSgfTree(game);
+  const node = tree.nodes.find((candidate) => candidate.id === nodeId);
+  const positions = replayGamePositions(game);
+  if (!node) return positions.at(-1) ?? initialBrowserPosition(game.summary.board_size);
+  return positions[node.move_number ?? 0] ?? positions.at(-1) ?? initialBrowserPosition(game.summary.board_size);
+}
+
+function initialBrowserPosition(boardSize: number): PositionDto {
+  return {
+    board_size: boardSize,
+    move_number: 0,
+    to_play: "black",
+    stones: [],
+    captures_black: 0,
+    captures_white: 0,
+    last_move: null,
+    errors: []
+  };
 }
 
 function buildBrowserAnalysis(game: GameDto): AnalysisFrameDto[] {

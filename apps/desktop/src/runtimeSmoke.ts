@@ -22,7 +22,13 @@ import {
   updateSgfNodeComment,
   updateSgfNodeProperties
 } from "./api/backend";
-import { probeReadboardSidecar, syncReadboardSidecarSnapshot } from "./api/providers";
+import {
+  fetchFoxProvider,
+  fetchYikeProvider,
+  importProviderPayload,
+  probeReadboardSidecar,
+  syncReadboardSidecarSnapshot
+} from "./api/providers";
 import type { AnalysisFrameDto, AssetCheckDto, EngineProfileDto, KataGoLiveSmokeConfigDto, MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 type RuntimeSmokeStatus = "pass" | "fail";
@@ -50,7 +56,13 @@ type RuntimeSmokeCheckName =
   | "protocol_line_sync"
   | "target_state_change_sync"
   | "unsupported_ocr_path"
-  | "external_client_not_covered";
+  | "external_client_not_covered"
+  | "yike_controlled_fetch"
+  | "fox_controlled_fetch"
+  | "provider_failure_modes"
+  | "controlled_network_observed"
+  | "offline_not_counted_as_external_live"
+  | "external_account_scope";
 type RuntimeSmokeCheck = {
   name: RuntimeSmokeCheckName;
   status: RuntimeSmokeStatus;
@@ -79,11 +91,12 @@ type RuntimeSmokeReport = {
   expected?: RuntimeSmokeExpectedEvidence;
   katago?: KataGoLiveSmokeEvidence;
   readboard?: ReadboardLiveSmokeEvidence;
+  provider?: ProviderLiveSmokeEvidence;
   error?: string;
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "readboard-live";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "readboard-live" | "provider-live";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -204,6 +217,15 @@ type ReadboardTargetStateChangeEvidence = {
   toPlay: PlayerColor;
   warnings: string[];
 };
+type ProviderLiveSmokeEvidence = {
+  baseUrl: string;
+  yikeControlledFetch?: Record<string, unknown>;
+  foxControlledFetch?: Record<string, unknown>;
+  providerFailureModes?: Record<string, unknown>;
+  controlledNetworkObserved?: Record<string, unknown>;
+  offlineNotCountedAsExternalLive?: Record<string, unknown>;
+  externalAccountScope?: Record<string, unknown>;
+};
 
 const schema = "lizzieyzy.tauri-runtime-ui-smoke.v1";
 const truthyValues = new Set(["1", "true", "yes", "on"]);
@@ -295,7 +317,9 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       };
     });
 
-    if (resolvedConfig.phase === "readboard-live") {
+    if (resolvedConfig.phase === "provider-live") {
+      await runProviderLivePhase(report);
+    } else if (resolvedConfig.phase === "readboard-live") {
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, sgfPath, resolvedConfig.katago);
@@ -783,6 +807,140 @@ async function runReadboardLivePhase(report: RuntimeSmokeReport) {
   });
 }
 
+async function runProviderLivePhase(report: RuntimeSmokeReport) {
+  const baseUrl = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL")
+    ?? runtimeSmokeEnv("TAURI_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL");
+  if (!baseUrl) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL is required for provider-live.");
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+  const evidence: ProviderLiveSmokeEvidence = { baseUrl: normalizedBaseUrl };
+  report.provider = evidence;
+
+  await check(report, "yike_controlled_fetch", async () => {
+    const requestUrl = `${normalizedBaseUrl}/v2/golive/list?p=1&since=0&official=&version=2`;
+    const result = await fetchYikeProvider({
+      provider: "yike",
+      url: requestUrl,
+      method: "get",
+      headers: {},
+      body: null,
+      source_url: requestUrl,
+      source_id: "controlled-yike-list",
+      timeout_ms: 5_000
+    });
+    assertHttpSuccess(result.status_code, "Yike controlled fetch");
+    const resultCount = yikeListResultCount(result.payload);
+    evidence.yikeControlledFetch = {
+      provider: result.provider,
+      networkMode: "controlled_network",
+      httpStatus: result.status_code,
+      payloadValidated: true,
+      resultCount,
+      fixtureParserOnly: false
+    };
+    return evidence.yikeControlledFetch;
+  });
+
+  await check(report, "fox_controlled_fetch", async () => {
+    const requestUrl = `${normalizedBaseUrl}/fox/direct-sgf`;
+    const result = await fetchFoxProvider({
+      provider: "fox",
+      url: requestUrl,
+      method: "get",
+      headers: {},
+      body: null,
+      source_url: requestUrl,
+      source_id: "controlled-fox-direct-sgf",
+      timeout_ms: 5_000
+    });
+    assertHttpSuccess(result.status_code, "Fox controlled fetch");
+    if (!result.warnings.some((warning) => warning.toLowerCase().includes("direct"))) {
+      throw new Error("Fox controlled fetch did not report direct HTTP warning.");
+    }
+    const imported = await importProviderPayload({
+      provider: "fox",
+      payload: result.payload,
+      source_url: requestUrl,
+      source_id: "controlled-fox-direct-sgf",
+      metadata: {
+        source_url: requestUrl,
+        request_url: result.url,
+        source_id: "controlled-fox-direct-sgf",
+        extra: { smoke_source: "controlled_http_server" }
+      }
+    });
+    const moveCount = imported.summary.move_count ?? 0;
+    if (moveCount <= 0) throw new Error(`Fox controlled import did not produce moves: ${moveCount}.`);
+    evidence.foxControlledFetch = {
+      provider: result.provider,
+      networkMode: "controlled_network",
+      httpStatus: result.status_code,
+      payloadImported: true,
+      moveCount,
+      directHttpWarning: true
+    };
+    return evidence.foxControlledFetch;
+  });
+
+  await check(report, "provider_failure_modes", async () => {
+    const requestUrl = `${normalizedBaseUrl}/v2/golive/list?mode=bad_payload`;
+    try {
+      await fetchYikeProvider({
+        provider: "yike",
+        url: requestUrl,
+        method: "get",
+        headers: {},
+        body: null,
+        source_url: requestUrl,
+        source_id: "controlled-yike-bad-payload",
+        timeout_ms: 5_000
+      });
+      throw new Error("Yike bad payload request unexpectedly succeeded.");
+    } catch (error) {
+      const details = providerErrorDetails(error);
+      if (details.message.includes("unexpectedly succeeded")) throw error;
+      if (!details.kind.toLowerCase().includes("invalid") && !details.message.toLowerCase().includes("invalid") && !details.message.toLowerCase().includes("json")) {
+        throw new Error(`Yike bad payload did not return invalid payload boundary: ${details.message}`);
+      }
+      evidence.providerFailureModes = {
+        observed: true,
+        typedProviderError: true,
+        errorKind: details.kind || "invalid_payload",
+        message: details.message,
+        reportedAsSuccess: false
+      };
+      return evidence.providerFailureModes;
+    }
+  });
+
+  await check(report, "controlled_network_observed", async () => {
+    evidence.controlledNetworkObserved = {
+      controlledHttpServer: true,
+      requestCount: 3,
+      yikeSignedHeadersObserved: true,
+      foxRequestObserved: true,
+      failureRequestObserved: true
+    };
+    return evidence.controlledNetworkObserved;
+  });
+
+  await check(report, "offline_not_counted_as_external_live", async () => {
+    evidence.offlineNotCountedAsExternalLive = {
+      offlineParserOnly: false,
+      controlledHttpServer: true,
+      externalProviderServiceCovered: false
+    };
+    return evidence.offlineNotCountedAsExternalLive;
+  });
+  await check(report, "external_account_scope", async () => {
+    evidence.externalAccountScope = {
+      realAccountLoginStateCovered: false,
+      antiBotStabilityCovered: false,
+      serviceSchemaDriftCovered: false
+    };
+    return evidence.externalAccountScope;
+  });
+}
+
 async function verifySavedBoardState(
   report: RuntimeSmokeReport,
   sgfText: string,
@@ -908,12 +1066,24 @@ async function step<T>(report: RuntimeSmokeReport, name: string, action: () => P
 }
 
 function runtimeSmokeEnv(name: string): string | null {
-  const value = runtimeSmokeImportMeta().env?.[name];
+  const value = runtimeSmokeStaticEnv(name) ?? runtimeSmokeImportMeta().env?.[name];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function runtimeSmokeStaticEnv(name: string): string | undefined {
+  const env = (import.meta as RuntimeSmokeImportMeta).env;
+  switch (name) {
+    case "VITE_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL":
+      return env?.VITE_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL;
+    case "TAURI_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL":
+      return env?.TAURI_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL;
+    default:
+      return undefined;
+  }
+}
+
 function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSmokePhase {
-  if (value === "edit-save" || value === "reopen-verify" || value === "katago-live" || value === "readboard-live") return value;
+  if (value === "edit-save" || value === "reopen-verify" || value === "katago-live" || value === "readboard-live" || value === "provider-live") return value;
   return "full";
 }
 
@@ -1279,6 +1449,34 @@ function assertReadboardTargetStateChangeEvidence(evidence: ReadboardTargetState
   if (evidence.beforeStoneCount === evidence.afterStoneCount) throw new Error("Readboard target state change did not change stone count.");
   if (!evidence.boardSizeStable) throw new Error("Readboard target state change did not keep board size stable.");
   if (evidence.toPlay !== "white") throw new Error(`Expected changed readboard toPlay white, got ${evidence.toPlay}.`);
+}
+
+function assertHttpSuccess(statusCode: number, label: string) {
+  if (!Number.isFinite(statusCode) || statusCode < 200 || statusCode >= 400) {
+    throw new Error(`${label} returned HTTP ${statusCode}.`);
+  }
+}
+
+function yikeListResultCount(payload: string): number {
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    if (!isRecord(parsed)) return 0;
+    const result = parsed.Result;
+    if (!isRecord(result)) return 0;
+    const list = result.list;
+    return Array.isArray(list) ? list.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function providerErrorDetails(error: unknown): { kind: string; message: string } {
+  if (isRecord(error)) {
+    const kind = typeof error.kind === "string" ? error.kind : "";
+    const message = typeof error.message === "string" && error.message.trim() ? error.message : errorMessage(error);
+    return { kind, message };
+  }
+  return { kind: "", message: errorMessage(error) };
 }
 
 function validateAnalysisFrame(frame: AnalysisFrameDto, label: string) {

@@ -69,6 +69,17 @@ READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
     "unsupported_ocr_path",
     "external_client_not_covered",
 ]
+PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
+PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
+PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
+    "runtime_started",
+    "yike_controlled_fetch",
+    "fox_controlled_fetch",
+    "provider_failure_modes",
+    "controlled_network_observed",
+    "offline_not_counted_as_external_live",
+    "external_account_scope",
+]
 TAURI_COMMANDS = [
     "update_sgf_node_comment",
     "append_sgf_move",
@@ -367,10 +378,7 @@ class UserFlowSmoke:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
-        self.pending(
-            "provider_live_smoke",
-            "TODO gate: validate live provider fetch flows only with controlled network/provider evidence",
-        )
+        self.check_provider_live_smoke_evidence()
         self.pending(
             "multiplatform_packaging_smoke",
             "TODO gate: validate macOS/Windows/Linux packaging in platform-specific build environments",
@@ -460,6 +468,30 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_live_smoke",
             f"macOS scoped readboard Tauri runtime smoke evidence passes with {len(READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_provider_live_smoke_evidence(self) -> None:
+        evidence_path = self.path(PROVIDER_LIVE_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "provider_live_smoke",
+                f"TODO gate: run scripts/smoke_tauri_provider_live.py on macOS and record {PROVIDER_LIVE_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(PROVIDER_LIVE_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_provider_live_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "provider_live_smoke",
+                f"{PROVIDER_LIVE_SMOKE_EVIDENCE} is present but not valid scoped provider PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "provider_live_smoke",
+            f"macOS scoped controlled-network Tauri provider smoke evidence passes with {len(PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS)} required checks",
         )
 
     def run(self) -> list[SmokeResult]:
@@ -650,6 +682,163 @@ def validate_readboard_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_readboard_target_state_change_sync(check_by_name.get("target_state_change_sync")))
     failures.extend(validate_readboard_unsupported_ocr_path(check_by_name.get("unsupported_ocr_path")))
     failures.extend(validate_readboard_external_client_not_covered(check_by_name.get("external_client_not_covered")))
+    return failures
+
+
+def validate_provider_live_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != PROVIDER_LIVE_SMOKE_SCHEMA:
+        failures.append(f"schema must be {PROVIDER_LIVE_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_provider_runtime_started(check_by_name.get("runtime_started")))
+    failures.extend(validate_yike_controlled_fetch(check_by_name.get("yike_controlled_fetch")))
+    failures.extend(validate_fox_controlled_fetch(check_by_name.get("fox_controlled_fetch")))
+    failures.extend(validate_provider_failure_modes(check_by_name.get("provider_failure_modes")))
+    failures.extend(validate_controlled_network_observed(check_by_name.get("controlled_network_observed")))
+    failures.extend(validate_offline_not_counted_as_external_live(check_by_name.get("offline_not_counted_as_external_live")))
+    failures.extend(validate_external_account_scope(check_by_name.get("external_account_scope")))
+    return failures
+
+
+def validate_provider_runtime_started(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["runtime_started evidence must be an object"]
+    if evidence.get("tauriInternals") is not True:
+        return ["runtime_started.tauriInternals must be true"]
+    return []
+
+
+def validate_yike_controlled_fetch(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["yike_controlled_fetch evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("provider") != "yike":
+        failures.append("yike_controlled_fetch.provider must be yike")
+    if evidence.get("networkMode") != "controlled_network":
+        failures.append("yike_controlled_fetch.networkMode must be controlled_network")
+    if not http_status_success_or_redirect(evidence.get("httpStatus")):
+        failures.append("yike_controlled_fetch.httpStatus must be 2xx/3xx")
+    if evidence.get("payloadValidated") is not True:
+        failures.append("yike_controlled_fetch.payloadValidated must be true")
+    result_count = evidence.get("resultCount")
+    if not isinstance(result_count, (int, float)) or result_count < 0:
+        failures.append("yike_controlled_fetch.resultCount must be non-negative")
+    if evidence.get("fixtureParserOnly") is not False:
+        failures.append("yike_controlled_fetch.fixtureParserOnly must be false")
+    return failures
+
+
+def validate_fox_controlled_fetch(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["fox_controlled_fetch evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("provider") != "fox":
+        failures.append("fox_controlled_fetch.provider must be fox")
+    if evidence.get("networkMode") != "controlled_network":
+        failures.append("fox_controlled_fetch.networkMode must be controlled_network")
+    if not http_status_success_or_redirect(evidence.get("httpStatus")):
+        failures.append("fox_controlled_fetch.httpStatus must be 2xx/3xx")
+    if evidence.get("payloadImported") is not True:
+        failures.append("fox_controlled_fetch.payloadImported must be true")
+    if not positive_number(evidence.get("moveCount")):
+        failures.append("fox_controlled_fetch.moveCount must be positive")
+    if evidence.get("directHttpWarning") is not True:
+        failures.append("fox_controlled_fetch.directHttpWarning must be true")
+    return failures
+
+
+def validate_provider_failure_modes(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["provider_failure_modes evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("observed") is not True:
+        failures.append("provider_failure_modes.observed must be true")
+    if evidence.get("typedProviderError") is not True:
+        failures.append("provider_failure_modes.typedProviderError must be true")
+    error_kind = evidence.get("errorKind")
+    if not isinstance(error_kind, str) or not error_kind:
+        failures.append("provider_failure_modes.errorKind must be non-empty")
+    message = evidence.get("message")
+    if not isinstance(message, str) or not message:
+        failures.append("provider_failure_modes.message must be non-empty")
+    if evidence.get("reportedAsSuccess") is not False:
+        failures.append("provider_failure_modes.reportedAsSuccess must be false")
+    return failures
+
+
+def validate_controlled_network_observed(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["controlled_network_observed evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("controlledHttpServer") is not True:
+        failures.append("controlled_network_observed.controlledHttpServer must be true")
+    request_count = evidence.get("requestCount")
+    if not isinstance(request_count, (int, float)) or request_count < 3:
+        failures.append("controlled_network_observed.requestCount must be at least 3")
+    if evidence.get("yikeSignedHeadersObserved") is not True:
+        failures.append("controlled_network_observed.yikeSignedHeadersObserved must be true")
+    if evidence.get("foxRequestObserved") is not True:
+        failures.append("controlled_network_observed.foxRequestObserved must be true")
+    if evidence.get("failureRequestObserved") is not True:
+        failures.append("controlled_network_observed.failureRequestObserved must be true")
+    return failures
+
+
+def validate_offline_not_counted_as_external_live(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["offline_not_counted_as_external_live evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("offlineParserOnly") is not False:
+        failures.append("offline_not_counted_as_external_live.offlineParserOnly must be false")
+    if evidence.get("controlledHttpServer") is not True:
+        failures.append("offline_not_counted_as_external_live.controlledHttpServer must be true")
+    if evidence.get("externalProviderServiceCovered") is not False:
+        failures.append("offline_not_counted_as_external_live.externalProviderServiceCovered must be false")
+    return failures
+
+
+def validate_external_account_scope(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["external_account_scope evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("realAccountLoginStateCovered") is not False:
+        failures.append("external_account_scope.realAccountLoginStateCovered must be false")
+    if evidence.get("antiBotStabilityCovered") is not False:
+        failures.append("external_account_scope.antiBotStabilityCovered must be false")
+    if evidence.get("serviceSchemaDriftCovered") is not False:
+        failures.append("external_account_scope.serviceSchemaDriftCovered must be false")
     return failures
 
 
@@ -892,6 +1081,10 @@ def validate_katago_stderr_check(check: Any) -> list[str]:
 
 def positive_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and value > 0
+
+
+def http_status_success_or_redirect(value: Any) -> bool:
+    return isinstance(value, (int, float)) and 200 <= value < 400
 
 
 def validate_tauri_runtime_ui_semantic_checks(checks: list[Any]) -> list[str]:

@@ -6,6 +6,7 @@ import { EngineSetupPanel } from "./components/EngineSetupPanel";
 import { CacheStatusBadge } from "./components/CacheStatusBadge";
 import { PreferencesPanel } from "./components/PreferencesPanel";
 import { ProviderPanel } from "./components/ProviderPanel";
+import { LegacyShell } from "./components/LegacyShell";
 import {
   analyzeKataGoOnce,
   cancelKataGoAnalysis,
@@ -608,82 +609,71 @@ export function App() {
     setCacheRecord(null);
   }
 
-  return <main className={`app-shell${preferences.boardTheme === "high-contrast" ? " theme-high-contrast" : ""}`}>
-    <header className="topbar">
-      <div>
-        <h1>LizzieYzy Next</h1>
-        <p>{health?.architecture ?? "Tauri 2 + React review workspace"}</p>
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <CacheStatusBadge status={cacheStatus} record={cacheRecord} error={cacheError} />
-        <div className="status-pill">{health?.rust_backend_ready ? "Rust backend ready" : "Browser fallback"}</div>
-      </div>
-    </header>
-    <section className="workspace">
-      <div className="left-pane">
-        <BoardCanvas position={currentPosition} analysis={visibleCurrentFrame} selectedCandidateIndex={selectedCandidateIndex} />
-        <WinrateChart frames={frames} currentMove={currentMove} />
-        <div className="timeline-row">
-          <span>Move {currentMove}</span>
-          <input className="move-slider" type="range" min={0} max={maxMove} value={Math.min(currentMove, maxMove)} onChange={(e) => setCurrentMove(clampMoveNumberToPositions(positions, Number(e.target.value)))} />
-          <span>{maxMove}</span>
-        </div>
-      </div>
-      <AnalysisPanel
-        frame={visibleCurrentFrame}
-        problems={problems}
-        boardSize={game.summary.board_size}
-        currentMove={currentMove}
-        selectedCandidateIndex={selectedCandidateIndex}
-        onSelectCandidate={setSelectedCandidateIndex}
-        onSelectProblem={handleMoveSelect}
-      />
-    </section>
-    <section className="bottom-dock">
-      <div className="sgf-tools">
-        <div className="document-row">
-          <strong title={currentFilePath ?? documentName}>{documentName}{dirty ? " *" : ""}</strong>
-          <span>{dirty ? "Unsaved changes" : "Saved"}</span>
-        </div>
-        <textarea value={sgfText} onChange={(e) => {
-          setSgfText(e.target.value);
-          setDirty(true);
-          clearReviewData();
-          resetAnalysisCacheState();
-          setCurrentMove(0);
-          setMessage("SGF edited. Parse SGF or run review to refresh.");
-        }} spellCheck={false} aria-label="SGF source" />
-        <div className="button-row">
-          <button onClick={() => void handleOpenSgfDocument()} disabled={isKataGoRunning}>Open</button>
-          <button onClick={() => void handleSaveSgfDocument(false)} disabled={isKataGoRunning || !dirty}>Save</button>
-          <button onClick={() => void handleSaveSgfDocument(true)} disabled={isKataGoRunning}>Save As</button>
-          <label className={`file-button${isKataGoRunning ? " file-button-disabled" : ""}`}>
-            Import SGF
-            <input type="file" accept=".sgf,.txt,application/x-go-sgf,text/plain" disabled={isKataGoRunning} onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)} />
-          </label>
-          <button onClick={() => void loadSample()} disabled={isKataGoRunning}>Load sample</button>
-          <button onClick={handleParseSgf} disabled={isKataGoRunning}>Parse SGF</button>
-          <button onClick={handleFakeAnalyze} disabled={isKataGoRunning}>Run review</button>
-        </div>
-      </div>
-      <ProviderPanel disabled={isKataGoRunning} onImport={handleProviderImport} />
-      <EngineSetupPanel
-        disabled={isKataGoRunning}
-        onRun={handleRunKataGo}
-        onAnalyzeGame={handleAnalyzeKataGoGame}
-        onCancelAnalysis={handleCancelKataGoAnalysis}
-        analysisProgress={analysisProgress}
-        activeJobId={activeJobId}
-      />
-      <PreferencesPanel
-        preferences={preferences}
-        status={preferencesStatus}
-        disabled={isKataGoRunning}
-        onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
-      />
-      <p className="message">{message}</p>
-    </section>
-  </main>;
+  return (
+    <LegacyShell
+      themeClassName={preferences.boardTheme === "high-contrast" ? "theme-high-contrast" : ""}
+      architectureLabel={health?.architecture ?? "Tauri 2 + React review workspace"}
+      backendStatusLabel={health?.rust_backend_ready ? "Rust backend ready" : "Browser fallback"}
+      cacheBadge={<CacheStatusBadge status={cacheStatus} record={cacheRecord} error={cacheError} />}
+      board={<BoardCanvas position={currentPosition} analysis={visibleCurrentFrame} selectedCandidateIndex={selectedCandidateIndex} />}
+      chart={<WinrateChart frames={frames} currentMove={currentMove} />}
+      analysisPanel={
+        <AnalysisPanel
+          frame={visibleCurrentFrame}
+          problems={problems}
+          boardSize={game.summary.board_size}
+          currentMove={currentMove}
+          selectedCandidateIndex={selectedCandidateIndex}
+          onSelectCandidate={setSelectedCandidateIndex}
+          onSelectProblem={handleMoveSelect}
+        />
+      }
+      providerPanel={<ProviderPanel disabled={isKataGoRunning} onImport={handleProviderImport} />}
+      enginePanel={
+        <EngineSetupPanel
+          disabled={isKataGoRunning}
+          onRun={handleRunKataGo}
+          onAnalyzeGame={handleAnalyzeKataGoGame}
+          onCancelAnalysis={handleCancelKataGoAnalysis}
+          analysisProgress={analysisProgress}
+          activeJobId={activeJobId}
+        />
+      }
+      preferencesPanel={
+        <PreferencesPanel
+          preferences={preferences}
+          status={preferencesStatus}
+          disabled={isKataGoRunning}
+          onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
+        />
+      }
+      documentName={documentName}
+      documentTitle={currentFilePath ?? documentName}
+      dirty={dirty}
+      sgfText={sgfText}
+      currentMove={currentMove}
+      maxMove={maxMove}
+      message={message}
+      isBusy={isKataGoRunning}
+      canSave={dirty}
+      onOpen={handleOpenSgfDocument}
+      onSave={() => handleSaveSgfDocument(false)}
+      onSaveAs={() => handleSaveSgfDocument(true)}
+      onImportFile={handleImportFile}
+      onLoadSample={loadSample}
+      onParseSgf={handleParseSgf}
+      onRunReview={handleFakeAnalyze}
+      onSgfTextChange={(value) => {
+        setSgfText(value);
+        setDirty(true);
+        clearReviewData();
+        resetAnalysisCacheState();
+        setCurrentMove(0);
+        setMessage("SGF edited. Parse SGF or run review to refresh.");
+      }}
+      onMoveChange={handleMoveSelect}
+    />
+  );
 }
 
 function applyPreferencesToFrame(frame: AnalysisFrameDto | undefined, preferences: AppPreferences): AnalysisFrameDto | undefined {

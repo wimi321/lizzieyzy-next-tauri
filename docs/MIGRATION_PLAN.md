@@ -4,6 +4,8 @@ This plan tracks the migration from the Java/Swing maintenance line to the Lizzi
 
 The current state is useful and testable, but it is not full legacy parity. Core Tauri/Rust/TypeScript flows can be built and run locally. Provider/readboard work in this batch should be treated as offline contract plus runtime path coverage until Fox/Yike live network behavior, readboard live sidecar behavior, and production Tauri release packaging have environment-specific validation. The relevant command names for this batch are `provider_fetch_yike`, `provider_fetch_fox`, `readboard_sidecar_probe`, and `readboard_sidecar_sync_snapshot`.
 
+The machine-checkable source of truth for legacy feature status is [LEGACY_PARITY_MATRIX.md](LEGACY_PARITY_MATRIX.md). Keep release notes and handoffs aligned with that matrix rather than inferring parity from a passing scaffold, build, or dry-run preflight alone.
+
 ## Completed In The Next Workspace
 
 ### Scaffold And Validation
@@ -107,6 +109,7 @@ Baseline structural acceptance:
 ```bash
 python3 scripts/validate_scaffold.py --verbose
 python3 scripts/validate_release_assets.py --verbose
+python3 scripts/validate_legacy_parity.py --verbose
 ```
 
 Recommended local engineering acceptance:

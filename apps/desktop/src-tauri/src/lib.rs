@@ -35,6 +35,8 @@ const DEFAULT_PROVIDER_HTTP_TIMEOUT_MS: u64 = 30_000;
 const RUNTIME_SMOKE_ENABLED_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE";
 const RUNTIME_SMOKE_SGF_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH";
 const RUNTIME_SMOKE_REPORT_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH";
+const RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH";
+const RUNTIME_SMOKE_PHASE_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_PHASE";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppendSgfMoveResultDto {
@@ -431,6 +433,8 @@ struct RuntimeSmokeConfigDto {
     enabled: bool,
     sgf_path: Option<String>,
     report_path: Option<String>,
+    expected_report_path: Option<String>,
+    phase: Option<String>,
 }
 
 #[tauri::command]
@@ -474,6 +478,8 @@ fn runtime_smoke_config() -> RuntimeSmokeConfigDto {
         enabled: env_truthy(RUNTIME_SMOKE_ENABLED_ENV),
         sgf_path: non_empty_env(RUNTIME_SMOKE_SGF_PATH_ENV),
         report_path: non_empty_env(RUNTIME_SMOKE_REPORT_PATH_ENV),
+        expected_report_path: non_empty_env(RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV),
+        phase: non_empty_env(RUNTIME_SMOKE_PHASE_ENV),
     }
 }
 
@@ -3049,6 +3055,37 @@ mod tests {
         let written = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
         assert_eq!(written, report_json);
+    }
+
+    #[test]
+    fn runtime_smoke_config_includes_phase() {
+        let _guard = RUNTIME_SMOKE_REPORT_ENV_LOCK.lock().unwrap();
+        let sgf_path = runtime_smoke_report_temp_path("config-sgf").with_extension("sgf");
+        let report_path = runtime_smoke_report_temp_path("config-report");
+        std::env::set_var(RUNTIME_SMOKE_ENABLED_ENV, "yes");
+        std::env::set_var(RUNTIME_SMOKE_SGF_PATH_ENV, sgf_path.display().to_string());
+        std::env::set_var(RUNTIME_SMOKE_REPORT_PATH_ENV, report_path.display().to_string());
+        std::env::set_var(
+            RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV,
+            report_path.display().to_string(),
+        );
+        std::env::set_var(RUNTIME_SMOKE_PHASE_ENV, "reopen-verify");
+
+        let config = runtime_smoke_config();
+
+        std::env::remove_var(RUNTIME_SMOKE_ENABLED_ENV);
+        std::env::remove_var(RUNTIME_SMOKE_SGF_PATH_ENV);
+        std::env::remove_var(RUNTIME_SMOKE_REPORT_PATH_ENV);
+        std::env::remove_var(RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV);
+        std::env::remove_var(RUNTIME_SMOKE_PHASE_ENV);
+        assert!(config.enabled);
+        assert_eq!(config.sgf_path, Some(sgf_path.display().to_string()));
+        assert_eq!(config.report_path, Some(report_path.display().to_string()));
+        assert_eq!(
+            config.expected_report_path,
+            Some(report_path.display().to_string())
+        );
+        assert_eq!(config.phase, Some("reopen-verify".to_string()));
     }
 
     #[test]

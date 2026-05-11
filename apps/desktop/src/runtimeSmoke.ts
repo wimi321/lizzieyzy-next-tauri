@@ -29,6 +29,8 @@ type RuntimeSmokeCheckName =
   | "delete_node"
   | "variation_reorder"
   | "save_readback_roundtrip"
+  | "save_reopen_roundtrip"
+  | "reopen_state_verified"
   | "board_state_verified";
 type RuntimeSmokeCheck = {
   name: RuntimeSmokeCheckName;
@@ -51,16 +53,43 @@ type RuntimeSmokeReport = {
   finishedAt: string;
   sgfPath: string | null;
   reportPath: string | null;
+  expectedReportPath: string | null;
+  phase: RuntimeSmokePhase;
   checks: RuntimeSmokeCheck[];
   steps: RuntimeSmokeStep[];
+  expected?: RuntimeSmokeExpectedEvidence;
   error?: string;
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokeConfig = { enabled: boolean; sgfPath: string | null; reportPath: string | null };
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify";
+type RuntimeSmokeConfig = {
+  enabled: boolean;
+  sgfPath: string | null;
+  reportPath: string | null;
+  expectedReportPath: string | null;
+  phase: RuntimeSmokePhase;
+};
+type RuntimeSmokeExpectedEvidence = {
+  branchComment: string;
+  branchName: string;
+  branchLabel: string;
+  deletedTargetVertex: string;
+  editTargetVertex: string;
+  appendColor: PlayerColor;
+  reorderTargetIndex: 0;
+  savedMoveCount: number;
+  savedPositionCount: number;
+  siblingCountAfterDelete: number;
+  invariant: string;
+};
 
 const schema = "lizzieyzy.tauri-runtime-ui-smoke.v1";
 const truthyValues = new Set(["1", "true", "yes", "on"]);
+const expectedBranchComment = "runtime smoke branch persisted";
+const expectedBranchName = "runtime-smoke-branch";
+const expectedBranchLabel = "aa:A";
+const replayInvariant = "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position";
 
 export function isRuntimeSmokeModeEnabled(): boolean {
   const value = runtimeSmokeImportMeta().env?.VITE_LIZZIEYZY_RUNTIME_SMOKE;
@@ -71,19 +100,31 @@ export async function resolveRuntimeSmokeConfig(): Promise<RuntimeSmokeConfig> {
   const envEnabled = isRuntimeSmokeModeEnabled();
   const envSgfPath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH");
   const envReportPath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH");
-  if (envEnabled || envSgfPath || envReportPath) {
-    return { enabled: envEnabled, sgfPath: envSgfPath, reportPath: envReportPath };
+  const envExpectedReportPath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH");
+  const envPhase = normalizeRuntimeSmokePhase(runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_PHASE"));
+  if (envEnabled || envSgfPath || envReportPath || envExpectedReportPath || envPhase !== "full") {
+    return {
+      enabled: envEnabled,
+      sgfPath: envSgfPath,
+      reportPath: envReportPath,
+      expectedReportPath: envExpectedReportPath,
+      phase: envPhase
+    };
   }
-  if (!isTauriRuntime()) return { enabled: false, sgfPath: null, reportPath: null };
+  if (!isTauriRuntime()) {
+    return { enabled: false, sgfPath: null, reportPath: null, expectedReportPath: null, phase: "full" };
+  }
   try {
     const config = await loadRuntimeSmokeConfig();
     return {
       enabled: config.enabled,
       sgfPath: normalizeOptionalString(config.sgf_path),
-      reportPath: normalizeOptionalString(config.report_path)
+      reportPath: normalizeOptionalString(config.report_path),
+      expectedReportPath: normalizeOptionalString(config.expected_report_path),
+      phase: normalizeRuntimeSmokePhase(config.phase)
     };
   } catch {
-    return { enabled: false, sgfPath: null, reportPath: null };
+    return { enabled: false, sgfPath: null, reportPath: null, expectedReportPath: null, phase: "full" };
   }
 }
 
@@ -91,6 +132,7 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
   const resolvedConfig = config ?? await resolveRuntimeSmokeConfig();
   const sgfPath = resolvedConfig.sgfPath;
   const reportPath = resolvedConfig.reportPath;
+  const expectedReportPath = resolvedConfig.expectedReportPath;
   const report: RuntimeSmokeReport = {
     schema,
     name: "ui_tauri_runtime_smoke",
@@ -100,6 +142,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
     finishedAt: "",
     sgfPath,
     reportPath,
+    expectedReportPath,
+    phase: resolvedConfig.phase,
     checks: [],
     steps: []
   };
@@ -107,6 +151,9 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
   try {
     if (!sgfPath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH is required.");
     if (!reportPath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH is required.");
+    if (resolvedConfig.phase === "reopen-verify" && !expectedReportPath) {
+      throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH is required for reopen-verify.");
+    }
     if (!resolvedConfig.enabled) throw new Error("Runtime smoke config is not enabled.");
 
     await check(report, "runtime_started", async () => {
@@ -118,178 +165,11 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       };
     });
 
-    const loaded = await check(report, "sgf_loaded", async () => {
-      const document = await readSgfDocument(sgfPath);
-      assertNonEmptyString(document.sgfText, "readSgfDocument returned empty SGF text.");
-      await verifySgf(report, "source", document.sgfText);
-      return { sgfText: document.sgfText, details: { bytes: document.sgfText.length, path: document.path } };
-    });
-    const source = loaded.sgfText;
-
-    const sourceTree = await step(report, "parse source tree for edit targets", () => parseSgfTree(source));
-    const branchNode = findBranchNode(sourceTree);
-    await check(report, "branch_navigation", async () => {
-      const position = await replaySgfPositionAtNode(source, branchNode.id);
-      if (position.move_number < 1) throw new Error("Branch replay did not advance to a move position.");
-      return { nodeId: branchNode.id, moveNumber: position.move_number, stones: position.stones.length };
-    });
-
-    const updatedComment = `runtime smoke branch ${report.startedAt}`;
-    let edited = (await check(report, "comment_edit", async () => {
-      const text = await updateSgfNodeComment(source, branchNode.id, updatedComment);
-      const tree = await parseSgfTree(text);
-      const node = requireNode(tree, branchNode.id, "comment-edited branch node");
-      if (node.comment !== updatedComment) throw new Error("Updated branch comment was not preserved in the SGF tree.");
-      return { sgfText: text, details: { nodeId: node.id, comment: node.comment } };
-    })).sgfText;
-
-    edited = (await check(report, "property_edit", async () => {
-      const result = await updateSgfNodeProperties(edited, branchNode.id, [
-        { key: "N", values: ["runtime-smoke-branch"] },
-        { key: "LB", values: ["aa:A"] }
-      ]);
-      const tree = await parseSgfTree(result.sgf_text);
-      const node = requireNode(tree, branchNode.id, "property-edited branch node");
-      assertPropertyValue(node, "N", "runtime-smoke-branch");
-      assertPropertyValue(node, "LB", "aa:A");
-      return { sgfText: result.sgf_text, details: { nodeId: result.node_id } };
-    })).sgfText;
-
-    const treeBeforeAppend = await step(report, "parse tree before append", () => parseSgfTree(edited));
-    const root = requireNode(treeBeforeAppend, treeBeforeAppend?.root_id, "append parent root node");
-    const appendParent = requireNode(treeBeforeAppend, root.child_ids[0], "append parent first move node");
-    const appendColor: PlayerColor = "white";
-    const appendVertex = chooseUnusedSiblingVertex(treeBeforeAppend, appendParent.id);
-    const appended = await check(report, "append_move", async () => {
-      const result = await appendSgfMove(edited, appendParent.id, appendColor, appendVertex);
-      const tree = await parseSgfTree(result.sgf_text);
-      const node = requireNode(tree, result.new_node_id, "appended move node");
-      if (node.color !== appendColor || vertexKey(node.vertex) !== vertexKey(appendVertex)) {
-        throw new Error("Appended move was not found at the expected vertex.");
-      }
-      return { sgfText: result.sgf_text, details: { nodeId: result.new_node_id, vertex: vertexKey(appendVertex) } };
-    });
-    edited = appended.sgfText;
-    const appendedNodeId = String(appended.details?.nodeId ?? "");
-    if (!appendedNodeId) throw new Error("append_move did not return an appended node id.");
-
-    const editVertex = chooseDifferentSiblingVertex(await parseSgfTree(edited), appendedNodeId);
-    edited = (await check(report, "edit_move", async () => {
-      const result = await editSgfMove(edited, appendedNodeId, appendColor, editVertex);
-      const tree = await parseSgfTree(result.sgf_text);
-      const node = requireNode(tree, appendedNodeId, "edited appended move node");
-      if (node.color !== appendColor || vertexKey(node.vertex) !== vertexKey(editVertex)) {
-        throw new Error("Edited move was not found at the expected vertex.");
-      }
-      return {
-        sgfText: result.sgf_text,
-        details: {
-          nodeId: result.node_id,
-          targetVertex: vertexKey(editVertex),
-          confirmedVertex: vertexKey(node.vertex),
-          editVertex: vertexKey(editVertex)
-        }
-      };
-    })).sgfText;
-
-    let movedNodeId = appendedNodeId;
-    const reorderTargetIndex = 0;
-    const reordered = await check(report, "variation_reorder", async () => {
-      const result = await reorderSgfVariation(edited, appendedNodeId, reorderTargetIndex);
-      const tree = await parseSgfTree(result.sgf_text);
-      const updatedParent = requireNode(tree, result.parent_node_id, "parent node after variation reorder");
-      const movedNode = requireNode(tree, result.node_id, "moved variation node");
-      const indexAfterMove = updatedParent.child_ids.indexOf(result.node_id);
-      if (result.parent_node_id !== appendParent.id) throw new Error("Reordered variation returned an unexpected parent.");
-      if (movedNode.parent_id !== result.parent_node_id) throw new Error("Moved variation is not under the returned parent.");
-      if (indexAfterMove !== reorderTargetIndex) throw new Error("Moved variation did not land at target sibling index 0.");
-      if (movedNode.variation_index !== reorderTargetIndex) throw new Error("Moved variation did not receive variation_index 0.");
-      return {
-        sgfText: result.sgf_text,
-        details: {
-          oldNodeId: appendedNodeId,
-          movedNodeId: result.node_id,
-          parentNodeId: result.parent_node_id,
-          targetIndex: reorderTargetIndex,
-          indexAfterMove,
-          variationIndexAfterMove: movedNode.variation_index,
-          siblingCount: updatedParent.child_ids.length,
-          siblingIndex: indexAfterMove,
-          movedIsMainline: movedNode.is_mainline
-        }
-      };
-    });
-    edited = reordered.sgfText;
-    movedNodeId = String(reordered.details?.movedNodeId ?? "");
-    if (!movedNodeId) throw new Error("variation_reorder did not return a moved node id.");
-
-    edited = (await check(report, "delete_node", async () => {
-      const result = await deleteSgfNode(edited, movedNodeId);
-      const tree = await parseSgfTree(result.sgf_text);
-      const updatedParent = requireNode(tree, result.parent_node_id, "parent node after delete");
-      const targetExistsAfterDelete = updatedParent.child_ids
-        .map((childId) => requireNode(tree, childId, "sibling after delete"))
-        .some((node) => node.color === appendColor && vertexKey(node.vertex) === vertexKey(editVertex));
-      if (targetExistsAfterDelete) throw new Error("Deleted move target is still present in the SGF tree.");
-      return {
-        sgfText: result.sgf_text,
-        details: {
-          deletedNodeIdBeforeDelete: movedNodeId,
-          oldNodeId: appendedNodeId,
-          movedNodeId,
-          deletedNodeId: movedNodeId,
-          deletedTargetVertex: vertexKey(editVertex),
-          parentNodeId: result.parent_node_id,
-          remainingSiblingCount: updatedParent.child_ids.length,
-          targetExistsAfterDelete,
-          existsAfterDelete: targetExistsAfterDelete,
-          absentAfterDelete: !targetExistsAfterDelete,
-          deleteAbsence: !targetExistsAfterDelete
-        }
-      };
-    })).sgfText;
-
-    const readbackResult = await check(report, "save_readback_roundtrip", async () => {
-      const saved = await saveSgfDocument(sgfPath, edited, "runtime-smoke.sgf");
-      if (!saved?.path) throw new Error("saveSgfDocument did not return a saved path.");
-      const document = await readSgfDocument(sgfPath);
-      if (saved.sgfText !== edited) throw new Error("Saved SGF text does not match edited text.");
-      if (document.sgfText !== edited) throw new Error("Readback SGF does not match saved SGF text.");
-      return {
-        sgfText: document.sgfText,
-        details: {
-          path: saved.path,
-          savedPath: saved.path,
-          bytes: document.sgfText.length,
-          saveVerified: saved.sgfText === edited,
-          readbackVerified: document.sgfText === edited,
-          readbackMatchesSaved: document.sgfText === saved.sgfText,
-          savedStatus: "matched_edited_text",
-          readbackStatus: "matched_saved_text"
-        }
-      };
-    });
-    const readback = readbackResult.sgfText;
-
-    await check(report, "board_state_verified", async () => {
-      await verifySgf(report, "readback", readback);
-      const tree = await parseSgfTree(readback);
-      const node = findBranchNode(tree);
-      assertPropertyValue(node, "N", "runtime-smoke-branch");
-      assertPropertyValue(node, "LB", "aa:A");
-      const position = await replaySgfPositionAtNode(readback, node.id);
-      if (position.errors.length > 0) throw new Error(`Readback replay had errors: ${position.errors.join(", ")}`);
-      return {
-        nodeId: node.id,
-        moveNumber: position.move_number,
-        stones: position.stones.length,
-        invariant: "readback_replay_has_no_errors",
-        invariantVerified: true,
-        verified: true,
-        boardInvariant: "readback_replay_has_no_errors",
-        replayErrorsAbsent: true
-      };
-    });
+    if (resolvedConfig.phase === "reopen-verify") {
+      await runReopenVerifyPhase(report, sgfPath, expectedReportPath ?? reportPath);
+    } else {
+      await runEditSavePhase(report, sgfPath, resolvedConfig.phase);
+    }
 
     report.status = "pass";
     return report;
@@ -307,6 +187,305 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       }
     }
   }
+}
+
+async function runEditSavePhase(report: RuntimeSmokeReport, sgfPath: string, phase: RuntimeSmokePhase) {
+  const loaded = await check(report, "sgf_loaded", async () => {
+    const document = await readSgfDocument(sgfPath);
+    assertNonEmptyString(document.sgfText, "readSgfDocument returned empty SGF text.");
+    await verifySgf(report, "source", document.sgfText);
+    return { sgfText: document.sgfText, details: { bytes: document.sgfText.length, path: document.path } };
+  });
+  const source = loaded.sgfText;
+
+  const sourceTree = await step(report, "parse source tree for edit targets", () => parseSgfTree(source));
+  const branchNode = findBranchNode(sourceTree);
+  await check(report, "branch_navigation", async () => {
+    const position = await replaySgfPositionAtNode(source, branchNode.id);
+    if (position.move_number < 1) throw new Error("Branch replay did not advance to a move position.");
+    return { nodeId: branchNode.id, moveNumber: position.move_number, stones: position.stones.length };
+  });
+
+  let edited = (await check(report, "comment_edit", async () => {
+    const text = await updateSgfNodeComment(source, branchNode.id, expectedBranchComment);
+    const tree = await parseSgfTree(text);
+    const node = requireNode(tree, branchNode.id, "comment-edited branch node");
+    if (node.comment !== expectedBranchComment) throw new Error("Updated branch comment was not preserved in the SGF tree.");
+    return {
+      sgfText: text,
+      details: {
+        nodeId: node.id,
+        comment: node.comment,
+        expectedComment: expectedBranchComment
+      }
+    };
+  })).sgfText;
+
+  edited = (await check(report, "property_edit", async () => {
+    const result = await updateSgfNodeProperties(edited, branchNode.id, [
+      { key: "N", values: [expectedBranchName] },
+      { key: "LB", values: [expectedBranchLabel] }
+    ]);
+    const tree = await parseSgfTree(result.sgf_text);
+    const node = requireNode(tree, branchNode.id, "property-edited branch node");
+    assertPropertyValue(node, "N", expectedBranchName);
+    assertPropertyValue(node, "LB", expectedBranchLabel);
+    return {
+      sgfText: result.sgf_text,
+      details: {
+        nodeId: result.node_id,
+        expectedProperties: { N: expectedBranchName, LB: expectedBranchLabel }
+      }
+    };
+  })).sgfText;
+
+  const treeBeforeAppend = await step(report, "parse tree before append", () => parseSgfTree(edited));
+  const root = requireNode(treeBeforeAppend, treeBeforeAppend?.root_id, "append parent root node");
+  const appendParent = requireNode(treeBeforeAppend, root.child_ids[0], "append parent first move node");
+  const appendColor: PlayerColor = "white";
+  const appendVertex = chooseUnusedSiblingVertex(treeBeforeAppend, appendParent.id);
+  const appended = await check(report, "append_move", async () => {
+    const result = await appendSgfMove(edited, appendParent.id, appendColor, appendVertex);
+    const tree = await parseSgfTree(result.sgf_text);
+    const node = requireNode(tree, result.new_node_id, "appended move node");
+    if (node.color !== appendColor || vertexKey(node.vertex) !== vertexKey(appendVertex)) {
+      throw new Error("Appended move was not found at the expected vertex.");
+    }
+    return {
+      sgfText: result.sgf_text,
+      details: {
+        nodeId: result.new_node_id,
+        color: appendColor,
+        vertex: vertexKey(appendVertex)
+      }
+    };
+  });
+  edited = appended.sgfText;
+  const appendedNodeId = String(appended.details?.nodeId ?? "");
+  if (!appendedNodeId) throw new Error("append_move did not return an appended node id.");
+
+  const editVertex = chooseDifferentSiblingVertex(await parseSgfTree(edited), appendedNodeId);
+  const editVertexKey = requireVertexKey(editVertex, "edit target vertex");
+  edited = (await check(report, "edit_move", async () => {
+    const result = await editSgfMove(edited, appendedNodeId, appendColor, editVertex);
+    const tree = await parseSgfTree(result.sgf_text);
+    const node = requireNode(tree, appendedNodeId, "edited appended move node");
+    if (node.color !== appendColor || vertexKey(node.vertex) !== editVertexKey) {
+      throw new Error("Edited move was not found at the expected vertex.");
+    }
+    return {
+      sgfText: result.sgf_text,
+      details: {
+        nodeId: result.node_id,
+        targetVertex: editVertexKey,
+        confirmedVertex: vertexKey(node.vertex),
+        editVertex: editVertexKey
+      }
+    };
+  })).sgfText;
+
+  let movedNodeId = appendedNodeId;
+  const reorderTargetIndex = 0;
+  const reordered = await check(report, "variation_reorder", async () => {
+    const result = await reorderSgfVariation(edited, appendedNodeId, reorderTargetIndex);
+    const tree = await parseSgfTree(result.sgf_text);
+    const updatedParent = requireNode(tree, result.parent_node_id, "parent node after variation reorder");
+    const movedNode = requireNode(tree, result.node_id, "moved variation node");
+    const indexAfterMove = updatedParent.child_ids.indexOf(result.node_id);
+    if (result.parent_node_id !== appendParent.id) throw new Error("Reordered variation returned an unexpected parent.");
+    if (movedNode.parent_id !== result.parent_node_id) throw new Error("Moved variation is not under the returned parent.");
+    if (indexAfterMove !== reorderTargetIndex) throw new Error("Moved variation did not land at target sibling index 0.");
+    if (movedNode.variation_index !== reorderTargetIndex) throw new Error("Moved variation did not receive variation_index 0.");
+    return {
+      sgfText: result.sgf_text,
+      details: {
+        oldNodeId: appendedNodeId,
+        movedNodeId: result.node_id,
+        parentNodeId: result.parent_node_id,
+        targetIndex: reorderTargetIndex,
+        indexAfterMove,
+        variationIndexAfterMove: movedNode.variation_index,
+        siblingCount: updatedParent.child_ids.length,
+        siblingIndex: indexAfterMove,
+        movedIsMainline: movedNode.is_mainline
+      }
+    };
+  });
+  edited = reordered.sgfText;
+  movedNodeId = String(reordered.details?.movedNodeId ?? "");
+  if (!movedNodeId) throw new Error("variation_reorder did not return a moved node id.");
+
+  let remainingSiblingCount = 0;
+  edited = (await check(report, "delete_node", async () => {
+    const result = await deleteSgfNode(edited, movedNodeId);
+    const tree = await parseSgfTree(result.sgf_text);
+    const updatedParent = requireNode(tree, result.parent_node_id, "parent node after delete");
+    const targetExistsAfterDelete = hasChildMove(updatedParent, tree, appendColor, editVertexKey);
+    if (targetExistsAfterDelete) throw new Error("Deleted move target is still present in the SGF tree.");
+    remainingSiblingCount = updatedParent.child_ids.length;
+    return {
+      sgfText: result.sgf_text,
+      details: {
+        deletedNodeIdBeforeDelete: movedNodeId,
+        oldNodeId: appendedNodeId,
+        movedNodeId,
+        deletedNodeId: movedNodeId,
+        deletedTargetVertex: editVertexKey,
+        parentNodeId: result.parent_node_id,
+        remainingSiblingCount,
+        targetExistsAfterDelete,
+        existsAfterDelete: targetExistsAfterDelete,
+        absentAfterDelete: !targetExistsAfterDelete,
+        deleteAbsence: !targetExistsAfterDelete
+      }
+    };
+  })).sgfText;
+
+  const readbackResult = await check(report, "save_readback_roundtrip", async () => {
+    const saved = await saveSgfDocument(sgfPath, edited, "runtime-smoke.sgf");
+    if (!saved?.path) throw new Error("saveSgfDocument did not return a saved path.");
+    const document = await readSgfDocument(sgfPath);
+    if (saved.sgfText !== edited) throw new Error("Saved SGF text does not match edited text.");
+    if (document.sgfText !== edited) throw new Error("Readback SGF does not match saved SGF text.");
+    return {
+      sgfText: document.sgfText,
+      details: {
+        path: saved.path,
+        savedPath: saved.path,
+        bytes: document.sgfText.length,
+        saveVerified: saved.sgfText === edited,
+        readbackVerified: document.sgfText === edited,
+        readbackMatchesSaved: document.sgfText === saved.sgfText,
+        savedStatus: "matched_edited_text",
+        readbackStatus: "matched_saved_text"
+      }
+    };
+  });
+  const readback = readbackResult.sgfText;
+  const boardEvidence = await verifySavedBoardState(report, readback, appendColor, editVertexKey, remainingSiblingCount);
+  report.expected = {
+    branchComment: expectedBranchComment,
+    branchName: expectedBranchName,
+    branchLabel: expectedBranchLabel,
+    deletedTargetVertex: editVertexKey,
+    editTargetVertex: editVertexKey,
+    appendColor,
+    reorderTargetIndex,
+    savedMoveCount: boardEvidence.moveCount,
+    savedPositionCount: boardEvidence.positionCount,
+    siblingCountAfterDelete: remainingSiblingCount,
+    invariant: replayInvariant
+  };
+  if (phase === "edit-save") {
+    report.steps.push({
+      name: "edit-save expected reopen proof fields",
+      status: "pass",
+      details: report.expected as unknown as Record<string, unknown>
+    });
+  }
+}
+
+async function runReopenVerifyPhase(report: RuntimeSmokeReport, sgfPath: string, expectedReportPath: string) {
+  const expected = await loadExpectedEvidence(expectedReportPath);
+  report.expected = expected;
+  const loaded = await check(report, "sgf_loaded", async () => {
+    const document = await readSgfDocument(sgfPath);
+    assertNonEmptyString(document.sgfText, "readSgfDocument returned empty SGF text.");
+    await verifySgf(report, "reopened", document.sgfText);
+    return { sgfText: document.sgfText, details: { bytes: document.sgfText.length, path: document.path } };
+  });
+  const reopened = loaded.sgfText;
+  await check(report, "reopen_state_verified", async () => verifyReopenedState(report, reopened, expected));
+  await check(report, "save_reopen_roundtrip", async () => ({
+    savedPath: sgfPath,
+    reopenedPath: sgfPath,
+    expectedMoveCount: expected.savedMoveCount,
+    expectedPositionCount: expected.savedPositionCount,
+    savedStateLoaded: true,
+    reopenVerified: true,
+    readbackVerified: true,
+    invariant: expected.invariant,
+    verified: true
+  }));
+}
+
+async function verifySavedBoardState(
+  report: RuntimeSmokeReport,
+  sgfText: string,
+  appendColor: PlayerColor,
+  deletedTargetVertex: string,
+  expectedSiblingCount: number
+): Promise<{ moveCount: number; positionCount: number }> {
+  return await check(report, "board_state_verified", async () => {
+    const replay = await verifyBoardReplayInvariant(report, "readback", sgfText);
+    const tree = await parseSgfTree(sgfText);
+    const node = findPersistedBranchNode(tree, expectedBranchComment, expectedBranchName, expectedBranchLabel);
+    const parent = requireNode(tree, node.parent_id, "persisted branch parent node");
+    const targetExistsAfterDelete = hasChildMove(parent, tree, appendColor, deletedTargetVertex);
+    if (targetExistsAfterDelete) throw new Error("Deleted variation move target reappeared after save/readback.");
+    return {
+      nodeId: node.id,
+      moveNumber: node.move_number,
+      stones: replay.lastPositionStones,
+      invariant: replayInvariant,
+      invariantVerified: true,
+      verified: true,
+      boardInvariant: replayInvariant,
+      replayErrorsAbsent: true,
+      moveCount: replay.moveCount,
+      positionCount: replay.positionCount,
+      deletedTargetVertex,
+      targetExistsAfterDelete,
+      absentAfterDelete: !targetExistsAfterDelete,
+      siblingCountAfterDelete: parent.child_ids.length,
+      expectedSiblingCount,
+      siblingCountVerified: parent.child_ids.length === expectedSiblingCount
+    };
+  });
+}
+
+async function verifyReopenedState(
+  report: RuntimeSmokeReport,
+  sgfText: string,
+  expected: RuntimeSmokeExpectedEvidence
+): Promise<Record<string, unknown>> {
+  const replay = await verifyBoardReplayInvariant(report, "reopened state", sgfText);
+  const tree = await parseSgfTree(sgfText);
+  const node = findPersistedBranchNode(tree, expected.branchComment, expected.branchName, expected.branchLabel);
+  const parent = requireNode(tree, node.parent_id, "reopened branch parent node");
+  const targetExistsAfterReopen = hasChildMove(parent, tree, expected.appendColor, expected.deletedTargetVertex);
+  if (targetExistsAfterReopen) throw new Error("Deleted variation move target exists after reopen.");
+  if (parent.child_ids.length !== expected.siblingCountAfterDelete) {
+    throw new Error("Reopened branch sibling count does not match edit-save evidence.");
+  }
+  if (replay.moveCount !== expected.savedMoveCount || replay.positionCount !== expected.savedPositionCount) {
+    throw new Error("Reopened board replay counts do not match edit-save evidence.");
+  }
+  return {
+    nodeId: node.id,
+    comment: node.comment,
+    expectedComment: expected.branchComment,
+    expectedProperties: { N: expected.branchName, LB: expected.branchLabel },
+    deletedTargetVertex: expected.deletedTargetVertex,
+    targetExistsAfterReopen,
+    absentAfterReopen: !targetExistsAfterReopen,
+    variationDeletePersisted: !targetExistsAfterReopen,
+    reorderTargetIndex: expected.reorderTargetIndex,
+    siblingCountAfterReopen: parent.child_ids.length,
+    expectedSiblingCount: expected.siblingCountAfterDelete,
+    moveCount: replay.moveCount,
+    positionCount: replay.positionCount,
+    treeOrderVerified: parent.child_ids.length === expected.siblingCountAfterDelete,
+    commentsVerified: node.comment === expected.branchComment,
+    propertiesVerified: hasPropertyValue(node, "N", expected.branchName) && hasPropertyValue(node, "LB", expected.branchLabel),
+    moveCountVerified: replay.moveCount === expected.savedMoveCount && replay.positionCount === expected.savedPositionCount,
+    boardStateVerified: true,
+    invariant: expected.invariant,
+    invariantVerified: true,
+    verified: true,
+    boardInvariant: expected.invariant,
+    replayErrorsAbsent: true
+  };
 }
 
 async function check<T>(
@@ -359,6 +538,11 @@ function runtimeSmokeEnv(name: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSmokePhase {
+  if (value === "edit-save" || value === "reopen-verify") return value;
+  return "full";
+}
+
 function normalizeOptionalString(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -374,11 +558,90 @@ function requireNode(tree: SgfTreeDto | null, nodeId: string | null | undefined,
 }
 
 function findBranchNode(tree: SgfTreeDto | null): SgfTreeNodeDto {
-  const preferred = tree?.nodes.find((node) => node.comment?.includes("second branch") || node.comment?.includes("runtime smoke branch"));
+  const preferred = tree?.nodes.find((node) => node.comment?.includes("second branch") || node.comment === expectedBranchComment);
   const fallback = tree?.nodes.find((node) => node.color && !node.is_mainline);
   const node = preferred ?? fallback;
   if (!node) throw new Error("Could not find a branch move node.");
   return node;
+}
+
+function findPersistedBranchNode(
+  tree: SgfTreeDto | null,
+  expectedComment: string,
+  expectedName: string,
+  expectedLabel: string
+): SgfTreeNodeDto {
+  const node = tree?.nodes.find((candidate) =>
+    candidate.comment === expectedComment
+    && hasPropertyValue(candidate, "N", expectedName)
+    && hasPropertyValue(candidate, "LB", expectedLabel)
+  );
+  if (!node) throw new Error("Could not find persisted branch node by comment/properties.");
+  return node;
+}
+
+async function loadExpectedEvidence(reportPath: string): Promise<RuntimeSmokeExpectedEvidence> {
+  const document = await readSgfDocument(reportPath);
+  const parsed = JSON.parse(document.sgfText) as unknown;
+  if (!isRecord(parsed) || !isRecord(parsed.expected)) {
+    throw new Error("Previous edit-save report does not include expected reopen evidence.");
+  }
+  return normalizeExpectedEvidence(parsed.expected);
+}
+
+function normalizeExpectedEvidence(value: Record<string, unknown>): RuntimeSmokeExpectedEvidence {
+  const branchComment = requiredString(value.branchComment, "expected.branchComment");
+  const branchName = requiredString(value.branchName, "expected.branchName");
+  const branchLabel = requiredString(value.branchLabel, "expected.branchLabel");
+  const deletedTargetVertex = requiredString(value.deletedTargetVertex, "expected.deletedTargetVertex");
+  const editTargetVertex = requiredString(value.editTargetVertex, "expected.editTargetVertex");
+  const appendColor = value.appendColor === "black" || value.appendColor === "white" ? value.appendColor : null;
+  if (!appendColor) throw new Error("expected.appendColor must be black or white.");
+  if (value.reorderTargetIndex !== 0) throw new Error("expected.reorderTargetIndex must be 0.");
+  const savedMoveCount = requiredNumber(value.savedMoveCount, "expected.savedMoveCount");
+  const savedPositionCount = requiredNumber(value.savedPositionCount, "expected.savedPositionCount");
+  const siblingCountAfterDelete = requiredNumber(value.siblingCountAfterDelete, "expected.siblingCountAfterDelete");
+  const invariant = requiredString(value.invariant, "expected.invariant");
+  return {
+    branchComment,
+    branchName,
+    branchLabel,
+    deletedTargetVertex,
+    editTargetVertex,
+    appendColor,
+    reorderTargetIndex: 0,
+    savedMoveCount,
+    savedPositionCount,
+    siblingCountAfterDelete,
+    invariant
+  };
+}
+
+async function verifyBoardReplayInvariant(
+  report: RuntimeSmokeReport,
+  label: string,
+  sgfText: string
+): Promise<{ moveCount: number; positionCount: number; lastMove: number; lastPositionStones: number }> {
+  await verifySgf(report, label, sgfText);
+  const [parsed, positions] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText)]);
+  const errors = positions.flatMap((position) => position.errors);
+  if (errors.length > 0) throw new Error(`${label} replay had errors: ${errors.join(", ")}`);
+  const expectedPositionCount = parsed.summary.move_count + 1;
+  if (positions.length !== expectedPositionCount) {
+    throw new Error(`${label} replay returned ${positions.length} positions for ${parsed.summary.move_count} moves.`);
+  }
+  return {
+    moveCount: parsed.summary.move_count,
+    positionCount: positions.length,
+    lastMove: positions.at(-1)?.move_number ?? 0,
+    lastPositionStones: positions.at(-1)?.stones.length ?? 0
+  };
+}
+
+function hasChildMove(parent: SgfTreeNodeDto, tree: SgfTreeDto | null, color: PlayerColor, vertex: string): boolean {
+  return parent.child_ids
+    .map((childId) => requireNode(tree, childId, "child move"))
+    .some((node) => node.color === color && vertexKey(node.vertex) === vertex);
 }
 
 function chooseUnusedSiblingVertex(tree: SgfTreeDto | null, parentNodeId: string): MoveVertex {
@@ -433,15 +696,39 @@ function vertexKey(vertex: MoveVertex | null | undefined): string | null {
   return `${vertex.point.x},${vertex.point.y}`;
 }
 
+function requireVertexKey(vertex: MoveVertex | null | undefined, label: string): string {
+  const key = vertexKey(vertex);
+  if (!key) throw new Error(`Missing ${label}.`);
+  return key;
+}
+
 function assertPropertyValue(node: SgfTreeNodeDto, key: string, expectedValue: string) {
-  const values = node.properties.find((property) => property.key === key)?.values ?? [];
-  if (!values.includes(expectedValue)) {
+  if (!hasPropertyValue(node, key, expectedValue)) {
     throw new Error(`${key} property does not include ${expectedValue}.`);
   }
 }
 
+function hasPropertyValue(node: SgfTreeNodeDto, key: string, expectedValue: string): boolean {
+  const values = node.properties.find((property) => property.key === key)?.values ?? [];
+  return values.includes(expectedValue);
+}
+
 function assertNonEmptyString(value: string, message: string) {
   if (!value.trim()) throw new Error(message);
+}
+
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a non-empty string.`);
+  return value;
+}
+
+function requiredNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${label} must be a finite number.`);
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function summarizeResult(value: unknown): Record<string, unknown> | undefined {

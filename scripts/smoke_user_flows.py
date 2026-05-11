@@ -435,6 +435,7 @@ def validate_tauri_runtime_ui_smoke_evidence(evidence: Any) -> list[str]:
     if not_pass:
         failures.append("required checks not pass: " + ", ".join(not_pass))
     failures.extend(validate_tauri_runtime_ui_semantic_checks(checks))
+    failures.extend(validate_top_level_save_reopen_proof(evidence))
     return failures
 
 
@@ -527,12 +528,86 @@ def validate_save_readback_roundtrip_evidence(check: Any) -> list[str]:
     saved_hash = first_present(evidence, "savedHash", "saved_hash", "savedSgfHash", "saved_sgf_hash")
     readback_hash = first_present(evidence, "readbackHash", "readback_hash", "readbackSgfHash", "readback_sgf_hash")
     readback_status = first_present(evidence, "readbackStatus", "readback_status")
+    has_readback = False
     if readback_verified is True or readback_status == "matched_saved_text":
-        return failures
+        has_readback = True
     if isinstance(saved_hash, str) and saved_hash and saved_hash == readback_hash:
-        return failures
-    failures.append("save_readback_roundtrip evidence must include readback verification")
+        has_readback = True
+    if not has_readback:
+        failures.append("save_readback_roundtrip evidence must include readback verification")
+    failures.extend(validate_two_launch_save_reopen_evidence(evidence))
     return failures
+
+
+def validate_two_launch_save_reopen_evidence(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    second_launch = first_present(evidence, "secondLaunch", "second_launch")
+    if not isinstance(second_launch, dict):
+        failures.append("save_readback_roundtrip evidence must include secondLaunch object")
+    elif not evidence_status_passed(second_launch):
+        failures.append("save_readback_roundtrip secondLaunch must be verified")
+
+    reopen = first_present(evidence, "reopen", "reopenProof", "reopen_proof")
+    if not isinstance(reopen, dict):
+        failures.append("save_readback_roundtrip evidence must include reopen object")
+    else:
+        reopen_path = first_present(reopen, "path", "reopenedPath", "reopened_path", "savedPath", "saved_path")
+        if not isinstance(reopen_path, str) or not reopen_path:
+            failures.append("save_readback_roundtrip reopen evidence must include reopened path")
+        if not evidence_status_passed(reopen) and first_present(reopen, "matchesSaved", "matches_saved", "reopenedMatchesSaved", "reopened_matches_saved") is not True:
+            failures.append("save_readback_roundtrip reopen must be verified")
+
+    after_reopen = first_present(evidence, "afterReopen", "after_reopen", "reopenedState", "reopened_state")
+    if not isinstance(after_reopen, dict):
+        failures.append("save_readback_roundtrip evidence must include afterReopen object")
+        return failures
+    required_after_reopen = {
+        "treeOrderVerified": ("treeOrderVerified", "tree_order_verified"),
+        "commentsVerified": ("commentsVerified", "comments_verified"),
+        "propertiesVerified": ("propertiesVerified", "properties_verified"),
+        "moveCountVerified": ("moveCountVerified", "move_count_verified"),
+        "boardStateVerified": ("boardStateVerified", "board_state_verified"),
+    }
+    missing = [
+        label
+        for label, keys in required_after_reopen.items()
+        if first_present(after_reopen, *keys) is not True
+    ]
+    if missing:
+        failures.append("save_readback_roundtrip afterReopen must verify " + ", ".join(missing))
+    return failures
+
+
+def validate_top_level_save_reopen_proof(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    first_launch = first_present(evidence, "firstLaunch", "first_launch")
+    second_launch = first_present(evidence, "secondLaunch", "second_launch")
+    proof = first_present(evidence, "saveReopenProof", "save_reopen_proof")
+    if not isinstance(first_launch, dict):
+        failures.append("evidence must include firstLaunch object")
+    elif first_launch.get("phase") != "edit-save" or first_launch.get("stopped") is not True:
+        failures.append("firstLaunch must record stopped edit-save phase")
+    if not isinstance(second_launch, dict):
+        failures.append("evidence must include secondLaunch object")
+    elif second_launch.get("phase") != "reopen-verify" or second_launch.get("stopped") is not True:
+        failures.append("secondLaunch must record stopped reopen-verify phase")
+    if not isinstance(proof, dict):
+        failures.append("evidence must include saveReopenProof object")
+        return failures
+    if proof.get("sameSgfPath") is not True:
+        failures.append("saveReopenProof must confirm same SGF path")
+    if proof.get("distinctProcesses") is not True:
+        failures.append("saveReopenProof must confirm distinct Tauri processes")
+    if proof.get("firstStoppedBeforeSecondStarted") is not True:
+        failures.append("saveReopenProof must confirm first launch stopped before second started")
+    return failures
+
+
+def evidence_status_passed(evidence: dict[str, Any]) -> bool:
+    status = first_present(evidence, "status", "result")
+    verified = first_present(evidence, "verified", "passed", "ok", "started")
+    launch_index = first_present(evidence, "launchIndex", "launch_index")
+    return status == "pass" or verified is True or launch_index == 2
 
 
 def validate_board_state_evidence(check: Any) -> list[str]:

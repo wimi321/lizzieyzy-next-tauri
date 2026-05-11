@@ -1,0 +1,197 @@
+{
+  "checks": [
+    {
+      "details": {
+        "platform": "MacIntel",
+        "tauriInternals": true,
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+      },
+      "name": "runtime_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "bytes": 211,
+        "path": "<tmp>/runtime-smoke.sgf"
+      },
+      "name": "sgf_loaded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "moveNumber": 2,
+        "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+        "stones": 2
+      },
+      "name": "branch_navigation",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "comment": "runtime smoke branch 2026-05-11T22:16:53.688Z",
+        "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
+      },
+      "name": "comment_edit",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
+      },
+      "name": "property_edit",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+        "vertex": "0,0"
+      },
+      "name": "append_move",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "confirmedVertex": "1,0",
+        "editVertex": "1,0",
+        "nodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+        "targetVertex": "1,0"
+      },
+      "name": "edit_move",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "indexAfterMove": 0,
+        "movedIsMainline": true,
+        "movedNodeId": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+        "oldNodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+        "parentNodeId": "e5a4c351-fade-8164-d036-441c451f9404",
+        "siblingCount": 4,
+        "siblingIndex": 0,
+        "targetIndex": 0,
+        "variationIndexAfterMove": 0
+      },
+      "name": "variation_reorder",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "absentAfterDelete": true,
+        "deleteAbsence": true,
+        "deletedNodeId": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+        "deletedNodeIdBeforeDelete": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+        "deletedTargetVertex": "1,0",
+        "existsAfterDelete": false,
+        "movedNodeId": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+        "oldNodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+        "parentNodeId": "e5a4c351-fade-8164-d036-441c451f9404",
+        "remainingSiblingCount": 3,
+        "targetExistsAfterDelete": false
+      },
+      "name": "delete_node",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "bytes": 269,
+        "path": "<tmp>/runtime-smoke.sgf",
+        "readbackMatchesSaved": true,
+        "readbackStatus": "matched_saved_text",
+        "readbackVerified": true,
+        "saveVerified": true,
+        "savedPath": "<tmp>/runtime-smoke.sgf",
+        "savedStatus": "matched_edited_text"
+      },
+      "name": "save_readback_roundtrip",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardInvariant": "readback_replay_has_no_errors",
+        "invariant": "readback_replay_has_no_errors",
+        "invariantVerified": true,
+        "moveNumber": 2,
+        "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+        "replayErrorsAbsent": true,
+        "stones": 2,
+        "verified": true
+      },
+      "name": "board_state_verified",
+      "status": "pass"
+    }
+  ],
+  "finishedAt": "2026-05-11T22:16:53.714Z",
+  "name": "ui_tauri_runtime_smoke",
+  "platform": "macos",
+  "reportPath": "<tmp>/runtime-smoke-report.json",
+  "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+  "sgfPath": "<tmp>/runtime-smoke.sgf",
+  "startedAt": "2026-05-11T22:16:53.688Z",
+  "status": "pass",
+  "steps": [
+    {
+      "details": {
+        "boardSize": 9,
+        "moveCount": 3
+      },
+      "name": "parse source summary",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "lastMove": 3,
+        "positions": 4
+      },
+      "name": "replay source positions",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nodes": 6,
+        "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+      },
+      "name": "parse source tree",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nodes": 6,
+        "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+      },
+      "name": "parse source tree for edit targets",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nodes": 6,
+        "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+      },
+      "name": "parse tree before append",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardSize": 9,
+        "moveCount": 3
+      },
+      "name": "parse readback summary",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "lastMove": 3,
+        "positions": 4
+      },
+      "name": "replay readback positions",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nodes": 6,
+        "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+      },
+      "name": "parse readback tree",
+      "status": "pass"
+    }
+  ]
+}

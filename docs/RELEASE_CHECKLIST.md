@@ -22,20 +22,21 @@ From the repository root:
 python3 scripts/validate_scaffold.py --verbose
 python3 scripts/validate_release_assets.py --verbose
 python3 scripts/smoke_user_flows.py --verbose
-python3 scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+CI should not run the GUI runtime collector. `scripts/smoke_user_flows.py` validates the committed macOS evidence JSON schema and semantics, including the two-launch save/reopen proof fields.
+
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` currently reports `22 passed, 0 failed, 4 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface, and macOS local Tauri runtime UI smoke evidence are complete for their scoped gates.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `22 passed, 0 failed, 4 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, and scoped macOS two-launch save/reopen runtime evidence are complete for their scoped gates.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
 - The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
 - The static `sgf_existing_move_edit_surface` and `edit-existing-move` checks pass for repository-local existing-move edit surface evidence: existing SGF node edits are exposed through the command-backed edit surface and covered by repository-local wiring evidence. This is not real desktop GUI smoke proof.
-- `docs/qa/tauri-runtime-ui-smoke-macos.json` records macOS local runtime evidence from `scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json` with schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, and all required check names passing.
-- The pending checks are KataGo live smoke, readboard live smoke, provider live smoke, and multiplatform packaging smoke.
+- `docs/qa/tauri-runtime-ui-smoke-macos.json` is the macOS local runtime evidence target from `scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json`. The repository gate requires schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, all required check names passing, top-level `firstLaunch`/`secondLaunch`/`saveReopenProof`, and semantic `secondLaunch`, `reopen`, and `afterReopen` fields proving save/reopen after a second launch.
+- The pending external checks remain KataGo live smoke, readboard live smoke, provider live smoke, and multiplatform packaging smoke even after the scoped macOS save/reopen evidence passes.
 - This status must be recorded as incomplete in release notes and handoff material until the pending runtime/external gates are closed with evidence.
 
 Frontend build:
@@ -91,7 +92,7 @@ python3 scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-u
 python3 scripts/smoke_user_flows.py --verbose
 ```
 
-Pass: the evidence JSON is sanitized, has status `pass`, includes semantic append/edit/reorder/delete SGF checks plus save/read-back and board-state invariants, and `smoke_user_flows.py` reports `ui_tauri_runtime_smoke` as PASS. This is macOS local runtime evidence only; it is not full legacy parity, live KataGo/provider/readboard validation, or multiplatform packaging proof.
+Pass: the evidence JSON is sanitized, has status `pass`, includes semantic append/edit/reorder/delete SGF checks, has explicit two-launch save/reopen proof through `secondLaunch`, `reopen`, and `afterReopen`, and `smoke_user_flows.py` reports `ui_tauri_runtime_smoke` as PASS. This is macOS local runtime evidence only; it is not native file dialog/manual release proof, full legacy parity, live KataGo/provider/readboard validation, or multiplatform packaging proof.
 
 ### Required User-Facing Retest Before Local Release
 

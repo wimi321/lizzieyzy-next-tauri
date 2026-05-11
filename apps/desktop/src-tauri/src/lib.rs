@@ -1,6 +1,6 @@
 use app_model::{
-    AnalysisFrameDto, AppHealthDto, CandidateMoveDto, EngineBackend, EngineProfileDto, MoveVertex, PointDto,
-    PositionDto, ProviderError, ProviderErrorKind, ProviderFetchMethod, ProviderFetchRequest,
+    AnalysisFrameDto, AppHealthDto, CandidateMoveDto, EngineBackend, EngineProfileDto, MoveVertex, NodeId,
+    PointDto, PositionDto, ProviderError, ProviderErrorKind, ProviderFetchMethod, ProviderFetchRequest,
     ProviderFetchResult, ProviderGameMetadata, ProviderImportRequest, ProviderImportResult, ProviderKind,
     ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest,
     ReadboardSidecarSyncSnapshotResult, SgfTreeDto,
@@ -452,6 +452,20 @@ fn readboard_sidecar_sync_snapshot(
 #[tauri::command]
 fn replay_sgf_positions(sgf_text: String) -> Result<Vec<PositionDto>, String> {
     sgf::replay_sgf_positions(&sgf_text).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn update_sgf_node_comment(
+    sgf_text: String,
+    node_id: NodeId,
+    comment: Option<String>,
+) -> Result<String, String> {
+    sgf::update_sgf_node_comment(&sgf_text, node_id, comment.as_deref()).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn replay_sgf_position_at_node(sgf_text: String, node_id: NodeId) -> Result<PositionDto, String> {
+    sgf::replay_sgf_position_at_node(&sgf_text, node_id).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -1932,6 +1946,8 @@ pub fn run() {
             readboard_sidecar_probe,
             readboard_sidecar_sync_snapshot,
             replay_sgf_positions,
+            update_sgf_node_comment,
+            replay_sgf_position_at_node,
             read_sgf_file,
             write_sgf_file,
             fake_analyze,
@@ -2014,6 +2030,71 @@ mod tests {
         let error = parse_sgf_tree("not sgf".to_string()).unwrap_err();
 
         assert!(!error.is_empty());
+    }
+
+    #[test]
+    fn command_updates_branch_comment_visible_in_tree() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch]))";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let updated =
+            update_sgf_node_comment(input.to_string(), branch_id, Some("branch updated".to_string()))
+                .unwrap();
+        let updated_tree = parse_sgf_tree(updated).unwrap().unwrap();
+        let branch = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == branch_id)
+            .unwrap();
+
+        assert_eq!(branch.comment.as_deref(), Some("branch updated"));
+    }
+
+    #[test]
+    fn command_clears_comment_visible_as_none_in_tree() {
+        let input = "(;SZ[5];B[aa]C[old];W[bb]C[keep])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let updated = update_sgf_node_comment(input.to_string(), node_id, None).unwrap();
+        let updated_tree = parse_sgf_tree(updated).unwrap().unwrap();
+        let node = updated_tree.nodes.iter().find(|node| node.id == node_id).unwrap();
+
+        assert_eq!(node.comment, None);
+    }
+
+    #[test]
+    fn command_replays_branch_node_not_mainline_sibling() {
+        let input = "(;SZ[5]AB[aa]PL[W];B[bb](;W[bc]C[main])(;W[cb]C[branch]))";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let position = replay_sgf_position_at_node(input.to_string(), branch_id).unwrap();
+
+        assert!(position
+            .stones
+            .iter()
+            .any(|stone| stone.x == 2 && stone.y == 1 && stone.color == app_model::PlayerColor::White));
+        assert!(!position
+            .stones
+            .iter()
+            .any(|stone| stone.x == 1 && stone.y == 2 && stone.color == app_model::PlayerColor::White));
     }
 
     #[test]

@@ -11,6 +11,7 @@ type Props = {
   commentDraft?: string;
   onCommentDraftChange?: (comment: string) => void;
   commentReadOnly?: boolean;
+  isCommentSaving?: boolean;
   commentActionLabel?: string;
   commentNote?: string;
   isLoading?: boolean;
@@ -35,6 +36,7 @@ export function SgfTreePanel({
   commentDraft,
   onCommentDraftChange,
   commentReadOnly = false,
+  isCommentSaving = false,
   commentActionLabel = "Save Comment",
   commentNote,
   isLoading = false,
@@ -120,8 +122,8 @@ export function SgfTreePanel({
           placeholder={selectedNode ? "No comment for this node." : "Select a node to edit its comment."}
         />
         {commentNote ? <p className="sgf-comment-note">{commentNote}</p> : null}
-        <button type="button" onClick={handleSaveComment} disabled={!selectedNode || isLoading || commentReadOnly || draftValue === selectedComment}>
-          {commentActionLabel}
+        <button type="button" onClick={handleSaveComment} disabled={!selectedNode || isLoading || commentReadOnly || isCommentSaving || draftValue === selectedComment}>
+          {isCommentSaving ? "Saving..." : commentActionLabel}
         </button>
       </section>
     </aside>

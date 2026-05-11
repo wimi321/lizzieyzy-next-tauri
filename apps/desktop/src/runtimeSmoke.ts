@@ -1,8 +1,14 @@
 import {
+  analyzeKataGoGame,
+  analyzeKataGoOnce,
   appendSgfMove,
+  cancelKataGoAnalysis,
+  checkEngineAssets,
   deleteSgfNode,
   editSgfMove,
   isTauriRuntime,
+  listenToKataGoAnalysisEvents,
+  loadEngineProfileSettings,
   loadRuntimeSmokeConfig,
   parseSgfSummary,
   parseSgfTree,
@@ -12,10 +18,11 @@ import {
   replaySgfPositions,
   runtimeSmokeReport,
   saveSgfDocument,
+  startKataGoGameAnalysis,
   updateSgfNodeComment,
   updateSgfNodeProperties
 } from "./api/backend";
-import type { MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
+import type { AnalysisFrameDto, AssetCheckDto, EngineProfileDto, KataGoLiveSmokeConfigDto, MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 type RuntimeSmokeStatus = "pass" | "fail";
 type RuntimeSmokeCheckName =
@@ -31,7 +38,12 @@ type RuntimeSmokeCheckName =
   | "save_readback_roundtrip"
   | "save_reopen_roundtrip"
   | "reopen_state_verified"
-  | "board_state_verified";
+  | "board_state_verified"
+  | "katago_assets"
+  | "katago_analyze_once"
+  | "katago_analyze_game"
+  | "katago_start_cancel"
+  | "katago_failure_mode_missing_assets";
 type RuntimeSmokeCheck = {
   name: RuntimeSmokeCheckName;
   status: RuntimeSmokeStatus;
@@ -58,17 +70,19 @@ type RuntimeSmokeReport = {
   checks: RuntimeSmokeCheck[];
   steps: RuntimeSmokeStep[];
   expected?: RuntimeSmokeExpectedEvidence;
+  katago?: KataGoLiveSmokeEvidence;
   error?: string;
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
   reportPath: string | null;
   expectedReportPath: string | null;
   phase: RuntimeSmokePhase;
+  katago: KataGoLiveSmokeConfig;
 };
 type RuntimeSmokeExpectedEvidence = {
   branchComment: string;
@@ -83,6 +97,76 @@ type RuntimeSmokeExpectedEvidence = {
   siblingCountAfterDelete: number;
   invariant: string;
 };
+type KataGoLiveSmokeConfig = {
+  profile: EngineProfileDto | null;
+  maxVisits: number;
+  onceTurn: number | null;
+  gameMaxVisits: number;
+  cancelMaxVisits: number;
+  cancelDelayMs: number;
+  runGame: boolean;
+  runCancel: boolean;
+};
+type KataGoLiveSmokeEvidence = {
+  profile: SanitizedEngineProfile;
+  maxVisits: number;
+  onceTurn: number;
+  gameMaxVisits: number;
+  cancelMaxVisits: number;
+  cancelDelayMs: number;
+  runGame: boolean;
+  runCancel: boolean;
+  failureMode?: {
+    profile: SanitizedEngineProfile;
+    missingRequired: string[];
+    structuredError?: string;
+    observed: boolean;
+  };
+  assetChecks?: {
+    total: number;
+    required: number;
+    missingRequired: string[];
+    checks: AssetCheckDto[];
+  };
+  analyzeOnce?: AnalysisFrameEvidence;
+  analyzeGame?: {
+    frames: number;
+    turns: number[];
+    firstFrame?: AnalysisFrameEvidence;
+    lastFrame?: AnalysisFrameEvidence;
+  };
+  startCancel?: {
+    jobId: string;
+    cancelRequested: boolean;
+    cancelConfirmed: boolean;
+    cancelDelayMs: number;
+    event?: KataGoCancelEvidence;
+  };
+};
+type KataGoCancelEvidence = {
+  kind: "cancelled" | "error" | "complete" | "timeout";
+  jobId: string;
+  message?: string;
+  frames?: number;
+};
+type SanitizedEngineProfile = {
+  name: string;
+  backend: EngineProfileDto["backend"];
+  hasEnginePath: boolean;
+  hasModelPath: boolean;
+  hasConfigPath: boolean;
+  hasWorkingDir: boolean;
+};
+type AnalysisFrameEvidence = {
+  jobId: string;
+  turn: number;
+  visits: number;
+  candidates: number;
+  hasOwnership: boolean;
+  hasPolicy: boolean;
+  winrateBlack: number;
+  scoreMeanBlack: number;
+};
 
 const schema = "lizzieyzy.tauri-runtime-ui-smoke.v1";
 const truthyValues = new Set(["1", "true", "yes", "on"]);
@@ -90,6 +174,10 @@ const expectedBranchComment = "runtime smoke branch persisted";
 const expectedBranchName = "runtime-smoke-branch";
 const expectedBranchLabel = "aa:A";
 const replayInvariant = "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position";
+const defaultKatagoMaxVisits = 32;
+const defaultKatagoGameMaxVisits = 16;
+const defaultKatagoCancelMaxVisits = 10_000;
+const defaultKatagoCancelDelayMs = 250;
 
 export function isRuntimeSmokeModeEnabled(): boolean {
   const value = runtimeSmokeImportMeta().env?.VITE_LIZZIEYZY_RUNTIME_SMOKE;
@@ -102,17 +190,19 @@ export async function resolveRuntimeSmokeConfig(): Promise<RuntimeSmokeConfig> {
   const envReportPath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH");
   const envExpectedReportPath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH");
   const envPhase = normalizeRuntimeSmokePhase(runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_PHASE"));
+  const envKatago = readEnvKatagoLiveSmokeConfig();
   if (envEnabled || envSgfPath || envReportPath || envExpectedReportPath || envPhase !== "full") {
     return {
       enabled: envEnabled,
       sgfPath: envSgfPath,
       reportPath: envReportPath,
       expectedReportPath: envExpectedReportPath,
-      phase: envPhase
+      phase: envPhase,
+      katago: envKatago
     };
   }
   if (!isTauriRuntime()) {
-    return { enabled: false, sgfPath: null, reportPath: null, expectedReportPath: null, phase: "full" };
+    return { enabled: false, sgfPath: null, reportPath: null, expectedReportPath: null, phase: "full", katago: defaultKatagoLiveSmokeConfig() };
   }
   try {
     const config = await loadRuntimeSmokeConfig();
@@ -121,10 +211,11 @@ export async function resolveRuntimeSmokeConfig(): Promise<RuntimeSmokeConfig> {
       sgfPath: normalizeOptionalString(config.sgf_path),
       reportPath: normalizeOptionalString(config.report_path),
       expectedReportPath: normalizeOptionalString(config.expected_report_path),
-      phase: normalizeRuntimeSmokePhase(config.phase)
+      phase: normalizeRuntimeSmokePhase(config.phase),
+      katago: normalizeKatagoLiveSmokeConfig(config.katago, envKatago)
     };
   } catch {
-    return { enabled: false, sgfPath: null, reportPath: null, expectedReportPath: null, phase: "full" };
+    return { enabled: false, sgfPath: null, reportPath: null, expectedReportPath: null, phase: "full", katago: defaultKatagoLiveSmokeConfig() };
   }
 }
 
@@ -165,7 +256,9 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       };
     });
 
-    if (resolvedConfig.phase === "reopen-verify") {
+    if (resolvedConfig.phase === "katago-live") {
+      await runKataGoLivePhase(report, sgfPath, resolvedConfig.katago);
+    } else if (resolvedConfig.phase === "reopen-verify") {
       await runReopenVerifyPhase(report, sgfPath, expectedReportPath ?? reportPath);
     } else {
       await runEditSavePhase(report, sgfPath, resolvedConfig.phase);
@@ -409,6 +502,142 @@ async function runReopenVerifyPhase(report: RuntimeSmokeReport, sgfPath: string,
   }));
 }
 
+async function runKataGoLivePhase(report: RuntimeSmokeReport, sgfPath: string, config: KataGoLiveSmokeConfig) {
+  const loaded = await check(report, "sgf_loaded", async () => {
+    const document = await readSgfDocument(sgfPath);
+    assertNonEmptyString(document.sgfText, "readSgfDocument returned empty SGF text.");
+    await verifySgf(report, "katago-live source", document.sgfText);
+    return { sgfText: document.sgfText, details: { bytes: document.sgfText.length, path: document.path } };
+  });
+  const sgfText = loaded.sgfText;
+  const parsed = await step(report, "parse KataGo live source", () => parseSgfSummary(sgfText));
+  const profile = await resolveKataGoLiveProfile(config);
+  const onceTurn = clampNumber(config.onceTurn ?? Math.min(1, parsed.summary.move_count), 0, parsed.summary.move_count);
+  const evidence: KataGoLiveSmokeEvidence = {
+    profile: sanitizeEngineProfile(profile),
+    maxVisits: config.maxVisits,
+    onceTurn,
+    gameMaxVisits: config.gameMaxVisits,
+    cancelMaxVisits: config.cancelMaxVisits,
+    cancelDelayMs: config.cancelDelayMs,
+    runGame: config.runGame,
+    runCancel: config.runCancel
+  };
+  report.katago = evidence;
+
+  await check(report, "katago_failure_mode_missing_assets", async () => {
+    const missingProfile = buildMissingAssetKataGoProfile(profile);
+    try {
+      const checks = await checkEngineAssets(missingProfile);
+      const missingRequired = checks.filter((item) => item.required && !item.exists).map((item) => item.label || item.path);
+      if (missingRequired.length === 0) {
+        throw new Error("Intentional missing model/config profile did not report missing required assets.");
+      }
+      evidence.failureMode = {
+        profile: sanitizeEngineProfile(missingProfile),
+        missingRequired,
+        observed: true
+      };
+      return evidence.failureMode;
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.includes("did not report missing required assets")) throw error;
+      evidence.failureMode = {
+        profile: sanitizeEngineProfile(missingProfile),
+        missingRequired: [],
+        structuredError: message,
+        observed: Boolean(message)
+      };
+      return evidence.failureMode;
+    }
+  });
+
+  await check(report, "katago_assets", async () => {
+    const checks = await checkEngineAssets(profile);
+    const missingRequired = checks.filter((item) => item.required && !item.exists).map((item) => item.label || item.path);
+    if (missingRequired.length > 0) {
+      throw new Error(`KataGo required assets are missing: ${missingRequired.join(", ")}`);
+    }
+    evidence.assetChecks = {
+      total: checks.length,
+      required: checks.filter((item) => item.required).length,
+      missingRequired,
+      checks
+    };
+    return evidence.assetChecks;
+  });
+
+  await check(report, "katago_analyze_once", async () => {
+    const frame = await analyzeKataGoOnce(profile, sgfText, onceTurn, config.maxVisits);
+    validateAnalysisFrame(frame, "KataGo one-position analysis");
+    evidence.analyzeOnce = summarizeAnalysisFrame(frame);
+    return evidence.analyzeOnce;
+  });
+
+  if (config.runGame) {
+    await check(report, "katago_analyze_game", async () => {
+      const frames = await analyzeKataGoGame(profile, sgfText, config.gameMaxVisits);
+      if (frames.length === 0) throw new Error("KataGo full-game analysis returned no frames.");
+      for (const frame of frames) validateAnalysisFrame(frame, "KataGo full-game analysis");
+      evidence.analyzeGame = {
+        frames: frames.length,
+        turns: frames.map((frame) => frame.turn),
+        firstFrame: summarizeAnalysisFrame(frames[0]),
+        lastFrame: summarizeAnalysisFrame(frames[frames.length - 1])
+      };
+      return evidence.analyzeGame;
+    });
+  } else {
+    report.steps.push({
+      name: "katago_analyze_game skipped by config",
+      status: "pass",
+      details: { runGame: false }
+    });
+  }
+
+  if (config.runCancel) {
+    await check(report, "katago_start_cancel", async () => {
+      const cancelEvents = createKataGoCancelEventCollector();
+      const unlisten = await listenToKataGoAnalysisEvents(cancelEvents.handlers);
+      let jobId = "";
+      try {
+        jobId = await startKataGoGameAnalysis(profile, sgfText, config.cancelMaxVisits);
+        assertNonEmptyString(jobId, "katago_start_analyze_game returned an empty job id.");
+        cancelEvents.setJobId(jobId);
+        await delay(config.cancelDelayMs);
+        await cancelKataGoAnalysis(jobId);
+        const event = await cancelEvents.wait(10_000);
+        if (event.kind !== "cancelled") {
+          throw new Error(`KataGo cancel was not confirmed by cancelled event; observed ${event.kind}.`);
+        }
+        evidence.startCancel = {
+          jobId,
+          cancelRequested: true,
+          cancelConfirmed: true,
+          cancelDelayMs: config.cancelDelayMs,
+          event
+        };
+      } finally {
+        unlisten();
+      }
+      evidence.startCancel = {
+        jobId,
+        cancelRequested: true,
+        cancelConfirmed: evidence.startCancel?.cancelConfirmed === true,
+        cancelDelayMs: config.cancelDelayMs,
+        event: evidence.startCancel?.event
+      };
+      return evidence.startCancel;
+    });
+  } else {
+    report.steps.push({
+      name: "katago_start_cancel skipped by config",
+      status: "pass",
+      details: { runCancel: false }
+    });
+  }
+}
+
 async function verifySavedBoardState(
   report: RuntimeSmokeReport,
   sgfText: string,
@@ -539,8 +768,152 @@ function runtimeSmokeEnv(name: string): string | null {
 }
 
 function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSmokePhase {
-  if (value === "edit-save" || value === "reopen-verify") return value;
+  if (value === "edit-save" || value === "reopen-verify" || value === "katago-live") return value;
   return "full";
+}
+
+function readEnvKatagoLiveSmokeConfig(): KataGoLiveSmokeConfig {
+  const fromJson = parseKatagoProfileJson(runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_PROFILE_JSON"));
+  const profile = fromJson ?? readEnvKatagoProfile();
+  return {
+    profile,
+    maxVisits: readPositiveIntegerEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_MAX_VISITS", defaultKatagoMaxVisits),
+    onceTurn: readNonNegativeIntegerEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_ONCE_TURN"),
+    gameMaxVisits: readPositiveIntegerEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_GAME_MAX_VISITS", defaultKatagoGameMaxVisits),
+    cancelMaxVisits: readPositiveIntegerEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CANCEL_MAX_VISITS", defaultKatagoCancelMaxVisits),
+    cancelDelayMs: readPositiveIntegerEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CANCEL_DELAY_MS", defaultKatagoCancelDelayMs),
+    runGame: readBooleanEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_RUN_GAME", true),
+    runCancel: readBooleanEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_RUN_CANCEL", true)
+  };
+}
+
+function normalizeKatagoLiveSmokeConfig(
+  raw: KataGoLiveSmokeConfigDto | null | undefined,
+  fallback: KataGoLiveSmokeConfig
+): KataGoLiveSmokeConfig {
+  return {
+    profile: normalizeEngineProfile(raw?.profile) ?? fallback.profile,
+    maxVisits: normalizePositiveInteger(raw?.max_visits, fallback.maxVisits),
+    onceTurn: normalizeNonNegativeInteger(raw?.once_turn) ?? fallback.onceTurn,
+    gameMaxVisits: normalizePositiveInteger(raw?.game_max_visits, fallback.gameMaxVisits),
+    cancelMaxVisits: normalizePositiveInteger(raw?.cancel_max_visits, fallback.cancelMaxVisits),
+    cancelDelayMs: normalizePositiveInteger(raw?.cancel_delay_ms, fallback.cancelDelayMs),
+    runGame: typeof raw?.run_game === "boolean" ? raw.run_game : fallback.runGame,
+    runCancel: typeof raw?.run_cancel === "boolean" ? raw.run_cancel : fallback.runCancel
+  };
+}
+
+function defaultKatagoLiveSmokeConfig(): KataGoLiveSmokeConfig {
+  return {
+    profile: null,
+    maxVisits: defaultKatagoMaxVisits,
+    onceTurn: null,
+    gameMaxVisits: defaultKatagoGameMaxVisits,
+    cancelMaxVisits: defaultKatagoCancelMaxVisits,
+    cancelDelayMs: defaultKatagoCancelDelayMs,
+    runGame: true,
+    runCancel: true
+  };
+}
+
+function parseKatagoProfileJson(value: string | null): EngineProfileDto | null {
+  if (!value) return null;
+  try {
+    return normalizeEngineProfile(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function readEnvKatagoProfile(): EngineProfileDto | null {
+  const enginePath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_ENGINE_PATH");
+  if (!enginePath) return null;
+  return {
+    name: runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_PROFILE_NAME") ?? "Runtime Smoke KataGo",
+    engine_path: enginePath,
+    model_path: runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_MODEL_PATH"),
+    config_path: runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CONFIG_PATH"),
+    working_dir: runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_WORKING_DIR"),
+    backend: "kata_go_analysis"
+  };
+}
+
+async function resolveKataGoLiveProfile(config: KataGoLiveSmokeConfig): Promise<EngineProfileDto> {
+  if (config.profile) return config.profile;
+  const settings = await loadEngineProfileSettings();
+  if (settings?.profile) return settings.profile;
+  throw new Error(
+    "KataGo live smoke requires VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_PROFILE_JSON, " +
+    "VITE_LIZZIEYZY_RUNTIME_SMOKE_KATAGO_ENGINE_PATH, or a saved engine profile."
+  );
+}
+
+function normalizeEngineProfile(value: unknown): EngineProfileDto | null {
+  if (!isRecord(value)) return null;
+  const enginePath = optionalString(value.engine_path);
+  if (!enginePath) return null;
+  const backend = value.backend === "kata_go_analysis" ? value.backend : "kata_go_analysis";
+  return {
+    name: optionalString(value.name) ?? "Runtime Smoke KataGo",
+    engine_path: enginePath,
+    model_path: optionalString(value.model_path),
+    config_path: optionalString(value.config_path),
+    working_dir: optionalString(value.working_dir),
+    backend
+  };
+}
+
+function buildMissingAssetKataGoProfile(profile: EngineProfileDto): EngineProfileDto {
+  return {
+    ...profile,
+    name: `${profile.name} missing asset smoke`,
+    model_path: "/__lizzieyzy_runtime_smoke_missing_model__.bin.gz",
+    config_path: "/__lizzieyzy_runtime_smoke_missing_analysis__.cfg"
+  };
+}
+
+function sanitizeEngineProfile(profile: EngineProfileDto): SanitizedEngineProfile {
+  return {
+    name: profile.name,
+    backend: profile.backend,
+    hasEnginePath: Boolean(profile.engine_path),
+    hasModelPath: Boolean(profile.model_path),
+    hasConfigPath: Boolean(profile.config_path),
+    hasWorkingDir: Boolean(profile.working_dir)
+  };
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const value = runtimeSmokeEnv(name);
+  return value === null ? fallback : normalizePositiveInteger(Number(value), fallback);
+}
+
+function readNonNegativeIntegerEnv(name: string): number | null {
+  const value = runtimeSmokeEnv(name);
+  return value === null ? null : normalizeNonNegativeInteger(Number(value));
+}
+
+function readBooleanEnv(name: string, fallback: boolean): boolean {
+  const value = runtimeSmokeEnv(name);
+  if (value === null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (truthyValues.has(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? Math.floor(numberValue) : fallback;
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | null {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? Math.floor(numberValue) : null;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function normalizeOptionalString(value: string | null | undefined): string | null {
@@ -715,6 +1088,85 @@ function hasPropertyValue(node: SgfTreeNodeDto, key: string, expectedValue: stri
 
 function assertNonEmptyString(value: string, message: string) {
   if (!value.trim()) throw new Error(message);
+}
+
+function validateAnalysisFrame(frame: AnalysisFrameDto, label: string) {
+  if (!Number.isFinite(frame.turn) || frame.turn < 0) throw new Error(`${label} returned an invalid turn.`);
+  if (!Number.isFinite(frame.visits) || frame.visits <= 0) throw new Error(`${label} returned no visits.`);
+  if (!Array.isArray(frame.candidates)) throw new Error(`${label} returned invalid candidates.`);
+  if (frame.candidates.length === 0) throw new Error(`${label} returned no candidate moves.`);
+}
+
+function summarizeAnalysisFrame(frame: AnalysisFrameDto): AnalysisFrameEvidence {
+  return {
+    jobId: frame.job_id,
+    turn: frame.turn,
+    visits: frame.visits,
+    candidates: frame.candidates.length,
+    hasOwnership: Array.isArray(frame.ownership),
+    hasPolicy: Array.isArray(frame.policy),
+    winrateBlack: frame.winrate_black,
+    scoreMeanBlack: frame.score_mean_black
+  };
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function createKataGoCancelEventCollector() {
+  let jobId = "";
+  let outcome: KataGoCancelEvidence | null = null;
+  let resolveWaiter: ((event: KataGoCancelEvidence) => void) | null = null;
+  let timeoutId: number | null = null;
+
+  const record = (event: KataGoCancelEvidence) => {
+    if (jobId && event.jobId !== jobId) return;
+    if (outcome) return;
+    outcome = event;
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+    resolveWaiter?.(event);
+  };
+
+  const wait = (timeoutMs: number): Promise<KataGoCancelEvidence> => {
+    if (outcome) return Promise.resolve(outcome);
+    return new Promise((resolve) => {
+      resolveWaiter = resolve;
+      timeoutId = window.setTimeout(() => {
+        const event: KataGoCancelEvidence = { kind: "timeout", jobId };
+        outcome = event;
+        resolve(event);
+      }, timeoutMs);
+    });
+  };
+
+  return {
+    setJobId(nextJobId: string) {
+      jobId = nextJobId;
+    },
+    wait,
+    handlers: {
+      onCancelled: (payload: { job_id: string; message: string }) => record({
+        kind: "cancelled",
+        jobId: payload.job_id,
+        message: payload.message
+      }),
+      onError: (payload: { job_id: string; message: string }) => record({
+        kind: "error",
+        jobId: payload.job_id,
+        message: payload.message
+      }),
+      onComplete: (payload: { job_id: string; frames: AnalysisFrameDto[] }) => record({
+        kind: "complete",
+        jobId: payload.job_id,
+        frames: payload.frames.length
+      })
+    }
+  };
 }
 
 function requiredString(value: unknown, label: string): string {

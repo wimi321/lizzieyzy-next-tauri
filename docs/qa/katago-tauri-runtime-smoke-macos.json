@@ -1,0 +1,103 @@
+{
+  "checks": [
+    {
+      "details": {
+        "platform": "MacIntel",
+        "tauriInternals": true,
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+      },
+      "name": "runtime_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "missingRequired": [
+          "model",
+          "config"
+        ],
+        "observed": true,
+        "profile": {
+          "backend": "kata_go_analysis",
+          "hasConfigPath": true,
+          "hasEnginePath": true,
+          "hasModelPath": true,
+          "hasWorkingDir": true,
+          "name": "Runtime Smoke KataGo missing asset smoke"
+        }
+      },
+      "name": "katago_failure_mode_missing_assets",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "configBytes": 22790,
+        "engineExecutable": true,
+        "engineExists": true,
+        "modelBytes": 271447864
+      },
+      "name": "katago_assets",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "candidateCount": 5,
+        "frameCount": 1,
+        "hasOwnership": true,
+        "hasPolicy": true,
+        "turn": 0,
+        "visits": 8
+      },
+      "name": "katago_analyze_once",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "candidateCount": 5,
+        "frameCount": 4,
+        "turns": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "visits": 8
+      },
+      "name": "katago_analyze_game",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "cancelConfirmed": true,
+        "cancelDelayMs": 500,
+        "cancelRequested": true,
+        "event": {
+          "jobId": "4ed7c7f2-9f21-4348-bb8e-40b0c169d36c",
+          "kind": "cancelled",
+          "message": "analysis job was cancelled"
+        },
+        "jobId": "4ed7c7f2-9f21-4348-bb8e-40b0c169d36c"
+      },
+      "name": "katago_start_cancel",
+      "status": "pass"
+    }
+  ],
+  "engine": {
+    "configPath": "<katago-config>",
+    "maxVisits": 8,
+    "modelPath": "<katago-model>",
+    "path": "<katago-engine>",
+    "timeoutSeconds": 300.0
+  },
+  "name": "katago_tauri_runtime_smoke",
+  "phase": "katago-live",
+  "platform": "macos",
+  "runtimeReport": {
+    "finishedAt": "2026-05-11T23:03:05.895Z",
+    "phase": "katago-live",
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "startedAt": "2026-05-11T23:03:00.501Z",
+    "status": "pass"
+  },
+  "schema": "lizzieyzy.katago-tauri-runtime-smoke.v1",
+  "status": "pass"
+}

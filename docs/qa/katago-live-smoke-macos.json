@@ -1,0 +1,80 @@
+{
+  "checks": [
+    {
+      "details": {
+        "configBytes": 22790,
+        "configPath": "<katago-config>",
+        "engineExecutable": true,
+        "enginePath": "<katago-engine>",
+        "modelBytes": 271447864,
+        "modelPath": "<katago-model>"
+      },
+      "name": "engine_assets",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "exitCode": 0,
+        "versionText": "KataGo v1.16.4"
+      },
+      "name": "version_probe",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "hasOwnership": true,
+        "hasPolicy": true,
+        "hasRootInfo": true,
+        "id": "katago-live-smoke-one",
+        "moveInfoCount": 2
+      },
+      "name": "one_position_analysis",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "responseCount": 2,
+        "responses": [
+          {
+            "hasOwnership": true,
+            "hasPolicy": true,
+            "hasRootInfo": true,
+            "id": "katago-live-smoke-batch-1",
+            "moveInfoCount": 3
+          },
+          {
+            "hasOwnership": true,
+            "hasPolicy": true,
+            "hasRootInfo": true,
+            "id": "katago-live-smoke-batch-2",
+            "moveInfoCount": 7
+          }
+        ]
+      },
+      "name": "batch_analysis",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "batchStderrBytes": 1559,
+        "onePositionStderrBytes": 1557,
+        "stderrCaptured": true
+      },
+      "name": "stderr_capture",
+      "status": "pass"
+    }
+  ],
+  "engine": {
+    "configPath": "<katago-config>",
+    "maxVisits": 8,
+    "modelPath": "<katago-model>",
+    "path": "<katago-engine>",
+    "timeoutSeconds": 180.0
+  },
+  "finishedAtEpoch": 1778539762.7001758,
+  "name": "katago_live_smoke",
+  "platform": "macos",
+  "schema": "lizzieyzy.katago-live-smoke.v1",
+  "startedAtEpoch": 1778539758.664924,
+  "status": "pass"
+}

@@ -11,6 +11,7 @@ import type {
   EngineProfilesSettingsDto,
   EngineProfileSettingsDto,
   GameDto,
+  KataGoLiveSmokeConfigDto,
   MoveDto,
   MoveVertex,
   PlayerColor,
@@ -35,6 +36,7 @@ export type RuntimeSmokeConfig = {
   report_path?: string | null;
   expected_report_path?: string | null;
   phase?: string | null;
+  katago?: KataGoLiveSmokeConfigDto | null;
 };
 
 export type AppendSgfMoveResult = {

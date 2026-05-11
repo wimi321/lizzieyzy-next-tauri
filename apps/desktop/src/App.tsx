@@ -267,17 +267,49 @@ export function App() {
   }
 
   async function handleSaveSgfDocument(saveAs = false) {
+    let sgfTreeRequest: number | null = null;
+    let savedPath: string | null = null;
     try {
       const saved = await saveSgfDocument(saveAs ? null : currentFilePath, sgfText, saveFileName);
       if (!saved) {
         setMessage("Save cancelled.");
         return;
       }
+      savedPath = saved.path;
+
+      if (!saved.path) {
+        setCurrentFilePath(saved.path);
+        setDirty(false);
+        setMessage(`Saved ${saveFileName}.`);
+        return;
+      }
+
       setCurrentFilePath(saved.path);
+      setFallbackFileName(null);
       setDirty(false);
-      setMessage(`Saved ${saved.path ? fileNameFromPath(saved.path) : saveFileName}.`);
+      sgfTreeRequest = beginSgfTreeLoad();
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(saved.sgfText), replaySgfPositions(saved.sgfText), parseSgfTree(saved.sgfText)]);
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
+      const savedMessage = `Saved and reloaded ${fileNameFromPath(saved.path)}: ${parsed.summary.move_count} moves.`;
+      setSgfText(saved.sgfText);
+      sgfTextEditVersionRef.current += 1;
+      setGame(parsed);
+      setPositions(replayed);
+      setCurrentMove(targetMove);
+      setFrames([]);
+      setProblems([]);
+      setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
+      applySgfTree(tree, targetMove, sgfTreeRequest);
+      setMessage(savedMessage);
+      await checkAnalysisCacheForGame(saved.sgfText, saved.path, parsed, replayed, savedMessage, tree);
     } catch (error) {
-      setMessage(`Save failed: ${errorMessage(error)}`);
+      if (sgfTreeRequest !== null) {
+        failSgfTreeLoad(error, sgfTreeRequest);
+      }
+      setMessage(savedPath ? `Saved ${fileNameFromPath(savedPath)}, but reload failed: ${errorMessage(error)}` : `Save failed: ${errorMessage(error)}`);
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 

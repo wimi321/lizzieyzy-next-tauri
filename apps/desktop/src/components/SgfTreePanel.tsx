@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import type { SgfPropertyUpdate } from "../api/backend";
 import { vertexLabel } from "../domain/board";
 import type { MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "../domain/types";
 
@@ -8,12 +9,14 @@ type Props = {
   currentMove: number;
   onSelectNode: (nodeId: string) => void;
   onSaveComment: (nodeId: string, comment: string) => void;
+  onSaveProperties?: (nodeId: string, updates: SgfPropertyUpdate[]) => void;
   onDeleteNode?: (nodeId: string) => void;
   canDelete?: boolean;
   commentDraft?: string;
   onCommentDraftChange?: (comment: string) => void;
   commentReadOnly?: boolean;
   isCommentSaving?: boolean;
+  isPropertySaving?: boolean;
   isNodeDeleting?: boolean;
   commentActionLabel?: string;
   commentNote?: string;
@@ -36,12 +39,14 @@ export function SgfTreePanel({
   currentMove,
   onSelectNode,
   onSaveComment,
+  onSaveProperties,
   onDeleteNode,
   canDelete = true,
   commentDraft,
   onCommentDraftChange,
   commentReadOnly = false,
   isCommentSaving = false,
+  isPropertySaving = false,
   isNodeDeleting = false,
   commentActionLabel = "Save Comment",
   commentNote,
@@ -58,20 +63,40 @@ export function SgfTreePanel({
   const [localDraft, setLocalDraft] = useState(selectedComment);
   const draftValue = commentDraft ?? localDraft;
   const isSelectedRoot = Boolean(selectedNode && tree?.root_id === selectedNode.id);
+  const propertyFields = useMemo(() => getPropertyFields(isSelectedRoot), [isSelectedRoot]);
+  const selectedPropertyDraft = useMemo(() => buildPropertyDraft(selectedNode, propertyFields), [selectedNode, propertyFields]);
+  const [propertyDraft, setPropertyDraft] = useState<Record<string, string>>(selectedPropertyDraft);
+  const propertyUpdates = useMemo(
+    () => buildPropertyUpdates(selectedNode, propertyFields, propertyDraft),
+    [selectedNode, propertyFields, propertyDraft]
+  );
   const canDeleteSelectedNode = Boolean(canDelete && selectedNode && !isSelectedRoot && !isLoading && !isNodeDeleting && onDeleteNode);
 
   useEffect(() => {
     setLocalDraft(selectedComment);
   }, [selectedComment, selectedNodeId]);
 
+  useEffect(() => {
+    setPropertyDraft(selectedPropertyDraft);
+  }, [selectedPropertyDraft, selectedNodeId]);
+
   const handleDraftChange = (value: string) => {
     setLocalDraft(value);
     onCommentDraftChange?.(value);
   };
 
+  const handlePropertyDraftChange = (key: string, value: string) => {
+    setPropertyDraft((current) => ({ ...current, [key]: value }));
+  };
+
   const handleSaveComment = () => {
     if (!selectedNode) return;
     onSaveComment(selectedNode.id, draftValue);
+  };
+
+  const handleSaveProperties = () => {
+    if (!selectedNode || !onSaveProperties || propertyUpdates.length === 0) return;
+    onSaveProperties(selectedNode.id, propertyUpdates);
   };
 
   const handleDeleteNode = () => {
@@ -144,8 +169,127 @@ export function SgfTreePanel({
           {isCommentSaving ? "Saving..." : commentActionLabel}
         </button>
       </section>
+
+      <section className="sgf-properties-editor" aria-label="SGF node properties">
+        <div className="sgf-properties-header">
+          <div>
+            <h3>Node details</h3>
+            <span>SGF properties for the selected node</span>
+          </div>
+        </div>
+        <div className="sgf-property-grid">
+          {propertyFields.map((field) => {
+            const value = propertyDraft[field.key] ?? "";
+            return (
+              <label key={field.key} className="sgf-property-field">
+                <span>{field.label}</span>
+                {field.multiline ? (
+                  <textarea
+                    value={value}
+                    onChange={(event) => handlePropertyDraftChange(field.key, event.target.value)}
+                    disabled={!selectedNode || isLoading || isPropertySaving || !onSaveProperties}
+                    spellCheck={false}
+                    aria-label={`${field.key} SGF property values`}
+                    placeholder={field.placeholder}
+                  />
+                ) : (
+                  <input
+                    value={value}
+                    onChange={(event) => handlePropertyDraftChange(field.key, event.target.value)}
+                    disabled={!selectedNode || isLoading || isPropertySaving || !onSaveProperties}
+                    spellCheck={false}
+                    aria-label={`${field.key} SGF property value`}
+                    placeholder={field.placeholder}
+                  />
+                )}
+              </label>
+            );
+          })}
+        </div>
+        <p className="sgf-properties-note">Markup fields accept comma or line separated SGF values. Empty fields delete that property.</p>
+        <button
+          type="button"
+          onClick={handleSaveProperties}
+          disabled={!selectedNode || isLoading || isPropertySaving || !onSaveProperties || propertyUpdates.length === 0}
+        >
+          {isPropertySaving ? "Saving..." : "Save Properties"}
+        </button>
+      </section>
     </aside>
   );
+}
+
+type PropertyField = {
+  key: string;
+  label: string;
+  placeholder: string;
+  multiline?: boolean;
+  multiValue?: boolean;
+};
+
+const nodePropertyFields: PropertyField[] = [
+  { key: "N", label: "N node name", placeholder: "Fuseki choice" },
+  { key: "TR", label: "TR triangles", placeholder: "dd, pp", multiline: true, multiValue: true },
+  { key: "SQ", label: "SQ squares", placeholder: "dc, qc", multiline: true, multiValue: true },
+  { key: "CR", label: "CR circles", placeholder: "jj", multiline: true, multiValue: true },
+  { key: "MA", label: "MA marks", placeholder: "pq", multiline: true, multiValue: true },
+  { key: "LB", label: "LB labels", placeholder: "dd:A, pp:B", multiline: true, multiValue: true }
+];
+
+const rootPropertyFields: PropertyField[] = [
+  { key: "PB", label: "PB black", placeholder: "Black player" },
+  { key: "PW", label: "PW white", placeholder: "White player" },
+  { key: "KM", label: "KM komi", placeholder: "7.5" },
+  { key: "RE", label: "RE result", placeholder: "B+R" }
+];
+
+function getPropertyFields(isRoot: boolean): PropertyField[] {
+  return isRoot ? [...rootPropertyFields, ...nodePropertyFields] : nodePropertyFields;
+}
+
+function buildPropertyDraft(node: SgfTreeNodeDto | null, fields: PropertyField[]): Record<string, string> {
+  const draft: Record<string, string> = {};
+  for (const field of fields) {
+    if (!node) {
+      draft[field.key] = "";
+      continue;
+    }
+    const values = propertyValues(node, field.key);
+    draft[field.key] = field.multiValue ? values.join("\n") : values[0] ?? "";
+  }
+  return draft;
+}
+
+function buildPropertyUpdates(node: SgfTreeNodeDto | null, fields: PropertyField[], draft: Record<string, string>): SgfPropertyUpdate[] {
+  if (!node) return [];
+  return fields.flatMap((field) => {
+    const previous = normalizeComparablePropertyValues(propertyValues(node, field.key), field);
+    const next = parsePropertyValues(draft[field.key] ?? "", field);
+    return arePropertyValuesEqual(previous, next) ? [] : [{ key: field.key, values: next }];
+  });
+}
+
+function propertyValues(node: SgfTreeNodeDto, key: string): string[] {
+  return node.properties.find((property) => property.key.toUpperCase() === key)?.values ?? [];
+}
+
+function parsePropertyValues(value: string, field: PropertyField): string[] {
+  if (!field.multiValue) {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeComparablePropertyValues(values: string[], field: PropertyField): string[] {
+  return field.multiValue ? values : values.slice(0, 1);
+}
+
+function arePropertyValuesEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function buildTreeRows(tree: SgfTreeDto | null): TreeRow[] {

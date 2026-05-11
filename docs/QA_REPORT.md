@@ -23,15 +23,16 @@ Covered checks:
 | SGF variation reorder command | Automated | Verifies the local command surface for sibling variation reorder is present and the reorder fixture can represent the target tree shape. This is not interactive UI smoke evidence. |
 | LegacyShell main menu surface | Automated | Statically verifies the `View`, `Engine`, `Tools`, and `Help` menu entries in `LegacyShell.tsx` are present, identifiable by label or `data-testid`, and are not disabled-only placeholders. This is static menu-surface evidence only; runtime UI automation still needs to prove each entry reaches the expected surface. |
 | Native SGF save/read-back refresh surface | Automated | Statically verifies native SGF save writes through `write_sgf_file`, reads the saved file back through `read_sgf_file`/`readSgfDocument`, and refreshes App state by parsing, replaying, rebuilding the tree, and checking cache from the read-back SGF text. This is repository-local evidence only; it is not real desktop GUI save/reopen smoke. |
+| SGF existing move edit surface | Automated | Statically verifies `sgf_existing_move_edit_surface`: `edit_sgf_move` is defined/registered and the repository-local backend/App/SgfTreePanel edit-existing-move surface is wired. This is repository-local evidence only; it is not interactive desktop edit/save/reopen proof. |
 
 Current repository-local alpha gate result:
 
 ```text
 python3 scripts/smoke_user_flows.py --verbose
-User-flow smoke: 19 passed, 0 failed, 5 pending.
+User-flow smoke: 21 passed, 0 failed, 5 pending.
 ```
 
-With the native SGF save/read-back gate included, repository-local read-back refresh evidence is complete: `native_sgf_save_readback_surface` passes and verifies that backend save reads the saved file back while App save handling refreshes parse/replay/tree/cache state from the read-back text. This is still not a 100% or release-ready gate because the runtime/external gates listed below remain pending.
+With the native SGF save/read-back and existing-move-edit gates included, repository-local read-back refresh and edit-existing-move surface evidence is complete: `native_sgf_save_readback_surface` passes and verifies that backend save reads the saved file back while App save handling refreshes parse/replay/tree/cache state from the read-back text, and `sgf_existing_move_edit_surface` passes with command/frontend surface evidence. This is still not a 100% or release-ready gate because the runtime/external gates listed below remain pending.
 
 ## Deferred Runtime Gates
 
@@ -50,4 +51,4 @@ These are not marked complete by the smoke skeleton:
 
 Passing `scripts/smoke_user_flows.py` means the repository still has the local fixture and command surface needed for SGF comment editing, node property editing, append move/pass, delete selected non-root node/subtree, and variation reorder foundations. It does not prove that a user can complete those flows in the native desktop UI, save them, reopen the file, and get identical board/tree state.
 
-As of the current alpha gate, `scripts/smoke_user_flows.py --verbose` reports `19 passed, 0 failed, 5 pending`. Repository-local native SGF save/read-back refresh evidence is complete, but real desktop SGF save/reopen parity remains pending until the native Tauri GUI flow is recorded. Do not claim real desktop SGF save/reopen parity, live KataGo, Fox/Yike, readboard, production installer, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.
+As of the current alpha gate, `scripts/smoke_user_flows.py --verbose` reports `21 passed, 0 failed, 5 pending`. Repository-local native SGF save/read-back refresh and edit-existing-move surface evidence is complete, but real desktop SGF save/reopen parity remains pending until the native Tauri GUI flow is recorded. Do not claim real desktop SGF save/reopen parity, live KataGo, Fox/Yike, readboard, production installer, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.

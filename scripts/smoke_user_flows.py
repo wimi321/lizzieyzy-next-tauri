@@ -29,10 +29,28 @@ TAURI_COMMANDS = [
     "append_sgf_move",
     "delete_sgf_node",
 ]
-PENDING_TAURI_COMMANDS = [
-    "update_sgf_node_properties",
-]
-PENDING_REORDER_TAURI_COMMAND = "reorder_sgf_variation"
+TAURI_COMMAND_GROUPS = {
+    "tauri_sgf_properties_command": ["update_sgf_node_properties"],
+    "tauri_sgf_reorder_command": ["reorder_sgf_variation"],
+    "tauri_sgf_file_commands": ["read_sgf_file", "write_sgf_file"],
+    "tauri_preferences_commands": ["load_app_preferences", "save_app_preferences"],
+    "tauri_engine_profile_commands": [
+        "load_engine_profiles_settings",
+        "save_engine_profiles_settings",
+    ],
+    "tauri_engine_asset_command": ["engine_asset_checks"],
+    "tauri_katago_job_commands": ["katago_start_analyze_game", "katago_cancel_analysis"],
+    "tauri_analysis_cache_commands": [
+        "get_analysis_cache",
+        "save_analysis_cache",
+        "delete_analysis_cache",
+    ],
+    "tauri_readboard_sidecar_commands": [
+        "readboard_sidecar_probe",
+        "readboard_sidecar_sync_snapshot",
+    ],
+    "tauri_provider_fetch_commands": ["provider_fetch_yike", "provider_fetch_fox"],
+}
 
 
 @dataclass
@@ -167,12 +185,7 @@ class UserFlowSmoke:
         text = self.read_text("apps/desktop/src-tauri/src/lib.rs")
         if text is None:
             return
-        failures: list[str] = []
-        for command in TAURI_COMMANDS:
-            if not has_tauri_command_function(text, command):
-                failures.append(f"{command} function")
-            if not command_registered_in_handler(text, command):
-                failures.append(f"{command} invoke handler")
+        failures = missing_tauri_command_surface(text, TAURI_COMMANDS)
         if failures:
             self.fail("tauri_sgf_edit_commands", "missing command surface: " + ", ".join(failures))
         else:
@@ -181,35 +194,33 @@ class UserFlowSmoke:
                 "comment update, append move, and delete node commands are defined and registered",
             )
 
-        for command in PENDING_TAURI_COMMANDS:
-            if has_tauri_command_function(text, command) and command_registered_in_handler(text, command):
-                self.pass_("tauri_sgf_properties_command", f"{command} is defined and registered")
+        for name, commands in TAURI_COMMAND_GROUPS.items():
+            failures = missing_tauri_command_surface(text, commands)
+            if failures:
+                self.fail(name, "missing command surface: " + ", ".join(failures))
             else:
-                self.pending_legacy_properties_command(command)
+                self.pass_(name, ", ".join(commands) + " are defined and registered")
 
-        command = PENDING_REORDER_TAURI_COMMAND
-        if has_tauri_command_function(text, command) and command_registered_in_handler(text, command):
-            self.pass_("tauri_sgf_reorder_command", f"{command} is defined and registered")
-        else:
-            self.pending(
-                "tauri_sgf_reorder_command",
-                f"{command} is not yet registered; keep this as a TODO gate until SGF variation reorder lands",
-            )
-
-    def pending_legacy_properties_command(self, command: str) -> None:
-        self.pending(
-            "tauri_sgf_properties_command",
-            f"{command} is not yet registered; keep this as a TODO gate until SGF node property editing lands",
-        )
-
-    def check_future_ui_tauri_gate(self) -> None:
+    def check_external_runtime_gates(self) -> None:
         self.pending(
             "ui_tauri_runtime_smoke",
             "TODO gate: automate real desktop UI flow for open SGF, navigate branches, edit/save, reopen, and verify board state",
         )
         self.pending(
-            "external_live_smoke",
-            "TODO gate: validate KataGo/readboard/provider flows only with controlled engine/sidecar/network evidence",
+            "katago_live_smoke",
+            "TODO gate: validate real KataGo analysis only with a controlled engine binary, model, config, and runtime evidence",
+        )
+        self.pending(
+            "readboard_live_smoke",
+            "TODO gate: validate real readboard sidecar flows only with installed sidecar/runtime evidence",
+        )
+        self.pending(
+            "provider_live_smoke",
+            "TODO gate: validate live provider fetch flows only with controlled network/provider evidence",
+        )
+        self.pending(
+            "multiplatform_packaging_smoke",
+            "TODO gate: validate macOS/Windows/Linux packaging in platform-specific build environments",
         )
 
     def run(self) -> list[SmokeResult]:
@@ -218,12 +229,26 @@ class UserFlowSmoke:
         self.check_sgf_reorder_fixture()
         self.check_package_scripts()
         self.check_tauri_commands()
-        self.check_future_ui_tauri_gate()
+        self.check_external_runtime_gates()
         return self.results
 
 
+def missing_tauri_command_surface(text: str, commands: list[str]) -> list[str]:
+    failures: list[str] = []
+    for command in commands:
+        if not has_tauri_command_function(text, command):
+            failures.append(f"{command} function")
+        if not command_registered_in_handler(text, command):
+            failures.append(f"{command} invoke handler")
+    return failures
+
+
 def has_tauri_command_function(text: str, command: str) -> bool:
-    pattern = re.compile(r"#\[tauri::command\]\s*(?:pub\s+)?fn\s+" + re.escape(command) + r"\s*\(")
+    pattern = re.compile(
+        r"#\[tauri::command\](?:\s*#\[[^\]]+\])*\s*(?:pub\s+)?fn\s+"
+        + re.escape(command)
+        + r"\s*\("
+    )
     return bool(pattern.search(text))
 
 

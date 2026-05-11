@@ -40,6 +40,12 @@ struct AppendSgfMoveResultDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct EditSgfMoveResultDto {
+    sgf_text: String,
+    node_id: NodeId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DeleteSgfNodeResultDto {
     sgf_text: String,
     parent_node_id: NodeId,
@@ -585,6 +591,20 @@ fn append_sgf_move(
     Ok(AppendSgfMoveResultDto {
         sgf_text: result.sgf_text,
         new_node_id: result.new_node_id,
+    })
+}
+
+#[tauri::command]
+fn edit_sgf_move(
+    sgf_text: String,
+    node_id: NodeId,
+    color: app_model::PlayerColor,
+    vertex: MoveVertex,
+) -> Result<EditSgfMoveResultDto, String> {
+    let result = sgf::edit_sgf_move(&sgf_text, node_id, color, vertex).map_err(|err| err.to_string())?;
+    Ok(EditSgfMoveResultDto {
+        sgf_text: result.sgf_text,
+        node_id: result.node_id,
     })
 }
 
@@ -2845,6 +2865,7 @@ pub fn run() {
             update_sgf_node_comment,
             update_sgf_node_properties,
             append_sgf_move,
+            edit_sgf_move,
             delete_sgf_node,
             reorder_sgf_variation,
             replay_sgf_position_at_node,
@@ -3387,6 +3408,123 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_ascii_lowercase().contains("occupied"));
+    }
+
+    #[test]
+    fn command_edits_sgf_move_and_keeps_node_id_stable() {
+        let input = "(;SZ[5];B[aa]C[first];W[bb])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("first"))
+            .unwrap()
+            .id;
+
+        let result = edit_sgf_move(
+            input.to_string(),
+            node_id,
+            app_model::PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 2, y: 2 }),
+        )
+        .unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text).unwrap().unwrap();
+        let edited = updated_tree.nodes.iter().find(|node| node.id == node_id).unwrap();
+
+        assert_eq!(result.node_id, node_id);
+        assert_eq!(edited.color, Some(app_model::PlayerColor::Black));
+        assert_eq!(edited.vertex, Some(MoveVertex::Point(PointDto { x: 2, y: 2 })));
+        assert_eq!(edited.comment.as_deref(), Some("first"));
+    }
+
+    #[test]
+    fn command_edit_sgf_move_rejects_root_node() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+
+        let error = edit_sgf_move(
+            input.to_string(),
+            tree.root_id,
+            app_model::PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap_err();
+
+        assert!(error.to_ascii_lowercase().contains("root"));
+    }
+
+    #[test]
+    fn command_edit_sgf_move_rejects_non_move_node() {
+        let input = "(;SZ[5];C[setup];B[aa])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("setup"))
+            .unwrap()
+            .id;
+
+        let error = edit_sgf_move(
+            input.to_string(),
+            node_id,
+            app_model::PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap_err();
+
+        assert!(error.to_ascii_lowercase().contains("move"));
+    }
+
+    #[test]
+    fn command_edit_sgf_move_rejects_occupied_point() {
+        let input = "(;SZ[5];B[aa];W[bb]C[target])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("target"))
+            .unwrap()
+            .id;
+
+        let error = edit_sgf_move(
+            input.to_string(),
+            node_id,
+            app_model::PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 0, y: 0 }),
+        )
+        .unwrap_err();
+
+        assert!(error.to_ascii_lowercase().contains("occupied"));
+    }
+
+    #[test]
+    fn command_edit_sgf_move_preserves_comment_property_and_child() {
+        let input = "(;SZ[5];B[aa]C[keep]N[name]ZZ[unknown];W[bb]C[child])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("keep"))
+            .unwrap()
+            .id;
+
+        let result = edit_sgf_move(
+            input.to_string(),
+            node_id,
+            app_model::PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 2, y: 2 }),
+        )
+        .unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text.clone()).unwrap().unwrap();
+        let edited = updated_tree.nodes.iter().find(|node| node.id == node_id).unwrap();
+
+        assert_eq!(edited.comment.as_deref(), Some("keep"));
+        assert_eq!(edited.name.as_deref(), Some("name"));
+        assert!(result.sgf_text.contains("ZZ[unknown]"));
+        assert!(updated_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("child") && node.parent_id == Some(node_id)));
     }
 
     #[test]

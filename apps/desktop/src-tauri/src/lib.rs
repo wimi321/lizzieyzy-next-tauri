@@ -33,6 +33,12 @@ const ANALYSIS_CACHE_DB_FILE: &str = "analysis-cache.sqlite3";
 const DEFAULT_ENGINE_PROFILE_ID: &str = "default";
 const DEFAULT_PROVIDER_HTTP_TIMEOUT_MS: u64 = 30_000;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppendSgfMoveResultDto {
+    sgf_text: String,
+    new_node_id: NodeId,
+}
+
 #[derive(Debug, Default)]
 struct ReqwestProviderTransport;
 
@@ -461,6 +467,21 @@ fn update_sgf_node_comment(
     comment: Option<String>,
 ) -> Result<String, String> {
     sgf::update_sgf_node_comment(&sgf_text, node_id, comment.as_deref()).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn append_sgf_move(
+    sgf_text: String,
+    parent_node_id: NodeId,
+    color: app_model::PlayerColor,
+    vertex: MoveVertex,
+) -> Result<AppendSgfMoveResultDto, String> {
+    let result =
+        sgf::append_sgf_move(&sgf_text, parent_node_id, color, vertex).map_err(|err| err.to_string())?;
+    Ok(AppendSgfMoveResultDto {
+        sgf_text: result.sgf_text,
+        new_node_id: result.new_node_id,
+    })
 }
 
 #[tauri::command]
@@ -1947,6 +1968,7 @@ pub fn run() {
             readboard_sidecar_sync_snapshot,
             replay_sgf_positions,
             update_sgf_node_comment,
+            append_sgf_move,
             replay_sgf_position_at_node,
             read_sgf_file,
             write_sgf_file,
@@ -2072,6 +2094,96 @@ mod tests {
         let node = updated_tree.nodes.iter().find(|node| node.id == node_id).unwrap();
 
         assert_eq!(node.comment, None);
+    }
+
+    #[test]
+    fn command_appends_sgf_move_to_leaf() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let leaf_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = append_sgf_move(
+            input.to_string(),
+            leaf_id,
+            app_model::PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text).unwrap().unwrap();
+        let appended = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.new_node_id)
+            .unwrap();
+
+        assert_eq!(appended.parent_id, Some(leaf_id));
+        assert_eq!(appended.color, Some(app_model::PlayerColor::White));
+        assert_eq!(appended.vertex, Some(MoveVertex::Point(PointDto { x: 1, y: 1 })));
+        assert_eq!(appended.move_number, Some(2));
+    }
+
+    #[test]
+    fn command_appends_sgf_move_as_variation() {
+        let input = "(;SZ[5];B[aa];W[bb])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = append_sgf_move(
+            input.to_string(),
+            parent_id,
+            app_model::PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 2, y: 2 }),
+        )
+        .unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text).unwrap().unwrap();
+        let parent = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == parent_id)
+            .unwrap();
+        let appended = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.new_node_id)
+            .unwrap();
+
+        assert_eq!(parent.child_ids.len(), 2);
+        assert_eq!(appended.parent_id, Some(parent_id));
+        assert_eq!(appended.variation_index, 1);
+        assert_eq!(appended.color, Some(app_model::PlayerColor::White));
+        assert_eq!(appended.vertex, Some(MoveVertex::Point(PointDto { x: 2, y: 2 })));
+    }
+
+    #[test]
+    fn command_append_sgf_move_reports_illegal_occupied_point() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let leaf_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let error = append_sgf_move(
+            input.to_string(),
+            leaf_id,
+            app_model::PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 0, y: 0 }),
+        )
+        .unwrap_err();
+
+        assert!(error.to_ascii_lowercase().contains("occupied"));
     }
 
     #[test]

@@ -44,6 +44,18 @@ pub struct DeleteSgfNodeResult {
     pub parent_node_id: NodeId,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SgfPropertyUpdate {
+    pub key: String,
+    pub values: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateSgfNodePropertiesResult {
+    pub sgf_text: String,
+    pub node_id: NodeId,
+}
+
 #[derive(Debug, Error)]
 pub enum SgfError {
     #[error("SGF is empty")]
@@ -56,6 +68,8 @@ pub enum SgfError {
     CannotDeleteRoot,
     #[error("illegal SGF move: {0}")]
     IllegalMove(String),
+    #[error("invalid SGF property key: {0}")]
+    InvalidPropertyKey(String),
     #[error("unsupported board size: {0}")]
     UnsupportedBoardSize(u8),
 }
@@ -366,6 +380,28 @@ pub fn update_sgf_node_comment(
     let node = find_sgf_node_mut(root, node_id).ok_or(SgfError::NodeNotFound)?;
     set_node_comment(node, comment);
     serialize_sgf_document(&document)
+}
+
+pub fn update_sgf_node_properties(
+    input: &str,
+    node_id: NodeId,
+    updates: Vec<SgfPropertyUpdate>,
+) -> Result<UpdateSgfNodePropertiesResult, SgfError> {
+    for update in &updates {
+        validate_sgf_property_key(&update.key)?;
+    }
+
+    let mut document = parse_sgf(input)?;
+    let root = document.root.as_mut().ok_or(SgfError::Malformed)?;
+    let node = find_sgf_node_mut(root, node_id).ok_or(SgfError::NodeNotFound)?;
+    for update in updates {
+        set_node_property_values(node, update);
+    }
+
+    Ok(UpdateSgfNodePropertiesResult {
+        sgf_text: serialize_sgf_document(&document)?,
+        node_id,
+    })
 }
 
 pub fn delete_sgf_node(input: &str, node_id: NodeId) -> Result<DeleteSgfNodeResult, SgfError> {
@@ -1426,6 +1462,41 @@ fn set_node_comment(node: &mut SgfNode, comment: Option<&str>) {
     });
 }
 
+fn validate_sgf_property_key(key: &str) -> Result<(), SgfError> {
+    if (1..=8).contains(&key.len()) && key.bytes().all(|byte| byte.is_ascii_uppercase()) {
+        Ok(())
+    } else {
+        Err(SgfError::InvalidPropertyKey(key.to_string()))
+    }
+}
+
+fn set_node_property_values(node: &mut SgfNode, update: SgfPropertyUpdate) {
+    if update.values.is_empty() {
+        node.properties.retain(|property| property.key != update.key);
+        return;
+    }
+
+    let mut replaced = false;
+    node.properties.retain_mut(|property| {
+        if property.key != update.key {
+            return true;
+        }
+        if replaced {
+            return false;
+        }
+        property.values.clone_from(&update.values);
+        replaced = true;
+        true
+    });
+
+    if !replaced {
+        node.properties.push(SgfProperty {
+            key: update.key,
+            values: update.values,
+        });
+    }
+}
+
 fn replay_sgf_position_at_path(document: &SgfDocument, path: &[usize]) -> Result<PositionDto, SgfError> {
     let replay = replay_sgf_state_at_path(document, path)?;
     Ok(PositionDto {
@@ -2240,6 +2311,165 @@ mod tests {
 
         let cleared_again = update_sgf_node_comment(input, node_id, None).unwrap();
         assert_eq!(cleared_again, updated);
+    }
+
+    #[test]
+    fn updates_and_clears_root_properties() {
+        let input = "(;GM[1]FF[4]SZ[19]PB[Old Black]PW[Old White]KM[6.5]RE[?];B[pd])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+
+        let result = update_sgf_node_properties(
+            input,
+            tree.root_id,
+            vec![
+                SgfPropertyUpdate {
+                    key: "PB".to_string(),
+                    values: vec!["New Black".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "KM".to_string(),
+                    values: vec!["7.5".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "RE".to_string(),
+                    values: Vec::new(),
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(result.node_id, tree.root_id);
+        assert_eq!(
+            result.sgf_text,
+            "(;GM[1]FF[4]SZ[19]PB[New Black]PW[Old White]KM[7.5];B[pd])"
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(reparsed.black_name.as_deref(), Some("New Black"));
+        assert_eq!(reparsed.white_name.as_deref(), Some("Old White"));
+        assert_eq!(reparsed.komi, 7.5);
+        assert_eq!(reparsed.result, None);
+    }
+
+    #[test]
+    fn updates_variation_node_name_markup_and_label() {
+        let input = "(;SZ[5];B[aa](;W[bb]N[main])(;W[cc]N[branch]TR[aa][bb]LB[cc:old]ZZ[keep]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.name.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let result = update_sgf_node_properties(
+            input,
+            branch_id,
+            vec![
+                SgfPropertyUpdate {
+                    key: "N".to_string(),
+                    values: vec!["edited".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "TR".to_string(),
+                    values: vec!["dd".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "LB".to_string(),
+                    values: vec!["aa:A".to_string(), "bb:B".to_string()],
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.sgf_text,
+            "(;SZ[5];B[aa](;W[bb]N[main])(;W[cc]N[edited]TR[dd]LB[aa:A][bb:B]ZZ[keep]))"
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(serialize_sgf_document(&reparsed).unwrap(), result.sgf_text);
+    }
+
+    #[test]
+    fn updating_property_retains_unknown_sibling_property() {
+        let input = "(;SZ[5]XY[root];B[aa]C[old]ZZ[keep];W[bb])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let result = update_sgf_node_properties(
+            input,
+            node_id,
+            vec![SgfPropertyUpdate {
+                key: "C".to_string(),
+                values: vec!["new".to_string()],
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(result.sgf_text, "(;SZ[5]XY[root];B[aa]C[new]ZZ[keep];W[bb])");
+    }
+
+    #[test]
+    fn property_update_escapes_bracket_backslash_and_newline_roundtrip() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+        let value = "close ] slash \\ line\nnext";
+
+        let result = update_sgf_node_properties(
+            input,
+            node_id,
+            vec![SgfPropertyUpdate {
+                key: "C".to_string(),
+                values: vec![value.to_string()],
+            }],
+        )
+        .unwrap();
+
+        assert!(result.sgf_text.contains("C[close \\] slash \\\\ line\nnext]"));
+        let reparsed_tree = to_sgf_tree_dto(&parse_sgf(&result.sgf_text).unwrap())
+            .unwrap()
+            .unwrap();
+        let node = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == node_id)
+            .unwrap();
+        assert_eq!(node.comment.as_deref(), Some(value));
+    }
+
+    #[test]
+    fn property_update_invalid_key_returns_error() {
+        let input = "(;SZ[5];B[aa]C[old])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let error = update_sgf_node_properties(
+            input,
+            node_id,
+            vec![SgfPropertyUpdate {
+                key: "bad-key".to_string(),
+                values: vec!["new".to_string()],
+            }],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, SgfError::InvalidPropertyKey(key) if key == "bad-key"));
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
     }
 
     #[test]

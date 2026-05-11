@@ -42,6 +42,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("tauri_sgf_edit_commands", pass_names)
             self.assertIn("legacy_shell_menu_surface", pass_names)
             self.assertIn("native_sgf_save_readback_surface", pass_names)
+            self.assertIn("sgf_existing_move_edit_surface", pass_names)
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
@@ -84,6 +85,55 @@ class SmokeUserFlowsTests(unittest.TestCase):
             failures = {result.name: result.detail for result in results if result.status == "FAIL"}
             self.assertIn("tauri_sgf_file_commands", failures)
             self.assertIn("write_sgf_file function", failures["tauri_sgf_file_commands"])
+
+    def test_missing_edit_existing_move_command_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, omitted_commands={"edit_sgf_move"})
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("sgf_existing_move_edit_surface", failures)
+            self.assertIn("edit_sgf_move function", failures["sgf_existing_move_edit_surface"])
+
+    def test_missing_edit_existing_move_app_handler_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, app_edit_handler=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("sgf_existing_move_edit_surface", failures)
+            self.assertIn("App missing handleEditExistingMove", failures["sgf_existing_move_edit_surface"])
+
+    def test_edit_existing_move_surface_reduced_fixture_all_frontend_sources_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            for rel in (smoke_user_flows.BACKEND_SOURCE, smoke_user_flows.APP_SOURCE, smoke_user_flows.SGF_TREE_PANEL_SOURCE):
+                (root / rel).unlink()
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("sgf_existing_move_edit_surface", failures)
+            self.assertIn("sgf_existing_move_edit_surface", pending)
+            self.assertIn("reduced fixture", pending["sgf_existing_move_edit_surface"])
+
+    def test_edit_existing_move_surface_partial_frontend_source_missing_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            (root / smoke_user_flows.SGF_TREE_PANEL_SOURCE).unlink()
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("sgf_existing_move_edit_surface", failures)
+            self.assertIn("SgfTreePanel source", failures["sgf_existing_move_edit_surface"])
 
     def test_command_function_allows_intermediate_rust_attributes(self) -> None:
         text = """
@@ -189,6 +239,7 @@ def create_complete_smoke_fixture(
     root: Path,
     *,
     omitted_commands: set[str] | None = None,
+    app_edit_handler: bool = True,
 ) -> None:
     omitted_commands = omitted_commands or set()
     write_json(
@@ -259,7 +310,8 @@ def create_complete_smoke_fixture(
     )
     create_legacy_shell_fixture(root)
     create_backend_fixture(root)
-    create_app_fixture(root)
+    create_app_fixture(root, edit_existing_move_handler=app_edit_handler)
+    create_sgf_tree_panel_fixture(root)
 
 
 def create_legacy_shell_fixture(
@@ -357,11 +409,20 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
         export async function saveSgfDocument(path: string | null, sgfText: string, defaultFileName = "review.sgf"): Promise<SgfDocument | null> {{
           {save_body}
         }}
+
+        export async function editSgfMove(sgfText: string, nodeId: string, point: MoveVertex | "pass") {{
+          return await invoke("edit_sgf_move", {{ sgfText, nodeId, point }});
+        }}
         """,
     )
 
 
-def create_app_fixture(root: Path, *, refresh_after_save: bool = True) -> None:
+def create_app_fixture(
+    root: Path,
+    *,
+    refresh_after_save: bool = True,
+    edit_existing_move_handler: bool = True,
+) -> None:
     if refresh_after_save:
         save_body = """
         const saved = await saveSgfDocument(saveAs ? null : currentFilePath, sgfText, saveFileName);
@@ -397,6 +458,19 @@ def create_app_fixture(root: Path, *, refresh_after_save: bool = True) -> None:
         setDirty(false);
         setMessage(`Saved ${saved.path ? fileNameFromPath(saved.path) : saveFileName}.`);
         """
+    edit_handler_body = """
+      const sgfMoveEditMode = "existing";
+      const normalizeEditSgfMoveResult = (result) => result;
+      async function callEditSgfMove(nodeId, point) {
+        return normalizeEditSgfMoveResult(await editSgfMove(sgfText, nodeId, point));
+      }
+      async function handleEditExistingMove(nodeId, point) {
+        await callEditSgfMove(nodeId, point);
+        return sgfMoveEditMode;
+      }
+    """ if edit_existing_move_handler else """
+      const sgfMoveEditMode = "append";
+    """
     write(
         root / smoke_user_flows.APP_SOURCE,
         f"""
@@ -412,8 +486,26 @@ def create_app_fixture(root: Path, *, refresh_after_save: bool = True) -> None:
               setMessage(`Save failed: ${{error}}`);
             }}
           }}
+          {edit_handler_body}
           return handleSaveSgfDocument;
         }}
+        """,
+    )
+
+
+def create_sgf_tree_panel_fixture(root: Path) -> None:
+    write(
+        root / smoke_user_flows.SGF_TREE_PANEL_SOURCE,
+        """
+        type Props = {
+          moveEditMode: "append" | "existing";
+          canEditSelectedMove: boolean;
+          onEditSelectedMovePass: (nodeId: string) => void;
+        };
+
+        export function SgfTreePanel({ moveEditMode, canEditSelectedMove, onEditSelectedMovePass }: Props) {
+          return { moveEditMode, canEditSelectedMove, onEditSelectedMovePass };
+        }
         """,
     )
 

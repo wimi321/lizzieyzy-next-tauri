@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType } from "react";
 import { BoardCanvas } from "./components/BoardCanvas";
 import { WinrateChart } from "./components/WinrateChart";
 import { AnalysisPanel } from "./components/AnalysisPanel";
@@ -45,12 +45,22 @@ type CacheEngineKind = "fake" | "katago";
 type CachedAnalysisPayload = { frames: AnalysisFrameDto[]; problems: ProblemMarkerDto[] };
 type PendingPreferencesSave = { version: number; preferences: AppPreferences };
 type AppendSgfMove = (sgfText: string, parentNodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
+type EditSgfMove = (sgfText: string, nodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
 type DeleteSgfNode = (sgfText: string, nodeId: string) => Promise<unknown>;
 type ReorderSgfVariation = (sgfText: string, nodeId: string, targetIndex: number) => Promise<unknown>;
+type SgfMoveEditMode = "append" | "edit";
+type SgfTreeMoveEditProps = {
+  moveEditMode?: SgfMoveEditMode;
+  canEditSelectedMove?: boolean;
+  onMoveEditModeChange?: (mode: SgfMoveEditMode) => void;
+  onEditSelectedMovePass?: () => void;
+};
 type AnalysisCacheLoadResult =
   | { status: "hit"; record: AnalysisCacheRecord; engineKind: CacheEngineKind }
   | { status: "miss" }
   | { status: "error"; message: string };
+
+const SgfTreePanelWithMoveEdit = SgfTreePanel as ComponentType<ComponentProps<typeof SgfTreePanel> & SgfTreeMoveEditProps>;
 
 export function App() {
   const [health, setHealth] = useState<AppHealthDto | null>(null);
@@ -83,6 +93,7 @@ export function App() {
   const [isNodeDeleting, setIsNodeDeleting] = useState(false);
   const [isNodeReordering, setIsNodeReordering] = useState(false);
   const [editColor, setEditColor] = useState<PlayerColor>("black");
+  const [sgfMoveEditMode, setSgfMoveEditMode] = useState<SgfMoveEditMode>("append");
   const [treeNodePositionOverride, setTreeNodePositionOverride] = useState<PositionDto | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
   const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
@@ -144,10 +155,11 @@ export function App() {
   );
   const isBusy = isKataGoRunning || isCommentSaving || isPropertySaving || isMoveAppending || isNodeDeleting || isNodeReordering;
   const canDeleteSgfNode = Boolean(selectedSgfNode && selectedSgfNode.id !== sgfTree?.root_id && selectedSgfNode.parent_id !== null && !isBusy);
+  const canEditSelectedMove = Boolean(selectedSgfNode && selectedSgfNode.id !== sgfTree?.root_id && selectedSgfNode.color && selectedSgfNode.vertex !== null && selectedSgfNode.vertex !== undefined && !isBusy);
 
   useEffect(() => {
-    setEditColor(currentPosition.to_play);
-  }, [currentPosition.to_play, selectedSgfNodeId]);
+    setEditColor(sgfMoveEditMode === "edit" && selectedSgfNode?.color ? selectedSgfNode.color : currentPosition.to_play);
+  }, [currentPosition.to_play, selectedSgfNode?.color, sgfMoveEditMode]);
 
   useEffect(() => {
     setSelectedCandidateIndex(null);
@@ -772,6 +784,97 @@ export function App() {
     }
   }
 
+  async function handleEditExistingMove(vertex: MoveVertex) {
+    if (!selectedSgfNodeId) {
+      setMessage("Select an existing SGF move node before editing a move.");
+      return;
+    }
+    const node = sgfTree?.nodes.find((item) => item.id === selectedSgfNodeId) ?? null;
+    if (!node) {
+      setMessage("Edit move failed: selected SGF node was not found in the current tree.");
+      return;
+    }
+    if (node.id === sgfTree?.root_id || node.parent_id === null || node.parent_id === undefined) {
+      setMessage("Root SGF node cannot be edited as a move. Select an existing move node first.");
+      return;
+    }
+    if (!node.color || node.vertex === null || node.vertex === undefined) {
+      setMessage("Selected SGF node is not a move node. Select an existing black or white move before editing.");
+      return;
+    }
+    if (isBusy) return;
+
+    const sgfTreeRequest = beginSgfTreeLoad();
+    const sourceVersion = sgfTextEditVersionRef.current;
+    const sourceText = sgfText;
+    setIsMoveAppending(true);
+    setMessage(`Editing ${formatSgfNodeLabel(node)}...`);
+    try {
+      const result = normalizeEditSgfMoveResult(await callEditSgfMove(sourceText, node.id, editColor, vertex));
+      if (sgfTextEditVersionRef.current !== sourceVersion) {
+        setMessage("Edit move cancelled because the SGF source changed while the edit was running.");
+        return;
+      }
+
+      sgfTextEditVersionRef.current += 1;
+      const appliedVersion = sgfTextEditVersionRef.current;
+      setSgfText(result.sgfText);
+      setDirty(true);
+      clearReviewData();
+      resetAnalysisCacheState();
+
+      const [parsed, replayed, updatedTree] = await Promise.all([
+        parseSgfSummary(result.sgfText),
+        replaySgfPositions(result.sgfText),
+        parseSgfTree(result.sgfText)
+      ]);
+      if (sgfTextEditVersionRef.current !== appliedVersion) return;
+
+      const selectedNode = applySgfTreeSelectedNode(updatedTree, result.nodeId, sgfTreeRequest)
+        ?? selectSgfTreeNodeForMove(updatedTree, currentMove);
+      setGame(parsed);
+      setPositions(replayed);
+      setSgfTreeError(null);
+      setCommentDraft(selectedNode?.comment ?? "");
+
+      let replayWarning = "";
+      if (selectedNode) {
+        try {
+          const replayRequest = beginTreeNodeReplay();
+          const position = await replaySgfPositionAtNode(result.sgfText, selectedNode.id);
+          if (sgfTextEditVersionRef.current !== appliedVersion) return;
+          if (treeNodeReplayRequestVersionRef.current === replayRequest) {
+            setTreeNodePositionOverride(position);
+            setCurrentMove(clampMoveNumberToPositions(replayed, position.move_number));
+          }
+        } catch (error) {
+          if (sgfTextEditVersionRef.current !== appliedVersion) return;
+          setTreeNodePositionOverride(null);
+          setCurrentMove(clampMoveNumberToPositions(replayed, selectedNode.move_number ?? replayed.at(-1)?.move_number ?? parsed.moves.length));
+          replayWarning = ` Position replay failed: ${errorMessage(error)}`;
+        }
+      } else {
+        clearTreeNodePositionOverride();
+        setCurrentMove(clampMoveNumberToPositions(replayed, replayed.at(-1)?.move_number ?? parsed.moves.length));
+      }
+
+      setMessage(`Edited existing SGF move.${replayWarning}`);
+    } catch (error) {
+      setMessage(`Edit move failed: ${errorMessage(error)}`);
+    } finally {
+      setIsMoveAppending(false);
+      finishSgfTreeLoad(sgfTreeRequest);
+    }
+  }
+
+  function handleMoveEditInput(vertex: MoveVertex) {
+    if (sgfMoveEditMode === "edit") {
+      void handleEditExistingMove(vertex);
+      return;
+    }
+    void handleAppendMove(vertex);
+  }
+
   async function handleDeleteSgfNode(nodeId: string) {
     if (!selectedSgfNodeId) {
       setMessage("Select an SGF tree node before deleting.");
@@ -1206,6 +1309,14 @@ export function App() {
     return await appendSgfMove(sgfText, parentNodeId, color, vertex);
   }
 
+  async function callEditSgfMove(sgfText: string, nodeId: string, color: PlayerColor, vertex: MoveVertex): Promise<unknown> {
+    const editSgfMove = (backendApi as unknown as { editSgfMove?: EditSgfMove }).editSgfMove;
+    if (!editSgfMove) {
+      throw new Error("editSgfMove is not available yet. Bridge/Core needs to expose the SGF edit API.");
+    }
+    return await editSgfMove(sgfText, nodeId, color, vertex);
+  }
+
   async function callDeleteSgfNode(sgfText: string, nodeId: string): Promise<unknown> {
     const deleteSgfNode = (backendApi as unknown as { deleteSgfNode?: DeleteSgfNode }).deleteSgfNode;
     if (!deleteSgfNode) {
@@ -1247,7 +1358,7 @@ export function App() {
           selectedCandidateIndex={selectedCandidateIndex}
           canEdit={!isBusy && selectedSgfNodeId !== null}
           editColor={editColor}
-          onPlayPoint={(point) => void handleAppendMove({ point })}
+          onPlayPoint={(point) => handleMoveEditInput({ point })}
         />
       }
       chart={<WinrateChart frames={frames} currentMove={currentMove} />}
@@ -1262,7 +1373,7 @@ export function App() {
             onSelectCandidate={setSelectedCandidateIndex}
             onSelectProblem={handleMoveSelect}
           />
-          <SgfTreePanel
+          <SgfTreePanelWithMoveEdit
             tree={sgfTree}
             selectedNodeId={selectedSgfNodeId}
             currentMove={currentMove}
@@ -1278,6 +1389,10 @@ export function App() {
             isPropertySaving={isPropertySaving}
             commentActionLabel="Save Comment"
             commentNote="Saving writes the selected node comment into the SGF source text. Branch positions can be displayed; analysis remains mainline/current cache unless re-run."
+            moveEditMode={sgfMoveEditMode}
+            canEditSelectedMove={canEditSelectedMove}
+            onMoveEditModeChange={setSgfMoveEditMode}
+            onEditSelectedMovePass={() => void handleEditExistingMove("pass")}
             {...sgfTreeDeleteProps}
             {...sgfTreeReorderProps}
           />
@@ -1287,13 +1402,17 @@ export function App() {
         <div className="sgf-edit-provider-stack">
           <section className="sgf-edit-panel" aria-label="SGF move editing">
             <div className="sgf-edit-header">
-              <strong>Append move</strong>
-              <span>{colorLabel(editColor)} to play</span>
+              <strong>{sgfMoveEditMode === "append" ? "Append move" : "Edit move"}</strong>
+              <span>{colorLabel(editColor)} {sgfMoveEditMode === "append" ? "to play" : "move"}</span>
+            </div>
+            <div className="sgf-edit-controls" aria-label="Move edit mode">
+              <button type="button" aria-pressed={sgfMoveEditMode === "append"} disabled={isBusy} onClick={() => setSgfMoveEditMode("append")}>Append</button>
+              <button type="button" aria-pressed={sgfMoveEditMode === "edit"} disabled={isBusy} onClick={() => setSgfMoveEditMode("edit")}>Edit</button>
             </div>
             <div className="sgf-edit-controls" aria-label="Move color">
               <button type="button" aria-pressed={editColor === "black"} disabled={isBusy} onClick={() => setEditColor("black")}>B</button>
               <button type="button" aria-pressed={editColor === "white"} disabled={isBusy} onClick={() => setEditColor("white")}>W</button>
-              <button type="button" disabled={isBusy || selectedSgfNodeId === null} onClick={() => void handleAppendMove("pass")}>Pass</button>
+              <button type="button" disabled={isBusy || selectedSgfNodeId === null} onClick={() => handleMoveEditInput("pass")}>Pass</button>
             </div>
           </section>
           <ProviderPanel disabled={isBusy} onImport={handleProviderImport} />
@@ -1412,6 +1531,14 @@ function normalizeAppendSgfMoveResult(result: unknown): { sgfText: string; newNo
   const newNodeId = typeof result.newNodeId === "string" ? result.newNodeId : typeof result.new_node_id === "string" ? result.new_node_id : null;
   if (!sgfText || !newNodeId) throw new Error("appendSgfMove response must include sgfText and newNodeId.");
   return { sgfText, newNodeId };
+}
+
+function normalizeEditSgfMoveResult(result: unknown): { sgfText: string; nodeId: string } {
+  if (!isUnknownRecord(result)) throw new Error("editSgfMove returned an invalid response.");
+  const sgfText = typeof result.sgfText === "string" ? result.sgfText : typeof result.sgf_text === "string" ? result.sgf_text : null;
+  const nodeId = typeof result.nodeId === "string" ? result.nodeId : typeof result.node_id === "string" ? result.node_id : null;
+  if (!sgfText || !nodeId) throw new Error("editSgfMove response must include sgfText and nodeId.");
+  return { sgfText, nodeId };
 }
 
 function normalizeDeleteSgfNodeResult(result: unknown): { sgfText: string; parentNodeId: string } {

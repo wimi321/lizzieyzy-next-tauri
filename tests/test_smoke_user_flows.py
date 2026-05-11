@@ -66,6 +66,53 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("ui_tauri_runtime_smoke", pass_names)
             self.assertNotIn("ui_tauri_runtime_smoke", pending_names)
 
+    def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_katago_live_evidence(root)
+            write_valid_katago_tauri_runtime_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("katago_live_smoke", pass_names)
+            self.assertNotIn("katago_live_smoke", pending_names)
+
+    def test_invalid_katago_live_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_live_evidence()
+            find_evidence_check(evidence, "one_position_analysis")["details"]["moveInfoCount"] = 0
+            write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, evidence)
+            write_valid_katago_tauri_runtime_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_live_smoke", failures)
+            self.assertIn("katago_live_smoke", pending)
+            self.assertIn("CLI evidence: one_position_analysis must include positive moveInfoCount", pending["katago_live_smoke"])
+
+    def test_katago_live_requires_tauri_runtime_evidence_too(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_katago_live_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_live_smoke", failures)
+            self.assertIn("katago_live_smoke", pending)
+            self.assertIn("scripts/smoke_tauri_katago_live.py", pending["katago_live_smoke"])
+
     def test_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -395,6 +442,117 @@ def create_complete_smoke_fixture(
 
 def write_valid_tauri_runtime_ui_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, valid_tauri_runtime_ui_evidence())
+
+
+def write_valid_katago_live_evidence(root: Path) -> None:
+    write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, valid_katago_live_evidence())
+
+
+def write_valid_katago_tauri_runtime_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.KATAGO_TAURI_RUNTIME_SMOKE_EVIDENCE,
+        valid_katago_tauri_runtime_evidence(),
+    )
+
+
+def valid_katago_live_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.KATAGO_LIVE_SMOKE_SCHEMA,
+        "name": "katago_live_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "engine": {
+            "path": "<katago-engine>",
+            "modelPath": "<katago-model>",
+            "configPath": "<katago-config>",
+            "maxVisits": 1,
+            "timeoutSeconds": 120,
+        },
+        "checks": [
+            {
+                "name": "engine_assets",
+                "status": "pass",
+                "details": {
+                    "engineExecutable": True,
+                    "modelBytes": 12,
+                    "configBytes": 10,
+                },
+            },
+            {
+                "name": "version_probe",
+                "status": "pass",
+                "details": {"exitCode": 0, "versionText": "KataGo fake"},
+            },
+            {
+                "name": "one_position_analysis",
+                "status": "pass",
+                "details": {
+                    "id": "katago-live-smoke-one",
+                    "moveInfoCount": 2,
+                    "hasRootInfo": True,
+                    "hasOwnership": True,
+                    "hasPolicy": True,
+                },
+            },
+            {
+                "name": "batch_analysis",
+                "status": "pass",
+                "details": {
+                    "responseCount": 2,
+                    "responses": [
+                        {"id": "katago-live-smoke-batch-1", "moveInfoCount": 1, "hasRootInfo": True},
+                        {"id": "katago-live-smoke-batch-2", "moveInfoCount": 1, "hasRootInfo": True},
+                    ],
+                },
+            },
+            {
+                "name": "stderr_capture",
+                "status": "pass",
+                "details": {"stderrCaptured": True, "onePositionStderrBytes": 0, "batchStderrBytes": 0},
+            },
+        ],
+    }
+
+
+def valid_katago_tauri_runtime_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.KATAGO_TAURI_RUNTIME_SMOKE_SCHEMA,
+        "name": "katago_tauri_runtime_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "checks": [
+            {
+                "name": "runtime_started",
+                "status": "pass",
+                "details": {"tauriInternals": True, "platform": "MacIntel"},
+            },
+            {
+                "name": "katago_assets",
+                "status": "pass",
+                "details": {"engineExists": True, "modelBytes": 12, "configBytes": 10},
+            },
+            {
+                "name": "katago_failure_mode_missing_assets",
+                "status": "pass",
+                "details": {"observed": True, "missingRequired": ["model", "config"]},
+            },
+            {
+                "name": "katago_analyze_once",
+                "status": "pass",
+                "details": {"frameCount": 1, "candidateCount": 2, "hasRootInfo": True},
+            },
+            {
+                "name": "katago_analyze_game",
+                "status": "pass",
+                "details": {"frameCount": 2, "candidateCount": 2, "hasRootInfo": True},
+            },
+            {
+                "name": "katago_start_cancel",
+                "status": "pass",
+                "details": {"jobId": "job-1", "cancelRequested": True, "cancelConfirmed": True},
+            },
+        ],
+    }
 
 
 def valid_tauri_runtime_ui_evidence() -> dict[str, object]:

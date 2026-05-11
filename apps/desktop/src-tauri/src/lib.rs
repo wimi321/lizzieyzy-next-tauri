@@ -37,6 +37,18 @@ const RUNTIME_SMOKE_SGF_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH";
 const RUNTIME_SMOKE_REPORT_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH";
 const RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH";
 const RUNTIME_SMOKE_PHASE_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_PHASE";
+const RUNTIME_SMOKE_KATAGO_PROFILE_NAME_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_PROFILE_NAME";
+const RUNTIME_SMOKE_KATAGO_ENGINE_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_ENGINE_PATH";
+const RUNTIME_SMOKE_KATAGO_MODEL_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_MODEL_PATH";
+const RUNTIME_SMOKE_KATAGO_CONFIG_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CONFIG_PATH";
+const RUNTIME_SMOKE_KATAGO_WORKING_DIR_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_WORKING_DIR";
+const RUNTIME_SMOKE_KATAGO_MAX_VISITS_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_MAX_VISITS";
+const RUNTIME_SMOKE_KATAGO_ONCE_TURN_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_ONCE_TURN";
+const RUNTIME_SMOKE_KATAGO_GAME_MAX_VISITS_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_GAME_MAX_VISITS";
+const RUNTIME_SMOKE_KATAGO_CANCEL_MAX_VISITS_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CANCEL_MAX_VISITS";
+const RUNTIME_SMOKE_KATAGO_CANCEL_DELAY_MS_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CANCEL_DELAY_MS";
+const RUNTIME_SMOKE_KATAGO_RUN_GAME_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_RUN_GAME";
+const RUNTIME_SMOKE_KATAGO_RUN_CANCEL_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_RUN_CANCEL";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppendSgfMoveResultDto {
@@ -435,6 +447,19 @@ struct RuntimeSmokeConfigDto {
     report_path: Option<String>,
     expected_report_path: Option<String>,
     phase: Option<String>,
+    katago: Option<RuntimeSmokeKatagoConfigDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RuntimeSmokeKatagoConfigDto {
+    profile: EngineProfileDto,
+    max_visits: Option<u32>,
+    once_turn: Option<u32>,
+    game_max_visits: Option<u32>,
+    cancel_max_visits: Option<u32>,
+    cancel_delay_ms: Option<u32>,
+    run_game: Option<bool>,
+    run_cancel: Option<bool>,
 }
 
 #[tauri::command]
@@ -480,7 +505,30 @@ fn runtime_smoke_config() -> RuntimeSmokeConfigDto {
         report_path: non_empty_env(RUNTIME_SMOKE_REPORT_PATH_ENV),
         expected_report_path: non_empty_env(RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV),
         phase: non_empty_env(RUNTIME_SMOKE_PHASE_ENV),
+        katago: runtime_smoke_katago_config(),
     }
+}
+
+fn runtime_smoke_katago_config() -> Option<RuntimeSmokeKatagoConfigDto> {
+    let engine_path = non_empty_env(RUNTIME_SMOKE_KATAGO_ENGINE_PATH_ENV)?;
+    Some(RuntimeSmokeKatagoConfigDto {
+        profile: EngineProfileDto {
+            name: non_empty_env(RUNTIME_SMOKE_KATAGO_PROFILE_NAME_ENV)
+                .unwrap_or_else(|| "Runtime Smoke KataGo".to_string()),
+            engine_path,
+            model_path: non_empty_env(RUNTIME_SMOKE_KATAGO_MODEL_PATH_ENV),
+            config_path: non_empty_env(RUNTIME_SMOKE_KATAGO_CONFIG_PATH_ENV),
+            working_dir: non_empty_env(RUNTIME_SMOKE_KATAGO_WORKING_DIR_ENV),
+            backend: EngineBackend::KataGoAnalysis,
+        },
+        max_visits: env_u32(RUNTIME_SMOKE_KATAGO_MAX_VISITS_ENV),
+        once_turn: env_u32(RUNTIME_SMOKE_KATAGO_ONCE_TURN_ENV),
+        game_max_visits: env_u32(RUNTIME_SMOKE_KATAGO_GAME_MAX_VISITS_ENV),
+        cancel_max_visits: env_u32(RUNTIME_SMOKE_KATAGO_CANCEL_MAX_VISITS_ENV),
+        cancel_delay_ms: env_u32(RUNTIME_SMOKE_KATAGO_CANCEL_DELAY_MS_ENV),
+        run_game: env_bool(RUNTIME_SMOKE_KATAGO_RUN_GAME_ENV),
+        run_cancel: env_bool(RUNTIME_SMOKE_KATAGO_RUN_CANCEL_ENV),
+    })
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -499,6 +547,19 @@ fn non_empty_env(name: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn env_u32(name: &str) -> Option<u32> {
+    non_empty_env(name).and_then(|value| value.parse::<u32>().ok())
+}
+
+fn env_bool(name: &str) -> Option<bool> {
+    let value = non_empty_env(name)?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 #[tauri::command]

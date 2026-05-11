@@ -39,6 +39,25 @@ TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS = [
     "save_readback_roundtrip",
     "board_state_verified",
 ]
+KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
+KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
+KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
+    "engine_assets",
+    "version_probe",
+    "one_position_analysis",
+    "batch_analysis",
+    "stderr_capture",
+]
+KATAGO_TAURI_RUNTIME_SMOKE_EVIDENCE = "docs/qa/katago-tauri-runtime-smoke-macos.json"
+KATAGO_TAURI_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.katago-tauri-runtime-smoke.v1"
+KATAGO_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
+    "runtime_started",
+    "katago_failure_mode_missing_assets",
+    "katago_assets",
+    "katago_analyze_once",
+    "katago_analyze_game",
+    "katago_start_cancel",
+]
 TAURI_COMMANDS = [
     "update_sgf_node_comment",
     "append_sgf_move",
@@ -335,10 +354,7 @@ class UserFlowSmoke:
 
     def check_external_runtime_gates(self) -> None:
         self.check_tauri_runtime_ui_smoke_evidence()
-        self.pending(
-            "katago_live_smoke",
-            "TODO gate: validate real KataGo analysis only with a controlled engine binary, model, config, and runtime evidence",
-        )
+        self.check_katago_live_smoke_evidence()
         self.pending(
             "readboard_live_smoke",
             "TODO gate: validate real readboard sidecar flows only with installed sidecar/runtime evidence",
@@ -374,6 +390,44 @@ class UserFlowSmoke:
         self.pass_(
             "ui_tauri_runtime_smoke",
             f"macOS local Tauri runtime UI smoke evidence passes with {len(TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_katago_live_smoke_evidence(self) -> None:
+        failures: list[str] = []
+
+        cli_path = self.path(KATAGO_LIVE_SMOKE_EVIDENCE)
+        if not cli_path.is_file():
+            failures.append(f"run scripts/smoke_katago_live.py and record {KATAGO_LIVE_SMOKE_EVIDENCE}")
+        else:
+            cli_evidence = self.load_json(KATAGO_LIVE_SMOKE_EVIDENCE)
+            if cli_evidence is None:
+                return
+            failures.extend("CLI evidence: " + failure for failure in validate_katago_live_smoke_evidence(cli_evidence))
+
+        runtime_path = self.path(KATAGO_TAURI_RUNTIME_SMOKE_EVIDENCE)
+        if not runtime_path.is_file():
+            failures.append(
+                f"run scripts/smoke_tauri_katago_live.py and record {KATAGO_TAURI_RUNTIME_SMOKE_EVIDENCE}"
+            )
+        else:
+            runtime_evidence = self.load_json(KATAGO_TAURI_RUNTIME_SMOKE_EVIDENCE)
+            if runtime_evidence is None:
+                return
+            failures.extend(
+                "Tauri runtime evidence: " + failure
+                for failure in validate_katago_tauri_runtime_smoke_evidence(runtime_evidence)
+            )
+
+        if failures:
+            self.pending(
+                "katago_live_smoke",
+                "KataGo live smoke requires both CLI and Tauri runtime PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "katago_live_smoke",
+            "macOS live KataGo CLI and Tauri runtime smoke evidence both pass",
         )
 
     def run(self) -> list[SmokeResult]:
@@ -437,6 +491,222 @@ def validate_tauri_runtime_ui_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_tauri_runtime_ui_semantic_checks(checks))
     failures.extend(validate_top_level_save_reopen_proof(evidence))
     return failures
+
+
+def validate_katago_live_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != KATAGO_LIVE_SMOKE_SCHEMA:
+        failures.append(f"schema must be {KATAGO_LIVE_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    engine = evidence.get("engine")
+    if not isinstance(engine, dict):
+        failures.append("engine must be an object")
+    else:
+        for key in ("path", "modelPath", "configPath"):
+            value = engine.get(key)
+            if not isinstance(value, str) or not value:
+                failures.append(f"engine.{key} must be a non-empty string")
+        if not positive_number(engine.get("maxVisits")):
+            failures.append("engine.maxVisits must be positive")
+        if not positive_number(engine.get("timeoutSeconds")):
+            failures.append("engine.timeoutSeconds must be positive")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in KATAGO_LIVE_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in KATAGO_LIVE_SMOKE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_katago_engine_assets(check_by_name.get("engine_assets")))
+    failures.extend(validate_katago_analysis_check(check_by_name.get("one_position_analysis"), "one_position_analysis"))
+    failures.extend(validate_katago_batch_check(check_by_name.get("batch_analysis")))
+    failures.extend(validate_katago_stderr_check(check_by_name.get("stderr_capture")))
+    return failures
+
+
+def validate_katago_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != KATAGO_TAURI_RUNTIME_SMOKE_SCHEMA:
+        failures.append(f"schema must be {KATAGO_TAURI_RUNTIME_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in KATAGO_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in KATAGO_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_katago_runtime_started(check_by_name.get("runtime_started")))
+    failures.extend(validate_katago_runtime_failure_mode(check_by_name.get("katago_failure_mode_missing_assets")))
+    failures.extend(validate_katago_runtime_assets(check_by_name.get("katago_assets")))
+    failures.extend(validate_katago_runtime_analysis(check_by_name.get("katago_analyze_once"), "katago_analyze_once"))
+    failures.extend(validate_katago_runtime_analysis(check_by_name.get("katago_analyze_game"), "katago_analyze_game"))
+    failures.extend(validate_katago_runtime_cancel(check_by_name.get("katago_start_cancel")))
+    return failures
+
+
+def validate_katago_runtime_started(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["runtime_started evidence must be an object"]
+    if evidence.get("tauriInternals") is not True:
+        return ["runtime_started must confirm real Tauri runtime"]
+    return []
+
+
+def validate_katago_runtime_assets(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["katago_assets evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("engineExists") is not True and evidence.get("engineExecutable") is not True:
+        failures.append("katago_assets must confirm engine exists")
+    if not positive_number(first_present(evidence, "modelBytes", "modelSizeBytes")):
+        failures.append("katago_assets must include positive model bytes")
+    if not positive_number(first_present(evidence, "configBytes", "configSizeBytes")):
+        failures.append("katago_assets must include positive config bytes")
+    return failures
+
+
+def validate_katago_runtime_failure_mode(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["katago_failure_mode_missing_assets evidence must be an object"]
+    if evidence.get("observed") is not True:
+        return ["katago_failure_mode_missing_assets must confirm observed failure"]
+    missing_required = evidence.get("missingRequired")
+    if not isinstance(missing_required, list) or not missing_required:
+        structured_error = evidence.get("structuredError")
+        if not isinstance(structured_error, str) or not structured_error.strip():
+            return ["katago_failure_mode_missing_assets must include missing assets or structured error"]
+    return []
+
+
+def validate_katago_runtime_analysis(check: Any, name: str) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return [f"{name} evidence must be an object"]
+    failures: list[str] = []
+    if not positive_number(first_present(evidence, "frameCount", "frames", "responseCount", "visits")):
+        failures.append(f"{name} must include positive frame count")
+    if not positive_number(first_present(evidence, "candidateCount", "moveInfoCount", "candidateMoveCount", "candidates")):
+        failures.append(f"{name} must include positive candidate count")
+    if (
+        evidence.get("rootInfo") is not True
+        and evidence.get("hasRootInfo") is not True
+        and not positive_number(evidence.get("visits"))
+    ):
+        failures.append(f"{name} must confirm root info or positive visits")
+    return failures
+
+
+def validate_katago_runtime_cancel(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["katago_start_cancel evidence must be an object"]
+    failures: list[str] = []
+    if not isinstance(first_present(evidence, "jobId", "job_id"), str):
+        failures.append("katago_start_cancel must include job id")
+    event = evidence.get("event")
+    event_kind = event.get("kind") if isinstance(event, dict) else None
+    if evidence.get("cancelRequested") is not True:
+        failures.append("katago_start_cancel must confirm cancellation was requested")
+    if evidence.get("cancelConfirmed") is not True and event_kind != "cancelled":
+        failures.append("katago_start_cancel must confirm cancellation event")
+    return failures
+
+
+def validate_katago_engine_assets(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["engine_assets details must be an object"]
+    failures: list[str] = []
+    if evidence.get("engineExecutable") is not True:
+        failures.append("engine_assets must confirm executable engine")
+    if not positive_number(evidence.get("modelBytes")):
+        failures.append("engine_assets must include positive modelBytes")
+    if not positive_number(evidence.get("configBytes")):
+        failures.append("engine_assets must include positive configBytes")
+    return failures
+
+
+def validate_katago_analysis_check(check: Any, name: str) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return [f"{name} details must be an object"]
+    failures: list[str] = []
+    if not isinstance(evidence.get("id"), str) or not evidence.get("id"):
+        failures.append(f"{name} must include response id")
+    if not positive_number(evidence.get("moveInfoCount")):
+        failures.append(f"{name} must include positive moveInfoCount")
+    if evidence.get("hasRootInfo") is not True:
+        failures.append(f"{name} must confirm rootInfo")
+    return failures
+
+
+def validate_katago_batch_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["batch_analysis details must be an object"]
+    failures: list[str] = []
+    responses = evidence.get("responses")
+    if not isinstance(responses, list) or len(responses) < 2:
+        return ["batch_analysis must include at least two responses"]
+    if evidence.get("responseCount") != len(responses):
+        failures.append("batch_analysis responseCount must match responses")
+    for index, response in enumerate(responses):
+        for failure in validate_katago_analysis_check(response, f"batch_analysis.responses[{index}]"):
+            failures.append(failure)
+    return failures
+
+
+def validate_katago_stderr_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["stderr_capture details must be an object"]
+    if evidence.get("stderrCaptured") is not True:
+        return ["stderr_capture must confirm stderr capture"]
+    return []
+
+
+def positive_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and value > 0
 
 
 def validate_tauri_runtime_ui_semantic_checks(checks: list[Any]) -> list[str]:

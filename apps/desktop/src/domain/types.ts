@@ -41,3 +41,13 @@ export type EngineProfileRecordDto = { id: string; profile: EngineProfileDto; ma
 export type EngineProfilesSettingsDto = { selected_profile_id: string; profiles: EngineProfileRecordDto[] };
 export type AssetCheckDto = { path: string; exists: boolean; required: boolean; label: string };
 export type AppHealthDto = { app: string; architecture: string; rust_backend_ready: boolean; notes: string[] };
+export type KataGoLiveSmokeConfigDto = {
+  profile?: EngineProfileDto | null;
+  max_visits?: number | null;
+  once_turn?: number | null;
+  game_max_visits?: number | null;
+  cancel_max_visits?: number | null;
+  cancel_delay_ms?: number | null;
+  run_game?: boolean | null;
+  run_cancel?: boolean | null;
+};

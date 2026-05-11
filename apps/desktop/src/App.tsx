@@ -43,6 +43,7 @@ type CacheEngineKind = "fake" | "katago";
 type CachedAnalysisPayload = { frames: AnalysisFrameDto[]; problems: ProblemMarkerDto[] };
 type PendingPreferencesSave = { version: number; preferences: AppPreferences };
 type AppendSgfMove = (sgfText: string, parentNodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
+type DeleteSgfNode = (sgfText: string, nodeId: string) => Promise<unknown>;
 type AnalysisCacheLoadResult =
   | { status: "hit"; record: AnalysisCacheRecord; engineKind: CacheEngineKind }
   | { status: "miss" }
@@ -75,6 +76,7 @@ export function App() {
   const [commentDraft, setCommentDraft] = useState("");
   const [isCommentSaving, setIsCommentSaving] = useState(false);
   const [isMoveAppending, setIsMoveAppending] = useState(false);
+  const [isNodeDeleting, setIsNodeDeleting] = useState(false);
   const [editColor, setEditColor] = useState<PlayerColor>("black");
   const [treeNodePositionOverride, setTreeNodePositionOverride] = useState<PositionDto | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
@@ -131,7 +133,12 @@ export function App() {
   const maxMove = Math.max(positions.at(-1)?.move_number ?? 0, 1);
   const documentName = useMemo(() => currentFilePath ? fileNameFromPath(currentFilePath) : fallbackFileName ?? "Untitled SGF", [currentFilePath, fallbackFileName]);
   const saveFileName = documentName.toLowerCase().endsWith(".sgf") ? documentName : `${documentName}.sgf`;
-  const isBusy = isKataGoRunning || isCommentSaving || isMoveAppending;
+  const selectedSgfNode = useMemo(
+    () => selectedSgfNodeId ? sgfTree?.nodes.find((node) => node.id === selectedSgfNodeId) ?? null : null,
+    [selectedSgfNodeId, sgfTree]
+  );
+  const isBusy = isKataGoRunning || isCommentSaving || isMoveAppending || isNodeDeleting;
+  const canDeleteSgfNode = Boolean(selectedSgfNode && selectedSgfNode.id !== sgfTree?.root_id && selectedSgfNode.parent_id !== null && !isBusy);
 
   useEffect(() => {
     setEditColor(currentPosition.to_play);
@@ -668,6 +675,89 @@ export function App() {
     }
   }
 
+  async function handleDeleteSgfNode(nodeId: string) {
+    if (!selectedSgfNodeId) {
+      setMessage("Select an SGF tree node before deleting.");
+      return;
+    }
+    if (nodeId !== selectedSgfNodeId) {
+      setMessage("Delete cancelled because the selected SGF node changed.");
+      return;
+    }
+    const node = sgfTree?.nodes.find((item) => item.id === nodeId) ?? null;
+    if (!node) {
+      setMessage("Delete failed: selected SGF node was not found in the current tree.");
+      return;
+    }
+    if (node.id === sgfTree?.root_id || node.parent_id === null) {
+      setMessage("Root SGF node cannot be deleted.");
+      return;
+    }
+    if (isBusy) return;
+
+    const sgfTreeRequest = beginSgfTreeLoad();
+    const sourceVersion = sgfTextEditVersionRef.current;
+    const sourceText = sgfText;
+    setIsNodeDeleting(true);
+    setMessage(`Deleting ${formatSgfNodeLabel(node)} from SGF...`);
+    try {
+      const result = normalizeDeleteSgfNodeResult(await callDeleteSgfNode(sourceText, nodeId));
+      if (sgfTextEditVersionRef.current !== sourceVersion) {
+        setMessage("Delete node cancelled because the SGF source changed while the edit was running.");
+        return;
+      }
+
+      sgfTextEditVersionRef.current += 1;
+      const appliedVersion = sgfTextEditVersionRef.current;
+      setSgfText(result.sgfText);
+      setDirty(true);
+      clearReviewData();
+      resetAnalysisCacheState();
+
+      const [parsed, replayed, updatedTree] = await Promise.all([
+        parseSgfSummary(result.sgfText),
+        replaySgfPositions(result.sgfText),
+        parseSgfTree(result.sgfText)
+      ]);
+      if (sgfTextEditVersionRef.current !== appliedVersion) return;
+
+      const parentNode = applySgfTreeSelectedNode(updatedTree, result.parentNodeId, sgfTreeRequest)
+        ?? selectSgfTreeNodeForMove(updatedTree, 0);
+      setGame(parsed);
+      setPositions(replayed);
+      setSgfTreeError(null);
+      setCommentDraft(parentNode?.comment ?? "");
+
+      let replayWarning = "";
+      if (parentNode) {
+        try {
+          const replayRequest = beginTreeNodeReplay();
+          const position = await replaySgfPositionAtNode(result.sgfText, parentNode.id);
+          if (sgfTextEditVersionRef.current !== appliedVersion) return;
+          if (treeNodeReplayRequestVersionRef.current === replayRequest) {
+            setTreeNodePositionOverride(position);
+            setCurrentMove(clampMoveNumberToPositions(replayed, position.move_number));
+          }
+        } catch (error) {
+          if (sgfTextEditVersionRef.current !== appliedVersion) return;
+          setTreeNodePositionOverride(null);
+          setCurrentMove(clampMoveNumberToPositions(replayed, parentNode.move_number ?? 0));
+          replayWarning = ` Parent position replay failed: ${errorMessage(error)}`;
+        }
+      } else {
+        clearTreeNodePositionOverride();
+        setCurrentMove(0);
+      }
+
+      setMessage(`Deleted ${formatSgfNodeLabel(node)} and its subtree from SGF.${replayWarning}`);
+    } catch (error) {
+      setMessage(`Delete node failed: ${errorMessage(error)}`);
+    } finally {
+      setIsNodeDeleting(false);
+      finishSgfTreeLoad(sgfTreeRequest);
+    }
+  }
+
   async function refreshSgfTree(text: string, targetMove: number, showLoading = true) {
     const requestVersion = beginSgfTreeLoad(showLoading);
     try {
@@ -929,6 +1019,20 @@ export function App() {
     return await appendSgfMove(sgfText, parentNodeId, color, vertex);
   }
 
+  async function callDeleteSgfNode(sgfText: string, nodeId: string): Promise<unknown> {
+    const deleteSgfNode = (backendApi as unknown as { deleteSgfNode?: DeleteSgfNode }).deleteSgfNode;
+    if (!deleteSgfNode) {
+      throw new Error("deleteSgfNode is not available yet. Bridge/Core needs to expose the SGF delete API.");
+    }
+    return await deleteSgfNode(sgfText, nodeId);
+  }
+
+  const sgfTreeDeleteProps = {
+    onDeleteNode: (nodeId: string) => void handleDeleteSgfNode(nodeId),
+    isNodeDeleting,
+    canDelete: canDeleteSgfNode
+  };
+
   return (
     <LegacyShell
       themeClassName={preferences.boardTheme === "high-contrast" ? "theme-high-contrast" : ""}
@@ -971,6 +1075,7 @@ export function App() {
             isCommentSaving={isCommentSaving}
             commentActionLabel="Save Comment"
             commentNote="Saving writes the selected node comment into the SGF source text. Branch positions can be displayed; analysis remains mainline/current cache unless re-run."
+            {...sgfTreeDeleteProps}
           />
         </div>
       }
@@ -1103,6 +1208,18 @@ function normalizeAppendSgfMoveResult(result: unknown): { sgfText: string; newNo
   const newNodeId = typeof result.newNodeId === "string" ? result.newNodeId : typeof result.new_node_id === "string" ? result.new_node_id : null;
   if (!sgfText || !newNodeId) throw new Error("appendSgfMove response must include sgfText and newNodeId.");
   return { sgfText, newNodeId };
+}
+
+function normalizeDeleteSgfNodeResult(result: unknown): { sgfText: string; parentNodeId: string } {
+  if (!isUnknownRecord(result)) throw new Error("deleteSgfNode returned an invalid response.");
+  const sgfText = typeof result.sgfText === "string" ? result.sgfText : typeof result.sgf_text === "string" ? result.sgf_text : null;
+  const parentNodeId = typeof result.parentNodeId === "string"
+    ? result.parentNodeId
+    : typeof result.parent_node_id === "string"
+      ? result.parent_node_id
+      : null;
+  if (!sgfText || !parentNodeId) throw new Error("deleteSgfNode response must include sgfText and parentNodeId.");
+  return { sgfText, parentNodeId };
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {

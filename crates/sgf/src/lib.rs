@@ -38,6 +38,12 @@ pub struct AppendSgfMoveResult {
     pub new_node_id: NodeId,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteSgfNodeResult {
+    pub sgf_text: String,
+    pub parent_node_id: NodeId,
+}
+
 #[derive(Debug, Error)]
 pub enum SgfError {
     #[error("SGF is empty")]
@@ -46,6 +52,8 @@ pub enum SgfError {
     Malformed,
     #[error("SGF node was not found")]
     NodeNotFound,
+    #[error("cannot delete the SGF root node")]
+    CannotDeleteRoot,
     #[error("illegal SGF move: {0}")]
     IllegalMove(String),
     #[error("unsupported board size: {0}")]
@@ -358,6 +366,26 @@ pub fn update_sgf_node_comment(
     let node = find_sgf_node_mut(root, node_id).ok_or(SgfError::NodeNotFound)?;
     set_node_comment(node, comment);
     serialize_sgf_document(&document)
+}
+
+pub fn delete_sgf_node(input: &str, node_id: NodeId) -> Result<DeleteSgfNodeResult, SgfError> {
+    let mut document = parse_sgf(input)?;
+    let root = document.root.as_ref().ok_or(SgfError::Malformed)?;
+    let mut target_path = find_sgf_node_path(root, node_id).ok_or(SgfError::NodeNotFound)?;
+    let child_index = target_path.pop().ok_or(SgfError::CannotDeleteRoot)?;
+    let parent_node_id = stable_sgf_node_id(&target_path);
+
+    let root = document.root.as_mut().ok_or(SgfError::Malformed)?;
+    let parent = find_sgf_node_mut_at_path(root, &target_path).ok_or(SgfError::NodeNotFound)?;
+    if child_index >= parent.children.len() {
+        return Err(SgfError::NodeNotFound);
+    }
+    parent.children.remove(child_index);
+
+    Ok(DeleteSgfNodeResult {
+        sgf_text: serialize_sgf_document(&document)?,
+        parent_node_id,
+    })
 }
 
 pub fn append_sgf_move(
@@ -2212,6 +2240,152 @@ mod tests {
 
         let cleared_again = update_sgf_node_comment(input, node_id, None).unwrap();
         assert_eq!(cleared_again, updated);
+    }
+
+    #[test]
+    fn deletes_leaf_mainline_node_roundtrip() {
+        let input = "(;SZ[5]C[root]XY[keep];B[aa]C[first];W[bb]C[leaf]ZZ[unknown])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let leaf_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("leaf"))
+            .unwrap()
+            .id;
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("first"))
+            .unwrap()
+            .id;
+
+        let result = delete_sgf_node(input, leaf_id).unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert_eq!(result.sgf_text, "(;SZ[5]C[root]XY[keep];B[aa]C[first])");
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(serialize_sgf_document(&reparsed).unwrap(), result.sgf_text);
+        assert_eq!(replay_sgf_positions(&result.sgf_text).unwrap().len(), 2);
+        let reparsed_tree = to_sgf_tree_dto(&reparsed).unwrap().unwrap();
+        assert!(reparsed_tree.nodes.iter().any(|node| node.id == parent_id));
+        assert!(!reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("leaf")));
+    }
+
+    #[test]
+    fn deleting_node_with_subtree_removes_descendants() {
+        let input = "(;SZ[5];B[aa]C[parent];W[bb]C[target];B[cc]C[descendant])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let target_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("target"))
+            .unwrap()
+            .id;
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("parent"))
+            .unwrap()
+            .id;
+
+        let result = delete_sgf_node(input, target_id).unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert_eq!(result.sgf_text, "(;SZ[5];B[aa]C[parent])");
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        let reparsed_tree = to_sgf_tree_dto(&reparsed).unwrap().unwrap();
+        let parent = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == parent_id)
+            .unwrap();
+        assert!(parent.child_ids.is_empty());
+        assert!(!reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("target")));
+        assert!(!reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("descendant")));
+        assert!(replay_sgf_position_at_node(&result.sgf_text, parent_id)
+            .unwrap()
+            .errors
+            .is_empty());
+    }
+
+    #[test]
+    fn deleting_variation_sibling_keeps_other_siblings_and_parent() {
+        let input = concat!(
+            "(;SZ[5]C[root];B[aa]C[parent]",
+            "(;W[bb]C[main]XY[one])",
+            "(;W[cc]C[target];B[dd]C[target child])",
+            "(;W[dc]C[keep]ZZ[unknown]))"
+        );
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let target_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("target"))
+            .unwrap()
+            .id;
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("parent"))
+            .unwrap()
+            .id;
+
+        let result = delete_sgf_node(input, target_id).unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert_eq!(
+            result.sgf_text,
+            "(;SZ[5]C[root];B[aa]C[parent](;W[bb]C[main]XY[one])(;W[dc]C[keep]ZZ[unknown]))"
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        let reparsed_tree = to_sgf_tree_dto(&reparsed).unwrap().unwrap();
+        let parent = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == parent_id)
+            .unwrap();
+        assert_eq!(parent.child_ids.len(), 2);
+        assert!(reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("main")));
+        assert!(reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("keep")
+                && node.properties.iter().any(|property| property.key == "ZZ")));
+        assert!(!reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("target")));
+        assert!(!reparsed_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("target child")));
+        assert!(replay_sgf_positions(&result.sgf_text)
+            .unwrap()
+            .iter()
+            .all(|position| position.errors.is_empty()));
+    }
+
+    #[test]
+    fn deleting_root_fails() {
+        let input = "(;SZ[5]C[root];B[aa])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+
+        let error = delete_sgf_node(input, tree.root_id).unwrap_err();
+
+        assert!(matches!(error, SgfError::CannotDeleteRoot));
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
     }
 
     #[test]

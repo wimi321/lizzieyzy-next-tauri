@@ -34,6 +34,11 @@ export type AppendSgfMoveResult = {
   new_node_id: string;
 };
 
+export type DeleteSgfNodeResult = {
+  sgf_text: string;
+  parent_node_id: string;
+};
+
 export type AnalysisProgressPayload = {
   job_id: string;
   completed: number;
@@ -229,6 +234,13 @@ export async function appendSgfMove(
     throw new Error("真实 SGF move editing requires Tauri backend. Browser preview cannot append SGF moves or variations.");
   }
   return await invoke<AppendSgfMoveResult>("append_sgf_move", { sgfText, parentNodeId, color, vertex });
+}
+
+export async function deleteSgfNode(sgfText: string, nodeId: string): Promise<DeleteSgfNodeResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("真实 SGF node deletion requires Tauri backend. Browser preview cannot delete SGF nodes or variations.");
+  }
+  return await invoke<DeleteSgfNodeResult>("delete_sgf_node", { sgfText, nodeId });
 }
 
 export async function replaySgfPositionAtNode(sgfText: string, nodeId: string): Promise<PositionDto> {

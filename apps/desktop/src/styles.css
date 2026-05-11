@@ -1052,6 +1052,14 @@ button.path-picker-button {
   min-width: 0;
 }
 
+.sgf-comment-header div {
+  min-width: 0;
+}
+
+.sgf-comment-header {
+  align-items: center;
+}
+
 .sgf-tree-header span,
 .sgf-tree-header strong,
 .sgf-comment-header span {
@@ -1240,6 +1248,20 @@ button.sgf-tree-node.is-current-move {
   height: 30px;
   padding: 5px 9px;
   font-size: 12px;
+}
+
+button.sgf-delete-node-button {
+  flex: 0 0 auto;
+  min-width: 96px;
+  border-color: #d8a3a3;
+  background: linear-gradient(#fff8f8, #f4e7e7);
+  color: #7f1d1d;
+}
+
+button.sgf-delete-node-button:hover:not(:disabled),
+button.sgf-delete-node-button:focus-visible:not(:disabled) {
+  border-color: #b75f5f;
+  background: linear-gradient(#fffafa, #efdada);
 }
 
 .sgf-comment-note {

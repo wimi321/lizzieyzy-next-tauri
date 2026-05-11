@@ -39,6 +39,12 @@ struct AppendSgfMoveResultDto {
     new_node_id: NodeId,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeleteSgfNodeResultDto {
+    sgf_text: String,
+    parent_node_id: NodeId,
+}
+
 #[derive(Debug, Default)]
 struct ReqwestProviderTransport;
 
@@ -481,6 +487,15 @@ fn append_sgf_move(
     Ok(AppendSgfMoveResultDto {
         sgf_text: result.sgf_text,
         new_node_id: result.new_node_id,
+    })
+}
+
+#[tauri::command]
+fn delete_sgf_node(sgf_text: String, node_id: NodeId) -> Result<DeleteSgfNodeResultDto, String> {
+    let result = sgf::delete_sgf_node(&sgf_text, node_id).map_err(|err| err.to_string())?;
+    Ok(DeleteSgfNodeResultDto {
+        sgf_text: result.sgf_text,
+        parent_node_id: result.parent_node_id,
     })
 }
 
@@ -1969,6 +1984,7 @@ pub fn run() {
             replay_sgf_positions,
             update_sgf_node_comment,
             append_sgf_move,
+            delete_sgf_node,
             replay_sgf_position_at_node,
             read_sgf_file,
             write_sgf_file,
@@ -2184,6 +2200,79 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_ascii_lowercase().contains("occupied"));
+    }
+
+    #[test]
+    fn command_deletes_sgf_leaf_node() {
+        let input = "(;SZ[5];B[aa];W[bb]C[leaf])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+        let leaf_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("leaf"))
+            .unwrap()
+            .id;
+
+        let result = delete_sgf_node(input.to_string(), leaf_id).unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text).unwrap().unwrap();
+        let parent = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == parent_id)
+            .unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert!(updated_tree.nodes.iter().all(|node| node.id != leaf_id));
+        assert!(parent.child_ids.is_empty());
+    }
+
+    #[test]
+    fn command_deletes_sgf_variation_node() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch]))";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let result = delete_sgf_node(input.to_string(), branch_id).unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text).unwrap().unwrap();
+        let parent = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == parent_id)
+            .unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert_eq!(parent.child_ids.len(), 1);
+        assert!(updated_tree
+            .nodes
+            .iter()
+            .all(|node| node.comment.as_deref() != Some("branch")));
+    }
+
+    #[test]
+    fn command_delete_sgf_node_reports_root_error() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+
+        let error = delete_sgf_node(input.to_string(), tree.root_id).unwrap_err();
+
+        assert!(error.to_ascii_lowercase().contains("root"));
     }
 
     #[test]

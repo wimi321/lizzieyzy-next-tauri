@@ -1,0 +1,101 @@
+{
+  "checks": [
+    {
+      "details": {
+        "platform": "MacIntel",
+        "tauriInternals": true,
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+      },
+      "name": "runtime_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "available": true,
+        "endpoint": null,
+        "version": "1.6.2",
+        "warnings": [
+          "MissingNative: no native readboard.exe/readboard.bat candidate was found"
+        ]
+      },
+      "name": "sidecar_probe_ready",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "available": false,
+        "endpoint": "readboard-unavailable-endpoint",
+        "structuredUnavailable": true,
+        "warnings": [
+          "MissingNative: no native readboard.exe/readboard.bat candidate was found",
+          "UnsupportedEndpoint: readboard endpoint `readboard-unavailable-endpoint` is not a host:port or http(s) URL"
+        ]
+      },
+      "name": "sidecar_probe_unavailable",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardSize": 2,
+        "moveNumber": 1,
+        "snapshotId": "runtime-a",
+        "stoneCount": 1,
+        "toPlay": "white",
+        "warnings": []
+      },
+      "name": "protocol_line_sync",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "afterMoveNumber": 2,
+        "afterSnapshotId": "runtime-b",
+        "afterStoneCount": 2,
+        "beforeMoveNumber": 1,
+        "beforeSnapshotId": "runtime-a",
+        "beforeStoneCount": 1,
+        "boardSizeStable": true,
+        "changed": true,
+        "toPlay": "white",
+        "warnings": []
+      },
+      "name": "target_state_change_sync",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boundary": "image OCR runtime unavailable",
+        "message": "readboard image OCR runtime is unavailable; provide sgf_text as an offline snapshot protocol line",
+        "messageIncludesBoundary": true,
+        "observed": true,
+        "unsupported": true
+      },
+      "name": "unsupported_ocr_path",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "covered": false,
+        "externalClientCaptureCovered": false,
+        "ocrCovered": false,
+        "scope": "Tauri runtime command boundary plus protocol-line DTO sync only"
+      },
+      "name": "external_client_not_covered",
+      "status": "pass"
+    }
+  ],
+  "endpoint": null,
+  "name": "readboard_tauri_runtime_smoke",
+  "phase": "readboard-live",
+  "platform": "macos",
+  "runtimeReport": {
+    "finishedAt": "2026-05-11T23:27:53.320Z",
+    "phase": "readboard-live",
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "startedAt": "2026-05-11T23:27:53.303Z",
+    "status": "pass"
+  },
+  "schema": "lizzieyzy.readboard-tauri-runtime-smoke.v1",
+  "status": "pass",
+  "timeoutSeconds": 180.0
+}

@@ -58,6 +58,17 @@ KATAGO_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
     "katago_analyze_game",
     "katago_start_cancel",
 ]
+READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE = "docs/qa/readboard-tauri-runtime-smoke-macos.json"
+READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.readboard-tauri-runtime-smoke.v1"
+READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
+    "runtime_started",
+    "sidecar_probe_ready",
+    "sidecar_probe_unavailable",
+    "protocol_line_sync",
+    "target_state_change_sync",
+    "unsupported_ocr_path",
+    "external_client_not_covered",
+]
 TAURI_COMMANDS = [
     "update_sgf_node_comment",
     "append_sgf_move",
@@ -355,10 +366,7 @@ class UserFlowSmoke:
     def check_external_runtime_gates(self) -> None:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_katago_live_smoke_evidence()
-        self.pending(
-            "readboard_live_smoke",
-            "TODO gate: validate real readboard sidecar flows only with installed sidecar/runtime evidence",
-        )
+        self.check_readboard_live_smoke_evidence()
         self.pending(
             "provider_live_smoke",
             "TODO gate: validate live provider fetch flows only with controlled network/provider evidence",
@@ -428,6 +436,30 @@ class UserFlowSmoke:
         self.pass_(
             "katago_live_smoke",
             "macOS live KataGo CLI and Tauri runtime smoke evidence both pass",
+        )
+
+    def check_readboard_live_smoke_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_live_smoke",
+                f"TODO gate: run scripts/smoke_tauri_readboard_live.py on macOS and record {READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_readboard_tauri_runtime_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "readboard_live_smoke",
+                f"{READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE} is present but not valid scoped readboard runtime PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_live_smoke",
+            f"macOS scoped readboard Tauri runtime smoke evidence passes with {len(READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS)} required checks",
         )
 
     def run(self) -> list[SmokeResult]:
@@ -578,6 +610,159 @@ def validate_katago_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_katago_runtime_analysis(check_by_name.get("katago_analyze_once"), "katago_analyze_once"))
     failures.extend(validate_katago_runtime_analysis(check_by_name.get("katago_analyze_game"), "katago_analyze_game"))
     failures.extend(validate_katago_runtime_cancel(check_by_name.get("katago_start_cancel")))
+    return failures
+
+
+def validate_readboard_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_readboard_runtime_started(check_by_name.get("runtime_started")))
+    failures.extend(validate_readboard_probe_ready(check_by_name.get("sidecar_probe_ready")))
+    failures.extend(validate_readboard_probe_unavailable(check_by_name.get("sidecar_probe_unavailable")))
+    failures.extend(validate_readboard_protocol_line_sync(check_by_name.get("protocol_line_sync")))
+    failures.extend(validate_readboard_target_state_change_sync(check_by_name.get("target_state_change_sync")))
+    failures.extend(validate_readboard_unsupported_ocr_path(check_by_name.get("unsupported_ocr_path")))
+    failures.extend(validate_readboard_external_client_not_covered(check_by_name.get("external_client_not_covered")))
+    return failures
+
+
+def validate_readboard_runtime_started(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["runtime_started evidence must be an object"]
+    if evidence.get("tauriInternals") is not True:
+        return ["runtime_started.tauriInternals must be true"]
+    return []
+
+
+def validate_readboard_probe_ready(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["sidecar_probe_ready evidence must be an object"]
+    if evidence.get("available") is not True:
+        return ["sidecar_probe_ready.available must be true"]
+    return []
+
+
+def validate_readboard_probe_unavailable(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["sidecar_probe_unavailable evidence must be an object"]
+    if evidence.get("available") is not False:
+        return ["sidecar_probe_unavailable.available must be false"]
+    return []
+
+
+def validate_readboard_protocol_line_sync(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["protocol_line_sync evidence must be an object"]
+    failures: list[str] = []
+    snapshot_id = first_present(evidence, "snapshotId", "snapshot_id")
+    if not isinstance(snapshot_id, str) or not snapshot_id:
+        failures.append("protocol_line_sync.snapshotId must be non-empty")
+    if not positive_number(first_present(evidence, "boardSize", "board_size")):
+        failures.append("protocol_line_sync.boardSize must be positive")
+    move_number = first_present(evidence, "moveNumber", "move_number")
+    if not isinstance(move_number, (int, float)) or move_number < 0:
+        failures.append("protocol_line_sync.moveNumber must be non-negative")
+    if not positive_number(first_present(evidence, "stoneCount", "stone_count")):
+        failures.append("protocol_line_sync.stoneCount must be positive")
+    to_play = first_present(evidence, "toPlay", "to_play")
+    if str(to_play).lower() not in {"black", "white"}:
+        failures.append("protocol_line_sync.toPlay must be black or white")
+    return failures
+
+
+def validate_readboard_target_state_change_sync(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["target_state_change_sync evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("changed") is not True:
+        failures.append("target_state_change_sync.changed must be true")
+    before_snapshot_id = first_present(evidence, "beforeSnapshotId", "before_snapshot_id")
+    after_snapshot_id = first_present(evidence, "afterSnapshotId", "after_snapshot_id")
+    if not isinstance(before_snapshot_id, str) or not before_snapshot_id:
+        failures.append("target_state_change_sync.beforeSnapshotId must be non-empty")
+    if not isinstance(after_snapshot_id, str) or not after_snapshot_id:
+        failures.append("target_state_change_sync.afterSnapshotId must be non-empty")
+    if isinstance(before_snapshot_id, str) and before_snapshot_id and before_snapshot_id == after_snapshot_id:
+        failures.append("target_state_change_sync snapshot ids must differ")
+    before_stone_count = first_present(evidence, "beforeStoneCount", "before_stone_count")
+    after_stone_count = first_present(evidence, "afterStoneCount", "after_stone_count")
+    before_move_number = first_present(evidence, "beforeMoveNumber", "before_move_number")
+    after_move_number = first_present(evidence, "afterMoveNumber", "after_move_number")
+    stone_counts_numeric = isinstance(before_stone_count, (int, float)) and isinstance(after_stone_count, (int, float))
+    move_numbers_numeric = isinstance(before_move_number, (int, float)) and isinstance(after_move_number, (int, float))
+    if not stone_counts_numeric:
+        failures.append("target_state_change_sync stone counts must be numeric")
+    if not move_numbers_numeric:
+        failures.append("target_state_change_sync move numbers must be numeric")
+    if stone_counts_numeric and move_numbers_numeric and before_stone_count == after_stone_count and before_move_number == after_move_number:
+        failures.append("target_state_change_sync stone count or move number must change")
+    if evidence.get("boardSizeStable") is not True:
+        failures.append("target_state_change_sync.boardSizeStable must be true")
+    return failures
+
+
+def validate_readboard_unsupported_ocr_path(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["unsupported_ocr_path evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("observed") is not True:
+        failures.append("unsupported_ocr_path.observed must be true")
+    if evidence.get("unsupported") is not True:
+        failures.append("unsupported_ocr_path.unsupported must be true")
+    if first_present(evidence, "messageIncludesBoundary", "message_includes_boundary") is not True:
+        failures.append("unsupported_ocr_path.messageIncludesBoundary must be true")
+    message = evidence.get("message")
+    if not isinstance(message, str) or not message:
+        failures.append("unsupported_ocr_path.message must be non-empty")
+    elif "image" not in message.lower() and "ocr" not in message.lower():
+        failures.append("unsupported_ocr_path.message must mention image or ocr")
+    return failures
+
+
+def validate_readboard_external_client_not_covered(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["external_client_not_covered evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("covered") is not False:
+        failures.append("external_client_not_covered.covered must be false")
+    if evidence.get("ocrCovered") is not False:
+        failures.append("external_client_not_covered.ocrCovered must be false")
+    if evidence.get("externalClientCaptureCovered") is not False:
+        failures.append("external_client_not_covered.externalClientCaptureCovered must be false")
     return failures
 
 

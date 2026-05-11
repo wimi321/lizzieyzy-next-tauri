@@ -113,6 +113,86 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("katago_live_smoke", pending)
             self.assertIn("scripts/smoke_tauri_katago_live.py", pending["katago_live_smoke"])
 
+    def test_valid_readboard_tauri_runtime_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_readboard_tauri_runtime_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_live_smoke", pass_names)
+            self.assertNotIn("readboard_live_smoke", pending_names)
+
+    def test_invalid_readboard_tauri_runtime_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_tauri_runtime_evidence()
+            find_evidence_check(evidence, "protocol_line_sync")["details"]["toPlay"] = "unknown"
+            write_json(root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_live_smoke", failures)
+            self.assertIn("readboard_live_smoke", pending)
+            self.assertIn("protocol_line_sync.toPlay must be black or white", pending["readboard_live_smoke"])
+
+    def test_readboard_tauri_runtime_evidence_requires_external_not_covered_boundaries(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_tauri_runtime_evidence()
+            find_evidence_check(evidence, "external_client_not_covered")["details"].pop("ocrCovered")
+            write_json(root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_live_smoke", failures)
+            self.assertIn("readboard_live_smoke", pending)
+            self.assertIn("external_client_not_covered.ocrCovered must be false", pending["readboard_live_smoke"])
+
+    def test_readboard_tauri_runtime_evidence_requires_snapshot_change_semantics(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_tauri_runtime_evidence()
+            target_change = find_evidence_check(evidence, "target_state_change_sync")["details"]
+            target_change["afterSnapshotId"] = target_change["beforeSnapshotId"]
+            target_change["afterStoneCount"] = target_change["beforeStoneCount"]
+            target_change["afterMoveNumber"] = target_change["beforeMoveNumber"]
+            write_json(root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_live_smoke", failures)
+            self.assertIn("readboard_live_smoke", pending)
+            self.assertIn("target_state_change_sync snapshot ids must differ", pending["readboard_live_smoke"])
+            self.assertIn("target_state_change_sync stone count or move number must change", pending["readboard_live_smoke"])
+
+    def test_missing_readboard_tauri_runtime_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_live_smoke", failures)
+            self.assertIn("readboard_live_smoke", pending)
+            self.assertIn("scripts/smoke_tauri_readboard_live.py", pending["readboard_live_smoke"])
+
     def test_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -455,6 +535,13 @@ def write_valid_katago_tauri_runtime_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_tauri_runtime_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE,
+        valid_readboard_tauri_runtime_evidence(),
+    )
+
+
 def valid_katago_live_evidence() -> dict[str, object]:
     return {
         "schema": smoke_user_flows.KATAGO_LIVE_SMOKE_SCHEMA,
@@ -550,6 +637,88 @@ def valid_katago_tauri_runtime_evidence() -> dict[str, object]:
                 "name": "katago_start_cancel",
                 "status": "pass",
                 "details": {"jobId": "job-1", "cancelRequested": True, "cancelConfirmed": True},
+            },
+        ],
+    }
+
+
+def valid_readboard_tauri_runtime_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA,
+        "name": "readboard_tauri_runtime_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "checks": [
+            {
+                "name": "runtime_started",
+                "status": "pass",
+                "details": {"tauriInternals": True, "platform": "MacIntel"},
+            },
+            {
+                "name": "sidecar_probe_ready",
+                "status": "pass",
+                "details": {
+                    "available": True,
+                    "state": "ready",
+                    "endpoint": "http://127.0.0.1:12345",
+                    "version": "readboard-runtime-smoke",
+                },
+            },
+            {
+                "name": "sidecar_probe_unavailable",
+                "status": "pass",
+                "details": {
+                    "available": False,
+                    "state": "unavailable",
+                    "errorKind": "unavailable",
+                    "message": "readboard sidecar unavailable at probe endpoint",
+                },
+            },
+            {
+                "name": "protocol_line_sync",
+                "status": "pass",
+                "details": {
+                    "snapshotId": "readboard-smoke-snapshot-001",
+                    "boardSize": 19,
+                    "moveNumber": 12,
+                    "stoneCount": 12,
+                    "toPlay": "black",
+                    "source": "protocol_line",
+                },
+            },
+            {
+                "name": "target_state_change_sync",
+                "status": "pass",
+                "details": {
+                    "changed": True,
+                    "beforeSnapshotId": "readboard-smoke-snapshot-001",
+                    "afterSnapshotId": "readboard-smoke-snapshot-002",
+                    "beforeStoneCount": 12,
+                    "afterStoneCount": 13,
+                    "beforeMoveNumber": 12,
+                    "afterMoveNumber": 13,
+                    "boardSizeStable": True,
+                },
+            },
+            {
+                "name": "unsupported_ocr_path",
+                "status": "pass",
+                "details": {
+                    "observed": True,
+                    "unsupported": True,
+                    "messageIncludesBoundary": True,
+                    "message": "image OCR readboard sync is outside this runtime smoke boundary",
+                },
+            },
+            {
+                "name": "external_client_not_covered",
+                "status": "pass",
+                "details": {
+                    "covered": False,
+                    "ocrCovered": False,
+                    "externalClientCaptureCovered": False,
+                    "reason": "controlled protocol probe only; no real external client/window capture",
+                },
             },
         ],
     }

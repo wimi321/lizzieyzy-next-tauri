@@ -22,6 +22,7 @@ import {
   updateSgfNodeComment,
   updateSgfNodeProperties
 } from "./api/backend";
+import { probeReadboardSidecar, syncReadboardSidecarSnapshot } from "./api/providers";
 import type { AnalysisFrameDto, AssetCheckDto, EngineProfileDto, KataGoLiveSmokeConfigDto, MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 type RuntimeSmokeStatus = "pass" | "fail";
@@ -43,7 +44,13 @@ type RuntimeSmokeCheckName =
   | "katago_analyze_once"
   | "katago_analyze_game"
   | "katago_start_cancel"
-  | "katago_failure_mode_missing_assets";
+  | "katago_failure_mode_missing_assets"
+  | "sidecar_probe_ready"
+  | "sidecar_probe_unavailable"
+  | "protocol_line_sync"
+  | "target_state_change_sync"
+  | "unsupported_ocr_path"
+  | "external_client_not_covered";
 type RuntimeSmokeCheck = {
   name: RuntimeSmokeCheckName;
   status: RuntimeSmokeStatus;
@@ -71,11 +78,12 @@ type RuntimeSmokeReport = {
   steps: RuntimeSmokeStep[];
   expected?: RuntimeSmokeExpectedEvidence;
   katago?: KataGoLiveSmokeEvidence;
+  readboard?: ReadboardLiveSmokeEvidence;
   error?: string;
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "readboard-live";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -167,6 +175,35 @@ type AnalysisFrameEvidence = {
   winrateBlack: number;
   scoreMeanBlack: number;
 };
+type ReadboardLiveSmokeEvidence = {
+  endpoint: string | null;
+  readyProbe?: Record<string, unknown>;
+  unavailableProbe?: Record<string, unknown>;
+  protocolLineSync?: ReadboardProtocolLineEvidence;
+  targetStateChangeSync?: ReadboardTargetStateChangeEvidence;
+  unsupportedOcrPath?: Record<string, unknown>;
+  externalClientNotCovered?: Record<string, unknown>;
+};
+type ReadboardProtocolLineEvidence = {
+  snapshotId: string;
+  boardSize: number;
+  moveNumber: number;
+  stoneCount: number;
+  toPlay: PlayerColor;
+  warnings: string[];
+};
+type ReadboardTargetStateChangeEvidence = {
+  changed: true;
+  beforeSnapshotId: string;
+  afterSnapshotId: string;
+  beforeStoneCount: number;
+  afterStoneCount: number;
+  beforeMoveNumber: number;
+  afterMoveNumber: number;
+  boardSizeStable: true;
+  toPlay: PlayerColor;
+  warnings: string[];
+};
 
 const schema = "lizzieyzy.tauri-runtime-ui-smoke.v1";
 const truthyValues = new Set(["1", "true", "yes", "on"]);
@@ -178,6 +215,8 @@ const defaultKatagoMaxVisits = 32;
 const defaultKatagoGameMaxVisits = 16;
 const defaultKatagoCancelMaxVisits = 10_000;
 const defaultKatagoCancelDelayMs = 250;
+const readboardProtocolLine = "snapshot snapshot_id=runtime-a board_size=2 move_number=1 codes=3000";
+const readboardChangedProtocolLine = "snapshot snapshot_id=runtime-b board_size=2 move_number=2 codes=3100";
 
 export function isRuntimeSmokeModeEnabled(): boolean {
   const value = runtimeSmokeImportMeta().env?.VITE_LIZZIEYZY_RUNTIME_SMOKE;
@@ -256,7 +295,9 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       };
     });
 
-    if (resolvedConfig.phase === "katago-live") {
+    if (resolvedConfig.phase === "readboard-live") {
+      await runReadboardLivePhase(report);
+    } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, sgfPath, resolvedConfig.katago);
     } else if (resolvedConfig.phase === "reopen-verify") {
       await runReopenVerifyPhase(report, sgfPath, expectedReportPath ?? reportPath);
@@ -638,6 +679,110 @@ async function runKataGoLivePhase(report: RuntimeSmokeReport, sgfPath: string, c
   }
 }
 
+async function runReadboardLivePhase(report: RuntimeSmokeReport) {
+  const endpoint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ENDPOINT");
+  const evidence: ReadboardLiveSmokeEvidence = { endpoint };
+  report.readboard = evidence;
+
+  await check(report, "sidecar_probe_ready", async () => {
+    const result = await probeReadboardSidecar({
+      endpoint,
+      timeout_ms: 1_000
+    });
+    if (!result.available) {
+      throw new Error(`Readboard sidecar probe was not ready: ${result.warnings.join("; ")}`);
+    }
+    evidence.readyProbe = {
+      available: result.available,
+      endpoint: result.endpoint ?? null,
+      version: result.version ?? null,
+      warnings: result.warnings
+    };
+    return evidence.readyProbe;
+  });
+
+  await check(report, "sidecar_probe_unavailable", async () => {
+    const result = await probeReadboardSidecar({
+      endpoint: "readboard-unavailable-endpoint",
+      timeout_ms: 100
+    });
+    if (result.available) throw new Error("Intentionally invalid readboard endpoint reported available.");
+    evidence.unavailableProbe = {
+      available: result.available,
+      endpoint: result.endpoint ?? null,
+      warnings: result.warnings,
+      structuredUnavailable: true
+    };
+    return evidence.unavailableProbe;
+  });
+
+  await check(report, "protocol_line_sync", async () => {
+    const result = await syncReadboardSidecarSnapshot({
+      endpoint,
+      snapshot_id: "runtime-a",
+      sgf_text: readboardProtocolLine,
+      metadata: { source: "runtime_smoke", phase: "protocol_line_sync" },
+      timeout_ms: 1_000
+    });
+    evidence.protocolLineSync = summarizeReadboardProtocolSync(result);
+    assertReadboardProtocolEvidence(evidence.protocolLineSync, 1, 1, "white");
+    return evidence.protocolLineSync;
+  });
+
+  await check(report, "target_state_change_sync", async () => {
+    const result = await syncReadboardSidecarSnapshot({
+      endpoint,
+      snapshot_id: "runtime-b",
+      sgf_text: readboardChangedProtocolLine,
+      metadata: { source: "runtime_smoke", phase: "target_state_change_sync", first_sync: "false" },
+      timeout_ms: 1_000
+    });
+    if (!evidence.protocolLineSync) throw new Error("Readboard target change check requires the first protocol sync evidence.");
+    const after = summarizeReadboardProtocolSync(result);
+    assertReadboardProtocolEvidence(after, 2, 2, "white");
+    evidence.targetStateChangeSync = summarizeReadboardTargetStateChange(evidence.protocolLineSync, after);
+    assertReadboardTargetStateChangeEvidence(evidence.targetStateChangeSync);
+    return evidence.targetStateChangeSync;
+  });
+
+  await check(report, "unsupported_ocr_path", async () => {
+    try {
+      await syncReadboardSidecarSnapshot({
+        endpoint,
+        snapshot_id: "runtime-ocr-unsupported",
+        image_path: "/tmp/lizzieyzy-readboard-ocr-smoke.png",
+        metadata: { source: "runtime_smoke", phase: "unsupported_ocr_path" },
+        timeout_ms: 100
+      });
+      throw new Error("Image-only readboard sync unexpectedly succeeded.");
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.includes("unexpectedly succeeded")) throw error;
+      if (!message.toLowerCase().includes("image") && !message.toLowerCase().includes("ocr")) {
+        throw new Error(`Unsupported OCR path did not name image/OCR boundary: ${message}`);
+      }
+      evidence.unsupportedOcrPath = {
+        observed: true,
+        unsupported: true,
+        boundary: "image OCR runtime unavailable",
+        messageIncludesBoundary: true,
+        message
+      };
+      return evidence.unsupportedOcrPath;
+    }
+  });
+
+  await check(report, "external_client_not_covered", async () => {
+    evidence.externalClientNotCovered = {
+      covered: false,
+      scope: "Tauri runtime command boundary plus protocol-line DTO sync only",
+      ocrCovered: false,
+      externalClientCaptureCovered: false
+    };
+    return evidence.externalClientNotCovered;
+  });
+}
+
 async function verifySavedBoardState(
   report: RuntimeSmokeReport,
   sgfText: string,
@@ -768,7 +913,7 @@ function runtimeSmokeEnv(name: string): string | null {
 }
 
 function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSmokePhase {
-  if (value === "edit-save" || value === "reopen-verify" || value === "katago-live") return value;
+  if (value === "edit-save" || value === "reopen-verify" || value === "katago-live" || value === "readboard-live") return value;
   return "full";
 }
 
@@ -1090,6 +1235,52 @@ function assertNonEmptyString(value: string, message: string) {
   if (!value.trim()) throw new Error(message);
 }
 
+function summarizeReadboardProtocolSync(result: { snapshot_id: string; position?: { board_size: number; move_number: number; stones: unknown[]; to_play: PlayerColor } | null; warnings: string[] }): ReadboardProtocolLineEvidence {
+  if (!result.position) throw new Error("Readboard sync did not return a position.");
+  return {
+    snapshotId: result.snapshot_id,
+    boardSize: result.position.board_size,
+    moveNumber: result.position.move_number,
+    stoneCount: result.position.stones.length,
+    toPlay: result.position.to_play,
+    warnings: result.warnings
+  };
+}
+
+function summarizeReadboardTargetStateChange(
+  before: ReadboardProtocolLineEvidence,
+  after: ReadboardProtocolLineEvidence
+): ReadboardTargetStateChangeEvidence {
+  return {
+    changed: true,
+    beforeSnapshotId: before.snapshotId,
+    afterSnapshotId: after.snapshotId,
+    beforeStoneCount: before.stoneCount,
+    afterStoneCount: after.stoneCount,
+    beforeMoveNumber: before.moveNumber,
+    afterMoveNumber: after.moveNumber,
+    boardSizeStable: true,
+    toPlay: after.toPlay,
+    warnings: [...before.warnings, ...after.warnings]
+  };
+}
+
+function assertReadboardProtocolEvidence(evidence: ReadboardProtocolLineEvidence, moveNumber: number, stoneCount: number, toPlay: PlayerColor) {
+  if (evidence.boardSize !== 2) throw new Error(`Expected 2x2 readboard sync, got ${evidence.boardSize}.`);
+  if (evidence.moveNumber !== moveNumber) throw new Error(`Expected readboard move ${moveNumber}, got ${evidence.moveNumber}.`);
+  if (evidence.stoneCount !== stoneCount) throw new Error(`Expected readboard stone count ${stoneCount}, got ${evidence.stoneCount}.`);
+  if (evidence.toPlay !== toPlay) throw new Error(`Expected readboard toPlay ${toPlay}, got ${evidence.toPlay}.`);
+}
+
+function assertReadboardTargetStateChangeEvidence(evidence: ReadboardTargetStateChangeEvidence) {
+  if (!evidence.changed) throw new Error("Readboard target state change did not report changed true.");
+  if (evidence.beforeSnapshotId === evidence.afterSnapshotId) throw new Error("Readboard target state change did not change snapshot id.");
+  if (evidence.beforeMoveNumber === evidence.afterMoveNumber) throw new Error("Readboard target state change did not change move number.");
+  if (evidence.beforeStoneCount === evidence.afterStoneCount) throw new Error("Readboard target state change did not change stone count.");
+  if (!evidence.boardSizeStable) throw new Error("Readboard target state change did not keep board size stable.");
+  if (evidence.toPlay !== "white") throw new Error(`Expected changed readboard toPlay white, got ${evidence.toPlay}.`);
+}
+
 function validateAnalysisFrame(frame: AnalysisFrameDto, label: string) {
   if (!Number.isFinite(frame.turn) || frame.turn < 0) throw new Error(`${label} returned an invalid turn.`);
   if (!Number.isFinite(frame.visits) || frame.visits <= 0) throw new Error(`${label} returned no visits.`);
@@ -1199,5 +1390,17 @@ function summarizeResult(value: unknown): Record<string, unknown> | undefined {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) return error.message;
+  if (isRecord(error)) {
+    const message = error.message;
+    if (typeof message === "string" && message.trim()) return message;
+    const kind = error.kind;
+    if (typeof kind === "string" && kind.trim()) return kind;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }

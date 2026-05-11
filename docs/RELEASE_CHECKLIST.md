@@ -29,17 +29,19 @@ cargo test --workspace
 
 CI should not run the GUI runtime collector. `scripts/smoke_user_flows.py` validates the committed macOS evidence JSON schema and semantics, including the two-launch save/reopen proof fields.
 CI should not run the live KataGo collectors either. `scripts/smoke_user_flows.py` validates committed `docs/qa/katago-live-smoke-macos.json` and `docs/qa/katago-tauri-runtime-smoke-macos.json`; the collectors require a real local KataGo binary, model, config, and, for the Tauri runtime smoke, a GUI-capable macOS runtime.
+CI should not run the readboard GUI/runtime collector. `scripts/smoke_user_flows.py` validates committed `docs/qa/readboard-tauri-runtime-smoke-macos.json` when present; the scoped gate requires macOS Tauri runtime startup, sidecar probe ready/unavailable states, protocol-line sync with `snapshotId`, board size, non-negative move number, stone count, and player-to-play, target-state-change sync with distinct before/after snapshots, changed stone count or move number, stable board size, explicit unsupported OCR boundary evidence with an image/OCR message, and explicit `external_client_not_covered` fields for OCR and external client/window capture.
 
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` currently reports `23 passed, 0 failed, 3 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped macOS two-launch save/reopen runtime evidence, and scoped macOS live KataGo evidence are complete for their current gates.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `24 passed, 0 failed, 2 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped macOS two-launch save/reopen runtime evidence, scoped macOS live KataGo evidence, and scoped macOS readboard runtime evidence are complete for their current gates.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
 - The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
 - The static `sgf_existing_move_edit_surface` and `edit-existing-move` checks pass for repository-local existing-move edit surface evidence: existing SGF node edits are exposed through the command-backed edit surface and covered by repository-local wiring evidence. This is not real desktop GUI smoke proof.
 - `docs/qa/tauri-runtime-ui-smoke-macos.json` is the macOS local runtime evidence target from `scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json`. The repository gate requires schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, all required check names passing, top-level `firstLaunch`/`secondLaunch`/`saveReopenProof`, and semantic `secondLaunch`, `reopen`, and `afterReopen` fields proving save/reopen after a second launch.
 - `docs/qa/katago-live-smoke-macos.json` is the macOS live KataGo CLI evidence target from `scripts/smoke_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-live-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-live-smoke.v1`, status `pass`, platform `macos`, engine/model/config metadata, and passing checks for engine assets, version probe, one-position analysis, batch analysis, and stderr capture.
 - `docs/qa/katago-tauri-runtime-smoke-macos.json` is the macOS Tauri runtime KataGo evidence target from `scripts/smoke_tauri_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-tauri-runtime-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, assets, analyze-once, analyze-game, and start/cancel.
-- The pending external checks remain readboard live smoke, provider live smoke, and multiplatform packaging smoke even after the scoped macOS save/reopen and live KataGo evidence passes.
+- `docs/qa/readboard-tauri-runtime-smoke-macos.json` is the scoped macOS Tauri runtime readboard evidence target from the readboard runtime smoke runner. The repository gate requires schema `lizzieyzy.readboard-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, sidecar probe ready/unavailable states, protocol-line sync with snapshot id, board size, move number, stone count, and player-to-play, target-state-change sync with distinct before/after snapshot ids, changed stone count or move number, and stable board size, unsupported OCR boundary behavior, and explicit markers that OCR and external client/window capture are not covered.
+- The pending external checks remain provider live smoke and multiplatform packaging smoke until their evidence exists. Even with scoped readboard runtime evidence recorded, OCR, real external client/window capture, and cross-platform packaging remain outside that proof.
 - This status must be recorded as incomplete in release notes and handoff material until the pending runtime/external gates are closed with evidence.
 
 Frontend build:
@@ -106,6 +108,14 @@ python3 scripts/smoke_user_flows.py --verbose
 ```
 
 Pass: both evidence JSON files are sanitized and have status `pass`; the CLI evidence records one-position and batch `katago analysis` responses, and the Tauri evidence records runtime startup, assets, analyze-once, analyze-game, and start/cancel. `smoke_user_flows.py` reports `katago_live_smoke` as PASS only after both files pass. This is macOS local live KataGo CLI plus Tauri runtime evidence; it is not cache-hit proof, bundled-engine proof, or multiplatform packaging proof.
+
+For the scoped macOS readboard runtime evidence, run the readboard Tauri runtime smoke collector and then:
+
+```bash
+python3 scripts/smoke_user_flows.py --verbose
+```
+
+Pass: `docs/qa/readboard-tauri-runtime-smoke-macos.json` is sanitized, has schema `lizzieyzy.readboard-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and includes `runtime_started`, `sidecar_probe_ready`, `sidecar_probe_unavailable`, `protocol_line_sync`, `target_state_change_sync`, `unsupported_ocr_path`, and `external_client_not_covered`. The protocol check must include `snapshotId`, `boardSize`, `moveNumber`, `stoneCount`, and `toPlay`; the target-change check must include distinct before/after snapshot ids, changed stone count or move number, and `boardSizeStable`; the OCR/external-client boundary checks must explicitly mark OCR and external client/window capture as not covered. `smoke_user_flows.py` reports `readboard_live_smoke` as PASS only when that evidence is present and semantically valid. This is scoped macOS Tauri runtime evidence for probe/protocol behavior; it is not OCR proof, real external client/window capture proof, or multiplatform packaging proof.
 
 ### Required User-Facing Retest Before Local Release
 

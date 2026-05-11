@@ -29,9 +29,10 @@ cargo test --workspace
 
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` currently reports `19 passed, 0 failed, 5 pending`; repository-local native SGF save/read-back refresh evidence is complete.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `21 passed, 0 failed, 5 pending`; repository-local native SGF save/read-back refresh and existing-move edit surface evidence is complete.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
 - The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
+- The static `sgf_existing_move_edit_surface` and `edit-existing-move` checks pass for repository-local existing-move edit surface evidence: existing SGF node edits are exposed through the command-backed edit surface and covered by repository-local wiring evidence. This is not real desktop GUI smoke proof.
 - The pending checks are real Tauri UI flow, KataGo live smoke, readboard live smoke, provider live smoke, and multiplatform packaging smoke.
 - This status must be recorded as incomplete in release notes and handoff material until the pending runtime/external gates are closed with evidence.
 

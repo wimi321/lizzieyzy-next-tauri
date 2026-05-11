@@ -26,7 +26,14 @@ type Props = {
   isLoading?: boolean;
   parseError?: string | null;
   boardSize?: number;
+  moveEditMode?: MoveEditMode;
+  canEditSelectedMove?: boolean;
+  onMoveEditModeChange?: (mode: MoveEditMode) => void;
+  onEditSelectedMovePass?: () => void;
+  isMoveEditing?: boolean;
 };
+
+type MoveEditMode = "append" | "edit";
 
 type TreeRow = {
   node: SgfTreeNodeDto;
@@ -35,6 +42,12 @@ type TreeRow = {
 };
 
 type DepthStyle = CSSProperties & { "--sgf-depth": number };
+
+const activeModeButtonStyle: CSSProperties = {
+  borderColor: "#fb923c",
+  background: "#fff7ed",
+  color: "#7c2d12"
+};
 
 export function SgfTreePanel({
   tree,
@@ -58,7 +71,12 @@ export function SgfTreePanel({
   commentNote,
   isLoading = false,
   parseError = null,
-  boardSize = 19
+  boardSize = 19,
+  moveEditMode = "append",
+  canEditSelectedMove = false,
+  onMoveEditModeChange,
+  onEditSelectedMovePass,
+  isMoveEditing = false
 }: Props) {
   const rows = useMemo(() => buildTreeRows(tree), [tree]);
   const selectedNode = useMemo(() => {
@@ -80,6 +98,10 @@ export function SgfTreePanel({
   const siblingState = useMemo(() => getSiblingState(tree, selectedNode), [tree, selectedNode]);
   const canMoveSelectedNodeUp = Boolean(canReorder && onReorderNode && !isLoading && !isNodeReordering && siblingState.canMoveUp);
   const canMoveSelectedNodeDown = Boolean(canReorder && onReorderNode && !isLoading && !isNodeReordering && siblingState.canMoveDown);
+  const moveEditState = getMoveEditState({ selectedNode, canEditSelectedMove });
+  const canChangeMoveEditMode = Boolean(!isLoading && !isMoveEditing && onMoveEditModeChange);
+  const canUseEditMode = Boolean(canChangeMoveEditMode && canEditSelectedMove);
+  const canPassSelectedMove = Boolean(!isLoading && !isMoveEditing && moveEditMode === "edit" && canEditSelectedMove && onEditSelectedMovePass);
 
   useEffect(() => {
     setLocalDraft(selectedComment);
@@ -119,6 +141,17 @@ export function SgfTreePanel({
     const targetIndex = siblingState.index + direction;
     if (targetIndex < 0 || targetIndex >= siblingState.count) return;
     onReorderNode(selectedNode.id, targetIndex);
+  };
+
+  const handleMoveEditModeChange = (mode: MoveEditMode) => {
+    if (!canChangeMoveEditMode) return;
+    if (mode === "edit" && !canEditSelectedMove) return;
+    onMoveEditModeChange?.(mode);
+  };
+
+  const handleEditSelectedMovePass = () => {
+    if (!canPassSelectedMove) return;
+    onEditSelectedMovePass?.();
   };
 
   const status = getPanelStatus({ tree, isLoading, parseError });
@@ -190,6 +223,58 @@ export function SgfTreePanel({
             </button>
             <button type="button" className="sgf-delete-node-button" onClick={handleDeleteNode} disabled={!canDeleteSelectedNode}>
               {isNodeDeleting ? "Deleting..." : "Delete Node"}
+            </button>
+          </div>
+        </div>
+        <div
+          aria-label="Move edit mode"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            gap: 8,
+            alignItems: "center",
+            minWidth: 0,
+            padding: "7px 8px",
+            border: "1px solid #d2d8e0",
+            borderRadius: 4,
+            background: "#eef2f6"
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: 0, fontSize: 12 }}>Move mode</h3>
+            <p className="sgf-comment-note" title={moveEditState.help}>{moveEditState.label}</p>
+          </div>
+          <div className="sgf-node-actions" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="sgf-reorder-node-button"
+              onClick={() => handleMoveEditModeChange("append")}
+              disabled={!canChangeMoveEditMode}
+              aria-pressed={moveEditMode === "append"}
+              title={canChangeMoveEditMode ? "Append mode" : "Move mode is unavailable."}
+              style={moveEditMode === "append" ? activeModeButtonStyle : undefined}
+            >
+              Append
+            </button>
+            <button
+              type="button"
+              className="sgf-reorder-node-button"
+              onClick={() => handleMoveEditModeChange("edit")}
+              disabled={!canUseEditMode}
+              aria-pressed={moveEditMode === "edit"}
+              title={canEditSelectedMove ? "Edit selected move" : moveEditState.help}
+              style={moveEditMode === "edit" ? activeModeButtonStyle : undefined}
+            >
+              Edit selected
+            </button>
+            <button
+              type="button"
+              className="sgf-reorder-node-button"
+              onClick={handleEditSelectedMovePass}
+              disabled={!canPassSelectedMove}
+              title={canPassSelectedMove ? "Change selected move to pass" : "Available in Edit selected mode."}
+            >
+              {isMoveEditing ? "Saving..." : "Pass"}
             </button>
           </div>
         </div>
@@ -311,6 +396,13 @@ function getSiblingState(tree: SgfTreeDto | null, node: SgfTreeNodeDto | null) {
     label: `${positionLabel}. Variation 1 is the mainline.`,
     help: `${positionLabel}. Move among siblings; position 1 becomes the mainline.`
   };
+}
+
+function getMoveEditState({ selectedNode, canEditSelectedMove }: { selectedNode: SgfTreeNodeDto | null; canEditSelectedMove: boolean }) {
+  if (!selectedNode) return { label: "Select a node", help: "Select a move node to enable Edit selected." };
+  if (canEditSelectedMove) return { label: "Selected move can be edited", help: "Board clicks replace the selected move in Edit selected mode." };
+  if (!selectedNode.color || !selectedNode.vertex) return { label: "Selected node has no move", help: "Only move nodes can use Edit selected." };
+  return { label: "Selected move is locked", help: "This selected move cannot be edited here." };
 }
 
 function buildPropertyDraft(node: SgfTreeNodeDto | null, fields: PropertyField[]): Record<string, string> {

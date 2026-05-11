@@ -34,6 +34,7 @@ import type { AnalysisCacheRecord, CacheStatus, GameCacheKey, JsonValue } from "
 import { defaultAppPreferences, normalizeAppPreferences, type AppPreferences } from "./domain/preferences";
 import { providerDocumentName, providerLabel, providerSourceLabel, type ProviderImportResult } from "./domain/providers";
 import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, MoveVertex, PlayerColor, PositionDto, ProblemMarkerDto, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
+import { resolveRuntimeSmokeConfig, runRuntimeSmokeMode } from "./runtimeSmoke";
 
 const demoSgf = "(;GM[1]FF[4]SZ[19]KM[7.5]PB[Lee Changho]PW[Rui Naiwei]RE[B+R];B[pd];W[dd];B[pp];W[dp];B[jq];W[qj];B[nc];W[fc];B[qf];W[cn];B[cp];W[do];B[co];W[dn];B[fq];W[eq];B[fp];W[gp];B[gq];W[hp])";
 const demoGame = createDemoGame();
@@ -109,6 +110,7 @@ export function App() {
   const sgfTreeRequestVersionRef = useRef(0);
   const treeNodeReplayRequestVersionRef = useRef(0);
   const sgfTextEditVersionRef = useRef(0);
+  const runtimeSmokeStartedRef = useRef(false);
 
   useEffect(() => {
     getHealth()
@@ -138,6 +140,19 @@ export function App() {
 
   useEffect(() => {
     void refreshSgfTree(demoSgf, demoGame.moves.length, false);
+  }, []);
+
+  useEffect(() => {
+    if (runtimeSmokeStartedRef.current) return;
+    resolveRuntimeSmokeConfig()
+      .then((config) => {
+        if (runtimeSmokeStartedRef.current || !config.enabled) return;
+        runtimeSmokeStartedRef.current = true;
+        setMessage("Runtime smoke mode is running...");
+        return runRuntimeSmokeMode(config)
+          .then((report) => setMessage(`Runtime smoke mode ${report.status}: report written to ${report.reportPath ?? "configured report path"}.`));
+      })
+      .catch((error: unknown) => setMessage(`Runtime smoke mode failed before reporting: ${errorMessage(error)}`));
   }, []);
 
   const currentFrame = useMemo(() => frames.find((f) => f.turn === currentMove) ?? frames.at(-1), [frames, currentMove]);

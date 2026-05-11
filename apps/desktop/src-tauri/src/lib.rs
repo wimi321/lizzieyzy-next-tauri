@@ -32,6 +32,9 @@ const APP_PREFERENCES_FILE: &str = "lizzieyzy-next-app-preferences.json";
 const ANALYSIS_CACHE_DB_FILE: &str = "analysis-cache.sqlite3";
 const DEFAULT_ENGINE_PROFILE_ID: &str = "default";
 const DEFAULT_PROVIDER_HTTP_TIMEOUT_MS: u64 = 30_000;
+const RUNTIME_SMOKE_ENABLED_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE";
+const RUNTIME_SMOKE_SGF_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH";
+const RUNTIME_SMOKE_REPORT_PATH_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppendSgfMoveResultDto {
@@ -423,6 +426,13 @@ struct DeleteAnalysisCacheDto {
     deleted: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct RuntimeSmokeConfigDto {
+    enabled: bool,
+    sgf_path: Option<String>,
+    report_path: Option<String>,
+}
+
 #[tauri::command]
 fn health() -> AppHealthDto {
     AppHealthDto {
@@ -435,6 +445,54 @@ fn health() -> AppHealthDto {
             "KataGo launch plan command is wired".to_string(),
         ],
     }
+}
+
+#[tauri::command]
+fn runtime_smoke_report(report_path: String, report_json: String) -> Result<(), String> {
+    if !env_truthy(RUNTIME_SMOKE_ENABLED_ENV) {
+        return Err(format!("{RUNTIME_SMOKE_ENABLED_ENV} is not enabled"));
+    }
+
+    let expected_path = std::env::var(RUNTIME_SMOKE_REPORT_PATH_ENV)
+        .map_err(|_| format!("{RUNTIME_SMOKE_REPORT_PATH_ENV} is not set"))?;
+    if expected_path != report_path {
+        return Err(format!(
+            "{RUNTIME_SMOKE_REPORT_PATH_ENV} does not match report_path"
+        ));
+    }
+
+    let path = PathBuf::from(&report_path);
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        fs::create_dir_all(parent).map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+    }
+    fs::write(&path, report_json).map_err(|err| format!("failed to write {}: {err}", path.display()))
+}
+
+#[tauri::command]
+fn runtime_smoke_config() -> RuntimeSmokeConfigDto {
+    RuntimeSmokeConfigDto {
+        enabled: env_truthy(RUNTIME_SMOKE_ENABLED_ENV),
+        sgf_path: non_empty_env(RUNTIME_SMOKE_SGF_PATH_ENV),
+        report_path: non_empty_env(RUNTIME_SMOKE_REPORT_PATH_ENV),
+    }
+}
+
+fn env_truthy(name: &str) -> bool {
+    std::env::var(name)
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn non_empty_env(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 #[tauri::command]
@@ -2853,6 +2911,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             health,
+            runtime_smoke_config,
+            runtime_smoke_report,
             parse_sgf_summary,
             parse_sgf_tree,
             provider_parse_yike_url,
@@ -2902,6 +2962,8 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    static RUNTIME_SMOKE_REPORT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn native_sgf_temp_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("lizzieyzy-native-sgf-{name}-{}.sgf", Uuid::new_v4()))
     }
@@ -2912,6 +2974,81 @@ mod tests {
 
     fn native_config_temp_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("lizzieyzy-{name}-{}", Uuid::new_v4()))
+    }
+
+    fn runtime_smoke_report_temp_path(name: &str) -> PathBuf {
+        std::env::temp_dir()
+            .join(format!("lizzieyzy-runtime-smoke-{name}-{}", Uuid::new_v4()))
+            .join("nested")
+            .join("report.json")
+    }
+
+    #[test]
+    fn runtime_smoke_report_env_missing_does_not_write_file() {
+        let _guard = RUNTIME_SMOKE_REPORT_ENV_LOCK.lock().unwrap();
+        std::env::set_var(RUNTIME_SMOKE_ENABLED_ENV, "1");
+        std::env::remove_var(RUNTIME_SMOKE_REPORT_PATH_ENV);
+        let path = runtime_smoke_report_temp_path("missing");
+
+        let error =
+            runtime_smoke_report(path.display().to_string(), r#"{"ok":true}"#.to_string()).unwrap_err();
+
+        std::env::remove_var(RUNTIME_SMOKE_ENABLED_ENV);
+        let _ = fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
+        assert!(error.contains("is not set"));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn runtime_smoke_report_env_mismatch_does_not_write_file() {
+        let _guard = RUNTIME_SMOKE_REPORT_ENV_LOCK.lock().unwrap();
+        let path = runtime_smoke_report_temp_path("mismatch");
+        let allowed_path = runtime_smoke_report_temp_path("allowed");
+        std::env::set_var(RUNTIME_SMOKE_ENABLED_ENV, "1");
+        std::env::set_var(RUNTIME_SMOKE_REPORT_PATH_ENV, allowed_path.display().to_string());
+
+        let error =
+            runtime_smoke_report(path.display().to_string(), r#"{"ok":true}"#.to_string()).unwrap_err();
+
+        std::env::remove_var(RUNTIME_SMOKE_ENABLED_ENV);
+        std::env::remove_var(RUNTIME_SMOKE_REPORT_PATH_ENV);
+        let _ = fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
+        let _ = fs::remove_dir_all(allowed_path.parent().unwrap().parent().unwrap());
+        assert!(error.contains("does not match"));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn runtime_smoke_report_disabled_does_not_write_file() {
+        let _guard = RUNTIME_SMOKE_REPORT_ENV_LOCK.lock().unwrap();
+        let path = runtime_smoke_report_temp_path("disabled");
+        std::env::remove_var(RUNTIME_SMOKE_ENABLED_ENV);
+        std::env::set_var(RUNTIME_SMOKE_REPORT_PATH_ENV, path.display().to_string());
+
+        let error =
+            runtime_smoke_report(path.display().to_string(), r#"{"ok":true}"#.to_string()).unwrap_err();
+
+        std::env::remove_var(RUNTIME_SMOKE_REPORT_PATH_ENV);
+        let _ = fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
+        assert!(error.contains("is not enabled"));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn runtime_smoke_report_enabled_success_writes_file() {
+        let _guard = RUNTIME_SMOKE_REPORT_ENV_LOCK.lock().unwrap();
+        let path = runtime_smoke_report_temp_path("success");
+        let report_json = r#"{"status":"ok","checks":["runtime"]}"#;
+        std::env::set_var(RUNTIME_SMOKE_ENABLED_ENV, "true");
+        std::env::set_var(RUNTIME_SMOKE_REPORT_PATH_ENV, path.display().to_string());
+
+        runtime_smoke_report(path.display().to_string(), report_json.to_string()).unwrap();
+
+        std::env::remove_var(RUNTIME_SMOKE_ENABLED_ENV);
+        std::env::remove_var(RUNTIME_SMOKE_REPORT_PATH_ENV);
+        let written = fs::read_to_string(&path).unwrap();
+        let _ = fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
+        assert_eq!(written, report_json);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
@@ -27,6 +27,12 @@ const sgfDialogFilters = [{ name: "SGF files", extensions: ["sgf", "txt"] }];
 export type SgfDocument = {
   path: string | null;
   sgfText: string;
+};
+
+export type RuntimeSmokeConfig = {
+  enabled: boolean;
+  sgf_path?: string | null;
+  report_path?: string | null;
 };
 
 export type AppendSgfMoveResult = {
@@ -91,7 +97,7 @@ declare global {
   }
 }
 
-const isTauriRuntime = () => typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
+export const isTauriRuntime = () => typeof window !== "undefined" && (window.__TAURI_INTERNALS__ !== undefined || isTauri());
 
 export async function getHealth(): Promise<AppHealthDto> {
   if (!isTauriRuntime()) {
@@ -145,6 +151,18 @@ export async function readSgfDocument(path: string): Promise<SgfDocument> {
   }
   const sgfText = await invoke<string>("read_sgf_file", { path });
   return { path, sgfText };
+}
+
+export async function loadRuntimeSmokeConfig(): Promise<RuntimeSmokeConfig> {
+  if (!isTauriRuntime()) return { enabled: false };
+  return await invoke<RuntimeSmokeConfig>("runtime_smoke_config");
+}
+
+export async function runtimeSmokeReport(reportPath: string, reportJson: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    throw new Error("Runtime smoke reports require the Tauri desktop backend.");
+  }
+  await invoke<void>("runtime_smoke_report", { reportPath, reportJson });
 }
 
 export async function saveSgfDocument(path: string | null, sgfText: string, defaultFileName = "review.sgf"): Promise<SgfDocument | null> {

@@ -18,9 +18,11 @@ import {
   openSgfDocument,
   parseSgfTree,
   parseSgfSummary,
+  replaySgfPositionAtNode,
   replaySgfPositions,
   saveSgfDocument,
-  startKataGoGameAnalysis
+  startKataGoGameAnalysis,
+  updateSgfNodeComment
 } from "./api/backend";
 import { computeGameCacheKey, loadAnalysisCache, saveAnalysisCache } from "./api/analysisCache";
 import { loadAppPreferences, saveAppPreferences } from "./api/preferences";
@@ -69,6 +71,8 @@ export function App() {
   const [sgfTreeError, setSgfTreeError] = useState<string | null>(null);
   const [isSgfTreeLoading, setIsSgfTreeLoading] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
+  const [isCommentSaving, setIsCommentSaving] = useState(false);
+  const [treeNodePositionOverride, setTreeNodePositionOverride] = useState<PositionDto | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
   const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
   const activeJobIdRef = useRef<string | null>(null);
@@ -81,6 +85,8 @@ export function App() {
   const pendingAnalysisTerminalEventsRef = useRef<Map<string, PendingAnalysisTerminalEvent>>(new Map());
   const analysisCleanupRef = useRef<(() => void) | null>(null);
   const sgfTreeRequestVersionRef = useRef(0);
+  const treeNodeReplayRequestVersionRef = useRef(0);
+  const sgfTextEditVersionRef = useRef(0);
 
   useEffect(() => {
     getHealth()
@@ -114,7 +120,10 @@ export function App() {
 
   const currentFrame = useMemo(() => frames.find((f) => f.turn === currentMove) ?? frames.at(-1), [frames, currentMove]);
   const visibleCurrentFrame = useMemo(() => applyPreferencesToFrame(currentFrame, preferences), [currentFrame, preferences]);
-  const currentPosition = useMemo(() => selectExactPosition(positions, currentMove, game.summary.board_size), [positions, currentMove, game.summary.board_size]);
+  const currentPosition = useMemo(
+    () => treeNodePositionOverride ?? selectExactPosition(positions, currentMove, game.summary.board_size),
+    [treeNodePositionOverride, positions, currentMove, game.summary.board_size]
+  );
   const maxMove = Math.max(positions.at(-1)?.move_number ?? 0, 1);
   const documentName = useMemo(() => currentFilePath ? fileNameFromPath(currentFilePath) : fallbackFileName ?? "Untitled SGF", [currentFilePath, fallbackFileName]);
   const saveFileName = documentName.toLowerCase().endsWith(".sgf") ? documentName : `${documentName}.sgf`;
@@ -184,6 +193,7 @@ export function App() {
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(loadedMessage);
       await checkAnalysisCacheForGame(text, currentFilePath, parsed, replayed, loadedMessage, tree);
@@ -208,9 +218,11 @@ export function App() {
         return;
       }
       setSgfText(document.sgfText);
+      sgfTextEditVersionRef.current += 1;
       setCurrentFilePath(document.path);
       setFallbackFileName(null);
       setDirty(false);
+      clearTreeNodePositionOverride();
       sgfTreeRequest = beginSgfTreeLoad();
       const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(document.sgfText), replaySgfPositions(document.sgfText), parseSgfTree(document.sgfText)]);
       const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
@@ -221,6 +233,7 @@ export function App() {
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(openedMessage);
       await checkAnalysisCacheForGame(document.sgfText, document.path, parsed, replayed, openedMessage, tree);
@@ -260,6 +273,7 @@ export function App() {
       setProblems(classified);
       setCurrentMove(targetMove);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       const cacheMessage = await saveAnalysisCacheForGame(text, currentFilePath, parsed, result, classified, "fake");
       setMessage(`Generated ${result.length} review frames with candidate moves and winrate history.${cacheMessage}`);
@@ -288,6 +302,7 @@ export function App() {
       setProblems(await classifyProblems(mergedFrames));
       setCurrentMove(frame.turn);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, frame.turn, sgfTreeRequest);
       setMessage(`KataGo analysis completed for move ${frame.turn} with ${frame.visits} visits.`);
     } catch (error) {
@@ -312,6 +327,7 @@ export function App() {
     const sgfTreeRequest = beginSgfTreeLoad();
     try {
       const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText), parseSgfTree(sgfText)]);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, replayed.at(-1)?.move_number ?? parsed.moves.length, sgfTreeRequest);
       cleanup = await listenToKataGoAnalysisEvents({
         onProgress: (payload) => {
@@ -416,6 +432,7 @@ export function App() {
       const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       const importedMessage = `Imported ${file.name}: ${parsed.summary.move_count} moves.`;
       setSgfText(text);
+      sgfTextEditVersionRef.current += 1;
       setCurrentFilePath(null);
       setFallbackFileName(file.name);
       setDirty(false);
@@ -425,6 +442,7 @@ export function App() {
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(importedMessage);
       await checkAnalysisCacheForGame(text, null, parsed, replayed, importedMessage, tree);
@@ -445,6 +463,7 @@ export function App() {
       const importedMessage = `Imported ${providerLabel(result.provider)} provider payload from ${source}: ${parsed.summary.move_count} moves.${warningText}`;
       const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       setSgfText(result.sgf_text);
+      sgfTextEditVersionRef.current += 1;
       setCurrentFilePath(null);
       setFallbackFileName(providerDocumentName(result));
       setDirty(false);
@@ -454,6 +473,7 @@ export function App() {
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(importedMessage);
       await checkAnalysisCacheForGame(result.sgf_text, null, parsed, replayed, importedMessage, tree);
@@ -473,6 +493,7 @@ export function App() {
       const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       const sampleMessage = `Sample SGF restored: ${parsed.summary.move_count} moves.`;
       setSgfText(demoSgf);
+      sgfTextEditVersionRef.current += 1;
       setCurrentFilePath(null);
       setFallbackFileName("sample.sgf");
       setDirty(false);
@@ -482,6 +503,7 @@ export function App() {
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(sampleMessage);
       await checkAnalysisCacheForGame(demoSgf, null, parsed, replayed, sampleMessage, tree);
@@ -494,13 +516,14 @@ export function App() {
   }
 
   function handleMoveSelect(moveNumber: number) {
+    clearTreeNodePositionOverride();
     const selectedMove = clampMoveNumberToPositions(positions, moveNumber);
     setCurrentMove(selectedMove);
     setSelectedCandidateIndex(null);
     syncSelectedSgfNodeToMove(selectedMove);
   }
 
-  function handleSgfTreeNodeSelect(nodeId: string) {
+  async function handleSgfTreeNodeSelect(nodeId: string) {
     const node = sgfTree?.nodes.find((item) => item.id === nodeId);
     setSelectedSgfNodeId(nodeId);
     setCommentDraft(node?.comment ?? "");
@@ -508,8 +531,66 @@ export function App() {
       setCurrentMove(clampMoveNumberToPositions(positions, node.move_number));
       setSelectedCandidateIndex(null);
     }
-    if (node && !node.is_mainline) {
-      setMessage("Variation node selected. Branch replay is tracked for parity work but board replay is still mainline-only in this slice.");
+    if (!node) return;
+
+    const requestVersion = beginTreeNodeReplay();
+    const text = sgfText;
+    setMessage(`Loading ${node.is_mainline ? "mainline" : "branch"} node position...`);
+    try {
+      const position = await replaySgfPositionAtNode(text, nodeId);
+      if (treeNodeReplayRequestVersionRef.current !== requestVersion) return;
+      setTreeNodePositionOverride(position);
+      if (node.is_mainline) {
+        setMessage(`Mainline node position displayed for move ${position.move_number}. Analysis remains mainline/current cache.`);
+      } else {
+        setMessage(`Branch position displayed for ${formatSgfNodeLabel(node)}. Analysis remains mainline/current cache unless re-run.`);
+      }
+    } catch (error) {
+      if (treeNodeReplayRequestVersionRef.current !== requestVersion) return;
+      setTreeNodePositionOverride(null);
+      setMessage(`Branch position replay failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function handleSaveComment(nodeId: string, comment: string) {
+    const existingNode = sgfTree?.nodes.find((node) => node.id === nodeId) ?? null;
+    const sgfTreeRequest = beginSgfTreeLoad();
+    const sourceVersion = sgfTextEditVersionRef.current;
+    const sourceText = sgfText;
+    setIsCommentSaving(true);
+    try {
+      const updatedSgfText = await updateSgfNodeComment(sourceText, nodeId, comment.length > 0 ? comment : null);
+      if (sgfTextEditVersionRef.current !== sourceVersion) {
+        setMessage("Save comment cancelled because the SGF source changed while the save was running.");
+        return;
+      }
+      sgfTextEditVersionRef.current += 1;
+      setSgfText(updatedSgfText);
+      setDirty(true);
+      clearReviewData();
+      resetAnalysisCacheState();
+      const updatedTree = await parseSgfTree(updatedSgfText);
+      const selectedNode = applySgfTreeSelectedNode(updatedTree, nodeId, sgfTreeRequest)
+        ?? selectSgfTreeNodeForMove(updatedTree, currentMove);
+      setSgfTreeError(null);
+      setCommentDraft(selectedNode?.comment ?? "");
+      let replayWarning = "";
+      if (selectedNode) {
+        try {
+          const replayRequest = beginTreeNodeReplay();
+          const position = await replaySgfPositionAtNode(updatedSgfText, selectedNode.id);
+          if (treeNodeReplayRequestVersionRef.current === replayRequest) setTreeNodePositionOverride(position);
+        } catch (error) {
+          setTreeNodePositionOverride(null);
+          replayWarning = ` Position replay failed: ${errorMessage(error)}`;
+        }
+      }
+      setMessage(`comment saved to SGF text for ${selectedNode ? formatSgfNodeLabel(selectedNode) : existingNode ? formatSgfNodeLabel(existingNode) : "selected node"}.${replayWarning}`);
+    } catch (error) {
+      setMessage(`Save comment failed: ${errorMessage(error)}`);
+    } finally {
+      setIsCommentSaving(false);
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
@@ -553,11 +634,32 @@ export function App() {
     setCommentDraft(selectedNode?.comment ?? "");
   }
 
+  function applySgfTreeSelectedNode(tree: SgfTreeDto | null, nodeId: string, requestVersion?: number | null): SgfTreeNodeDto | null {
+    if (requestVersion !== undefined && requestVersion !== null && sgfTreeRequestVersionRef.current !== requestVersion) return null;
+    setSgfTree(tree);
+    setSgfTreeError(null);
+    const selectedNode = tree?.nodes.find((node) => node.id === nodeId) ?? null;
+    setSelectedSgfNodeId(selectedNode?.id ?? tree?.root_id ?? null);
+    setCommentDraft(selectedNode?.comment ?? "");
+    return selectedNode;
+  }
+
   function syncSelectedSgfNodeToMove(moveNumber: number, sourceTree = sgfTree) {
     const selectedNode = selectSgfTreeNodeForMove(sourceTree, moveNumber);
     if (!selectedNode) return;
     setSelectedSgfNodeId(selectedNode.id);
     setCommentDraft(selectedNode.comment ?? "");
+  }
+
+  function beginTreeNodeReplay(): number {
+    const requestVersion = treeNodeReplayRequestVersionRef.current + 1;
+    treeNodeReplayRequestVersionRef.current = requestVersion;
+    return requestVersion;
+  }
+
+  function clearTreeNodePositionOverride() {
+    treeNodeReplayRequestVersionRef.current += 1;
+    setTreeNodePositionOverride(null);
   }
 
   function cleanupAnalysisListeners() {
@@ -591,6 +693,7 @@ export function App() {
     setProblems(classified);
     setCurrentMove(shownMove);
     setSelectedCandidateIndex(null);
+    clearTreeNodePositionOverride();
     setAnalysisProgress((progress) => progress ? { ...progress, completed: progress.expected || result.length, expected: progress.expected || result.length } : progress);
     finishStoppedAnalysis(jobId);
     const cacheMessage = await saveAnalysisCacheForGame(sgfText, currentFilePath, parsed, result, classified, "katago");
@@ -772,18 +875,18 @@ export function App() {
             parseError={sgfTreeError}
             commentDraft={commentDraft}
             onCommentDraftChange={setCommentDraft}
-            onSelectNode={handleSgfTreeNodeSelect}
-            onSaveComment={() => setMessage("Comment persistence is not wired yet. Edit the SGF source directly, then save the SGF file.")}
-            commentReadOnly
-            commentActionLabel="Save Pending"
-            commentNote="Comments are displayed from SGF nodes. Editing and SGF round-trip persistence are still tracked in the parity matrix."
+            onSelectNode={(nodeId) => void handleSgfTreeNodeSelect(nodeId)}
+            onSaveComment={(nodeId, comment) => void handleSaveComment(nodeId, comment)}
+            isCommentSaving={isCommentSaving}
+            commentActionLabel="Save Comment"
+            commentNote="Saving writes the selected node comment into the SGF source text. Branch positions can be displayed; analysis remains mainline/current cache unless re-run."
           />
         </div>
       }
-      providerPanel={<ProviderPanel disabled={isKataGoRunning} onImport={handleProviderImport} />}
+      providerPanel={<ProviderPanel disabled={isKataGoRunning || isCommentSaving} onImport={handleProviderImport} />}
       enginePanel={
         <EngineSetupPanel
-          disabled={isKataGoRunning}
+          disabled={isKataGoRunning || isCommentSaving}
           onRun={handleRunKataGo}
           onAnalyzeGame={handleAnalyzeKataGoGame}
           onCancelAnalysis={handleCancelKataGoAnalysis}
@@ -795,7 +898,7 @@ export function App() {
         <PreferencesPanel
           preferences={preferences}
           status={preferencesStatus}
-          disabled={isKataGoRunning}
+          disabled={isKataGoRunning || isCommentSaving}
           onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
         />
       }
@@ -806,7 +909,7 @@ export function App() {
       currentMove={currentMove}
       maxMove={maxMove}
       message={message}
-      isBusy={isKataGoRunning}
+      isBusy={isKataGoRunning || isCommentSaving}
       canSave={dirty}
       onOpen={handleOpenSgfDocument}
       onSave={() => handleSaveSgfDocument(false)}
@@ -816,9 +919,11 @@ export function App() {
       onParseSgf={handleParseSgf}
       onRunReview={handleFakeAnalyze}
       onSgfTextChange={(value) => {
+        sgfTextEditVersionRef.current += 1;
         sgfTreeRequestVersionRef.current += 1;
         setSgfText(value);
         setDirty(true);
+        clearTreeNodePositionOverride();
         clearReviewData();
         resetAnalysisCacheState();
         setIsSgfTreeLoading(false);
@@ -878,6 +983,12 @@ function selectSgfTreeNodeForMove(tree: SgfTreeDto | null, moveNumber: number): 
   if (moveNumber <= 0) return tree.nodes.find((node) => node.id === tree.root_id) ?? null;
   const candidates = tree.nodes.filter((node) => node.move_number === moveNumber);
   return candidates.find((node) => node.is_mainline) ?? candidates[0] ?? null;
+}
+
+function formatSgfNodeLabel(node: SgfTreeNodeDto): string {
+  if (node.move_number === null || node.move_number === undefined) return "root";
+  const line = node.is_mainline ? "mainline" : `variation ${node.variation_index + 1}`;
+  return `${line} move ${node.move_number}`;
 }
 
 function errorMessage(error: unknown): string {

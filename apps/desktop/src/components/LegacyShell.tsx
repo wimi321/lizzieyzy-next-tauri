@@ -185,7 +185,7 @@ export function LegacyShell({
             <strong title={documentTitle}>{documentName}{dirty ? " *" : ""}</strong>
             <span>{dirty ? "Unsaved changes" : "Saved"}</span>
           </div>
-          <textarea value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} spellCheck={false} aria-label="SGF source" />
+          <textarea value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
           <div className="button-row">
             <button type="button" onClick={() => void onOpen()} disabled={isBusy}>Open</button>
             <button type="button" onClick={() => void onSave()} disabled={isBusy || !canSave}>Save</button>

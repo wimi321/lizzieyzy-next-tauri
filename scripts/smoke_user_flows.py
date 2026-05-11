@@ -50,6 +50,14 @@ TAURI_COMMAND_GROUPS = {
         "readboard_sidecar_sync_snapshot",
     ],
     "tauri_provider_fetch_commands": ["provider_fetch_yike", "provider_fetch_fox"],
+    "tauri_legacy_config_migration_commands": [
+        "preview_legacy_config_migration",
+        "apply_legacy_config_migration",
+    ],
+    "tauri_runtime_asset_layout_commands": [
+        "resolve_runtime_asset_layout",
+        "validate_runtime_asset_layout",
+    ],
 }
 
 

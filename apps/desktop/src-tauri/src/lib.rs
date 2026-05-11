@@ -290,6 +290,64 @@ struct AppPreferencesDto {
     board_theme: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyConfigMigrationPreviewDto {
+    source_path: String,
+    preferences: Option<AppPreferencesDto>,
+    engine_profiles: Option<EngineProfilesSettingsDto>,
+    migrated_fields: Vec<String>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyConfigMigrationApplyDto {
+    source_path: String,
+    preferences_written: bool,
+    engine_profiles_written: bool,
+    written_paths: Vec<String>,
+    migrated_fields: Vec<String>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeAssetPathDto {
+    label: String,
+    kind: String,
+    source: String,
+    path: String,
+    required: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeAssetLayoutDto {
+    resource_dir: Option<String>,
+    dev_roots: Vec<String>,
+    release_roots: Vec<String>,
+    candidates: Vec<RuntimeAssetPathDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeAssetMissingWarningDto {
+    label: String,
+    kind: String,
+    source: String,
+    path: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeAssetValidationDto {
+    layout: RuntimeAssetLayoutDto,
+    missing: Vec<RuntimeAssetMissingWarningDto>,
+    warnings: Vec<String>,
+}
+
 struct PreparedBatchAnalysis {
     query_jsonl: String,
     turns: Vec<u32>,
@@ -619,6 +677,63 @@ fn engine_asset_checks(profile: EngineProfileDto) -> Vec<AssetCheck> {
 }
 
 #[tauri::command]
+fn preview_legacy_config_migration(path: String) -> Result<LegacyConfigMigrationPreviewDto, String> {
+    preview_legacy_config_migration_from_path(&non_empty_path(path)?)
+}
+
+#[tauri::command]
+fn apply_legacy_config_migration(
+    app_handle: AppHandle,
+    path: String,
+) -> Result<LegacyConfigMigrationApplyDto, String> {
+    let source_path = non_empty_path(path)?;
+    let preview = preview_legacy_config_migration_from_path(&source_path)?;
+    let mut written_paths = Vec::new();
+    let preferences_written = if let Some(preferences) = preview.preferences.clone() {
+        let preferences_path = app_preferences_path(&app_handle)?;
+        let existing = load_app_preferences_at_path(&preferences_path)?;
+        let merged = merge_migrated_preferences(existing, preferences, &preview.migrated_fields);
+        save_app_preferences_at_path(&preferences_path, merged)?;
+        written_paths.push(preferences_path.display().to_string());
+        true
+    } else {
+        false
+    };
+    let engine_profiles_written = if let Some(engine_profiles) = preview.engine_profiles.clone() {
+        let engine_profiles_path = engine_profile_path(&app_handle)?;
+        let existing = load_engine_profiles_settings_at_path(&engine_profiles_path)?;
+        let merged = merge_migrated_engine_profiles(existing, engine_profiles, &preview.migrated_fields);
+        save_engine_profiles_settings_at_path(&engine_profiles_path, merged)?;
+        written_paths.push(engine_profiles_path.display().to_string());
+        true
+    } else {
+        false
+    };
+
+    Ok(LegacyConfigMigrationApplyDto {
+        source_path: preview.source_path,
+        preferences_written,
+        engine_profiles_written,
+        written_paths,
+        migrated_fields: preview.migrated_fields,
+        warnings: preview.warnings,
+    })
+}
+
+#[tauri::command]
+fn resolve_runtime_asset_layout(app_handle: AppHandle) -> RuntimeAssetLayoutDto {
+    resolve_runtime_asset_layout_for_paths(
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        app_handle.path().resource_dir().ok(),
+    )
+}
+
+#[tauri::command]
+fn validate_runtime_asset_layout(app_handle: AppHandle) -> RuntimeAssetValidationDto {
+    validate_runtime_asset_layout_from_layout(resolve_runtime_asset_layout(app_handle))
+}
+
+#[tauri::command]
 fn load_app_preferences(app_handle: AppHandle) -> Result<AppPreferencesDto, String> {
     let path = app_preferences_path(&app_handle)?;
     match fs::read_to_string(&path) {
@@ -635,12 +750,8 @@ fn save_app_preferences(
     app_handle: AppHandle,
     preferences: AppPreferencesDto,
 ) -> Result<AppPreferencesDto, String> {
-    let preferences = normalize_app_preferences(preferences);
     let path = app_preferences_path(&app_handle)?;
-    let json = serde_json::to_string_pretty(&preferences)
-        .map_err(|err| format!("failed to serialize app preferences: {err}"))?;
-    fs::write(&path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))?;
-    Ok(preferences)
+    save_app_preferences_at_path(&path, preferences)
 }
 
 #[tauri::command]
@@ -693,12 +804,8 @@ fn save_engine_profiles_settings(
     app_handle: AppHandle,
     settings: EngineProfilesSettingsDto,
 ) -> Result<EngineProfilesSettingsDto, String> {
-    let settings = normalize_engine_profiles_settings(settings)?;
     let path = engine_profile_path(&app_handle)?;
-    let json = serde_json::to_string_pretty(&settings)
-        .map_err(|err| format!("failed to serialize engine profiles: {err}"))?;
-    fs::write(&path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))?;
-    Ok(settings)
+    save_engine_profiles_settings_at_path(&path, settings)
 }
 
 #[tauri::command]
@@ -1112,6 +1219,675 @@ fn normalize_app_preferences(mut preferences: AppPreferencesDto) -> AppPreferenc
     preferences
 }
 
+fn save_app_preferences_at_path(
+    path: &Path,
+    preferences: AppPreferencesDto,
+) -> Result<AppPreferencesDto, String> {
+    let preferences = normalize_app_preferences(preferences);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create app preferences directory {}: {err}",
+                parent.display()
+            )
+        })?;
+    }
+    let json = serde_json::to_string_pretty(&preferences)
+        .map_err(|err| format!("failed to serialize app preferences: {err}"))?;
+    fs::write(path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    Ok(preferences)
+}
+
+fn load_app_preferences_at_path(path: &Path) -> Result<AppPreferencesDto, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => serde_json::from_str::<AppPreferencesDto>(&contents)
+            .map_err(|err| format!("failed to parse {}: {err}", path.display()))
+            .map(normalize_app_preferences),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(default_app_preferences()),
+        Err(err) => Err(format!("failed to read {}: {err}", path.display())),
+    }
+}
+
+#[cfg(test)]
+fn apply_legacy_config_migration_to_paths(
+    source_path: &Path,
+    preferences_path: &Path,
+    engine_profiles_path: &Path,
+) -> Result<LegacyConfigMigrationApplyDto, String> {
+    let preview = preview_legacy_config_migration_from_path(source_path)?;
+    let mut written_paths = Vec::new();
+    let preferences_written = if let Some(preferences) = preview.preferences.clone() {
+        let existing = load_app_preferences_at_path(preferences_path)?;
+        let merged = merge_migrated_preferences(existing, preferences, &preview.migrated_fields);
+        save_app_preferences_at_path(preferences_path, merged)?;
+        written_paths.push(preferences_path.display().to_string());
+        true
+    } else {
+        false
+    };
+    let engine_profiles_written = if let Some(engine_profiles) = preview.engine_profiles.clone() {
+        let existing = load_engine_profiles_settings_at_path(engine_profiles_path)?;
+        let merged = merge_migrated_engine_profiles(existing, engine_profiles, &preview.migrated_fields);
+        save_engine_profiles_settings_at_path(engine_profiles_path, merged)?;
+        written_paths.push(engine_profiles_path.display().to_string());
+        true
+    } else {
+        false
+    };
+
+    Ok(LegacyConfigMigrationApplyDto {
+        source_path: preview.source_path,
+        preferences_written,
+        engine_profiles_written,
+        written_paths,
+        migrated_fields: preview.migrated_fields,
+        warnings: preview.warnings,
+    })
+}
+
+fn merge_migrated_preferences(
+    mut existing: AppPreferencesDto,
+    migrated: AppPreferencesDto,
+    migrated_fields: &[String],
+) -> AppPreferencesDto {
+    if has_migrated_field(migrated_fields, "showCandidates") {
+        existing.show_candidates = migrated.show_candidates;
+    }
+    if has_migrated_field(migrated_fields, "candidateLimit") {
+        existing.candidate_limit = migrated.candidate_limit;
+    }
+    if has_migrated_field(migrated_fields, "defaultMaxVisits") {
+        existing.default_max_visits = migrated.default_max_visits;
+    }
+    if has_migrated_field(migrated_fields, "showOwnership") {
+        existing.show_ownership = migrated.show_ownership;
+    }
+    if has_migrated_field(migrated_fields, "showPolicy") {
+        existing.show_policy = migrated.show_policy;
+    }
+    if has_migrated_field(migrated_fields, "boardTheme") {
+        existing.board_theme = migrated.board_theme;
+    }
+    normalize_app_preferences(existing)
+}
+
+fn merge_migrated_engine_profiles(
+    mut existing: EngineProfilesSettingsDto,
+    migrated: EngineProfilesSettingsDto,
+    migrated_fields: &[String],
+) -> EngineProfilesSettingsDto {
+    let Some(migrated_default) = migrated
+        .profiles
+        .into_iter()
+        .find(|record| record.id == DEFAULT_ENGINE_PROFILE_ID)
+    else {
+        return existing;
+    };
+
+    let existing_default = existing
+        .profiles
+        .iter_mut()
+        .find(|record| record.id == DEFAULT_ENGINE_PROFILE_ID);
+    if let Some(record) = existing_default {
+        record.profile.name = migrated_default.profile.name;
+        record.profile.backend = migrated_default.profile.backend;
+        if !migrated_default.profile.engine_path.trim().is_empty() {
+            record.profile.engine_path = migrated_default.profile.engine_path;
+        }
+        if migrated_default.profile.model_path.is_some() {
+            record.profile.model_path = migrated_default.profile.model_path;
+        }
+        if migrated_default.profile.config_path.is_some() {
+            record.profile.config_path = migrated_default.profile.config_path;
+        }
+        if has_migrated_field(migrated_fields, "defaultMaxVisits") {
+            record.max_visits = migrated_default.max_visits;
+        }
+    } else {
+        existing.profiles.insert(0, migrated_default);
+    }
+    existing.selected_profile_id = migrated.selected_profile_id;
+    existing
+}
+
+fn has_migrated_field(migrated_fields: &[String], field: &str) -> bool {
+    migrated_fields.iter().any(|value| value == field)
+}
+
+fn preview_legacy_config_migration_from_path(path: &Path) -> Result<LegacyConfigMigrationPreviewDto, String> {
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read legacy config {}: {err}", path.display()))?;
+    let root = parse_legacy_config_value(&contents, path)?;
+    let mut warnings = Vec::new();
+    let mut migrated_fields = Vec::new();
+    let mut preferences = default_app_preferences();
+    let mut touched_preferences = false;
+
+    if let Some(value) =
+        find_legacy_preference_value(&root, &["showCandidates", "show-candidates", "show-candidate"])
+    {
+        if let Some(parsed) = legacy_bool(value) {
+            preferences.show_candidates = parsed;
+            touched_preferences = true;
+            migrated_fields.push("showCandidates".to_string());
+        } else {
+            warnings.push("legacy showCandidates value was not a boolean".to_string());
+        }
+    }
+    if let Some(value) = find_legacy_preference_value(&root, &["candidateLimit", "maxAnalyzeTurns"]) {
+        if let Some(parsed) = legacy_u32(value) {
+            preferences.candidate_limit = parsed;
+            touched_preferences = true;
+            migrated_fields.push("candidateLimit".to_string());
+        } else {
+            warnings.push("legacy candidate limit value was not a positive integer".to_string());
+        }
+    }
+    if let Some(value) = find_legacy_preference_value(&root, &["defaultMaxVisits", "maxVisits"]) {
+        if let Some(parsed) = legacy_u32(value) {
+            preferences.default_max_visits = parsed;
+            touched_preferences = true;
+            migrated_fields.push("defaultMaxVisits".to_string());
+        } else {
+            warnings.push("legacy max visits value was not a positive integer".to_string());
+        }
+    }
+    if let Some(value) = find_legacy_preference_value(&root, &["showOwnership"]) {
+        if let Some(parsed) = legacy_bool(value) {
+            preferences.show_ownership = parsed;
+            touched_preferences = true;
+            migrated_fields.push("showOwnership".to_string());
+        } else {
+            warnings.push("legacy showOwnership value was not a boolean".to_string());
+        }
+    }
+    if let Some(value) = find_legacy_preference_value(&root, &["showPolicy"]) {
+        if let Some(parsed) = legacy_bool(value) {
+            preferences.show_policy = parsed;
+            touched_preferences = true;
+            migrated_fields.push("showPolicy".to_string());
+        } else {
+            warnings.push("legacy showPolicy value was not a boolean".to_string());
+        }
+    }
+    if let Some(value) = find_legacy_preference_value(&root, &["boardTheme", "theme"]) {
+        if let Some(parsed) = legacy_string(value) {
+            preferences.board_theme = parsed;
+            touched_preferences = true;
+            migrated_fields.push("boardTheme".to_string());
+        } else {
+            warnings.push("legacy board theme value was not a string".to_string());
+        }
+    }
+
+    let engine_path = find_legacy_engine_value(
+        &root,
+        &[
+            "engineCommand",
+            "engine-command",
+            "enginePath",
+            "engine-path",
+            "katagoCommand",
+            "katago-command",
+            "katagoPath",
+            "katago-path",
+            "leelazCommand",
+            "leelaz-command",
+            "leelazPath",
+            "leelaz-path",
+        ],
+        &[
+            "engineCommand",
+            "engine-command",
+            "enginePath",
+            "engine-path",
+            "katagoCommand",
+            "katago-command",
+            "katagoPath",
+            "katago-path",
+            "leelazCommand",
+            "leelaz-command",
+            "leelazPath",
+            "leelaz-path",
+            "command",
+            "path",
+        ],
+    )
+    .and_then(legacy_string);
+    let model_path = find_legacy_engine_value(
+        &root,
+        &[
+            "modelPath",
+            "model-path",
+            "katagoModelPath",
+            "katago-model-path",
+            "leelazModelPath",
+            "leelaz-model-path",
+        ],
+        &[
+            "modelPath",
+            "model-path",
+            "katagoModelPath",
+            "katago-model-path",
+            "leelazModelPath",
+            "leelaz-model-path",
+            "model",
+        ],
+    )
+    .and_then(legacy_string);
+    let config_path = find_legacy_engine_value(
+        &root,
+        &[
+            "configPath",
+            "config-path",
+            "gtpConfig",
+            "gtp-config",
+            "katagoConfigPath",
+            "katago-config-path",
+        ],
+        &[
+            "configPath",
+            "config-path",
+            "gtpConfig",
+            "gtp-config",
+            "katagoConfigPath",
+            "katago-config-path",
+            "config",
+        ],
+    )
+    .and_then(legacy_string);
+    let mut profile_max_visits = preferences.default_max_visits;
+    if let Some(value) = find_legacy_engine_value(
+        &root,
+        &["defaultMaxVisits", "maxVisits"],
+        &["maxVisits", "defaultMaxVisits"],
+    )
+    .or_else(|| find_legacy_preference_value(&root, &["defaultMaxVisits", "maxVisits"]))
+    .and_then(legacy_u32)
+    {
+        profile_max_visits = value;
+    }
+    let engine_profiles = if engine_path
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || model_path
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || config_path
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        migrated_fields.push("engineProfile".to_string());
+        Some(EngineProfilesSettingsDto {
+            selected_profile_id: DEFAULT_ENGINE_PROFILE_ID.to_string(),
+            profiles: vec![EngineProfileRecordDto {
+                id: DEFAULT_ENGINE_PROFILE_ID.to_string(),
+                profile: EngineProfileDto {
+                    name: "Migrated KataGo".to_string(),
+                    engine_path: engine_path.unwrap_or_default(),
+                    model_path: non_empty_legacy_string(model_path),
+                    config_path: non_empty_legacy_string(config_path),
+                    working_dir: None,
+                    backend: EngineBackend::KataGoAnalysis,
+                },
+                max_visits: profile_max_visits,
+            }],
+        })
+    } else {
+        None
+    };
+
+    let preferences = if touched_preferences {
+        Some(normalize_app_preferences(preferences))
+    } else {
+        None
+    };
+    if preferences.is_none() && engine_profiles.is_none() {
+        warnings.push("no supported legacy config fields were found".to_string());
+    }
+    let engine_profiles = engine_profiles
+        .map(normalize_engine_profiles_settings)
+        .transpose()?;
+
+    Ok(LegacyConfigMigrationPreviewDto {
+        source_path: path.display().to_string(),
+        preferences,
+        engine_profiles,
+        migrated_fields,
+        warnings,
+    })
+}
+
+fn parse_legacy_config_value(contents: &str, path: &Path) -> Result<Value, String> {
+    serde_json::from_str(contents)
+        .or_else(|_| serde_json::from_str(&sanitize_jsonish_config(contents)))
+        .map_err(|err| {
+            format!(
+                "failed to parse legacy config {} as JSON-ish config: {err}",
+                path.display()
+            )
+        })
+}
+
+fn sanitize_jsonish_config(contents: &str) -> String {
+    let trimmed = contents.trim_start_matches('\u{feff}').trim();
+    let object_slice = match (trimmed.find('{'), trimmed.rfind('}')) {
+        (Some(start), Some(end)) if start < end => &trimmed[start..=end],
+        _ => trimmed,
+    };
+    remove_trailing_json_commas(&strip_json_comments(object_slice))
+}
+
+fn strip_json_comments(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+    while let Some(ch) = chars.next() {
+        if in_string {
+            output.push(ch);
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            output.push(ch);
+            continue;
+        }
+        if ch == '/' && chars.peek() == Some(&'/') {
+            let _ = chars.next();
+            for next in chars.by_ref() {
+                if next == '\n' {
+                    output.push('\n');
+                    break;
+                }
+            }
+            continue;
+        }
+        if ch == '/' && chars.peek() == Some(&'*') {
+            let _ = chars.next();
+            let mut previous = '\0';
+            for next in chars.by_ref() {
+                if previous == '*' && next == '/' {
+                    break;
+                }
+                previous = next;
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn remove_trailing_json_commas(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == ',' {
+            let mut lookahead = chars.clone();
+            while matches!(lookahead.peek(), Some(next) if next.is_whitespace()) {
+                let _ = lookahead.next();
+            }
+            if matches!(lookahead.peek(), Some('}' | ']')) {
+                continue;
+            }
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn find_legacy_preference_value<'a>(root: &'a Value, aliases: &[&str]) -> Option<&'a Value> {
+    let map = root.as_object()?;
+    find_value_in_map(map, aliases).or_else(|| {
+        [
+            "ui",
+            "preferences",
+            "preference",
+            "appPreferences",
+            "app-preferences",
+        ]
+        .iter()
+        .filter_map(|key| map.get(*key).and_then(Value::as_object))
+        .find_map(|nested| find_value_in_map(nested, aliases))
+    })
+}
+
+fn find_legacy_engine_value<'a>(
+    root: &'a Value,
+    top_level_aliases: &[&str],
+    object_aliases: &[&str],
+) -> Option<&'a Value> {
+    let map = root.as_object()?;
+    find_value_in_map(map, top_level_aliases).or_else(|| {
+        find_known_engine_objects(root, false).find_map(|object| find_value_in_map(object, object_aliases))
+    })
+}
+
+fn find_value_in_map<'a>(map: &'a serde_json::Map<String, Value>, aliases: &[&str]) -> Option<&'a Value> {
+    aliases.iter().find_map(|alias| map.get(*alias))
+}
+
+fn find_known_engine_objects<'a>(
+    value: &'a Value,
+    include_self: bool,
+) -> Box<dyn Iterator<Item = &'a serde_json::Map<String, Value>> + 'a> {
+    let Some(map) = value.as_object() else {
+        return Box::new(std::iter::empty());
+    };
+
+    let direct = if include_self && is_legacy_engine_object(map) {
+        Some(map)
+    } else {
+        None
+    }
+    .into_iter();
+    let nested = [
+        "engine",
+        "engines",
+        "engineProfile",
+        "engine-profile",
+        "engineProfiles",
+        "engine-profiles",
+        "defaultEngine",
+        "default-engine",
+        "analysisEngine",
+        "analysis-engine",
+        "katago",
+        "kataGo",
+        "leelaz",
+        "leelaZero",
+    ]
+    .into_iter()
+    .filter_map(|key| map.get(key))
+    .flat_map(|nested| match nested {
+        Value::Object(_) => find_known_engine_objects(nested, true),
+        Value::Array(values) => Box::new(
+            values
+                .iter()
+                .flat_map(|value| find_known_engine_objects(value, true)),
+        ) as Box<dyn Iterator<Item = &'a serde_json::Map<String, Value>>>,
+        _ => Box::new(std::iter::empty()),
+    });
+
+    Box::new(direct.chain(nested))
+}
+
+fn is_legacy_engine_object(map: &serde_json::Map<String, Value>) -> bool {
+    [
+        "engineCommand",
+        "engine-command",
+        "enginePath",
+        "engine-path",
+        "katagoCommand",
+        "katago-command",
+        "katagoPath",
+        "katago-path",
+        "leelazCommand",
+        "leelaz-command",
+        "leelazPath",
+        "leelaz-path",
+        "modelPath",
+        "model-path",
+        "configPath",
+        "config-path",
+        "gtpConfig",
+        "gtp-config",
+        "command",
+        "path",
+        "model",
+        "config",
+    ]
+    .iter()
+    .any(|key| map.contains_key(*key))
+}
+
+fn legacy_bool(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(value) => Some(*value),
+        Value::String(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "yes" | "1" => Some(true),
+            "false" | "no" | "0" => Some(false),
+            _ => None,
+        },
+        Value::Number(value) => value.as_u64().and_then(|value| match value {
+            0 => Some(false),
+            1 => Some(true),
+            _ => None,
+        }),
+        _ => None,
+    }
+}
+
+fn legacy_u32(value: &Value) -> Option<u32> {
+    match value {
+        Value::Number(value) => value.as_u64().and_then(|value| u32::try_from(value).ok()),
+        Value::String(value) => value.trim().parse::<u32>().ok(),
+        _ => None,
+    }
+    .filter(|value| *value > 0)
+}
+
+fn legacy_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) => Some(value.trim().to_string()),
+        _ => None,
+    }
+}
+
+fn non_empty_legacy_string(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
+fn resolve_runtime_asset_layout_for_paths(
+    current_dir: PathBuf,
+    resource_dir: Option<PathBuf>,
+) -> RuntimeAssetLayoutDto {
+    let mut dev_roots = vec![current_dir.clone()];
+    let nested_src_tauri = current_dir.join("apps").join("desktop").join("src-tauri");
+    if nested_src_tauri != current_dir {
+        dev_roots.push(nested_src_tauri);
+    }
+    let release_roots = resource_dir.iter().cloned().collect::<Vec<_>>();
+    let mut candidates = Vec::new();
+    for root in &dev_roots {
+        push_runtime_asset_candidates(&mut candidates, root, "dev");
+    }
+    for root in &release_roots {
+        push_runtime_asset_candidates(&mut candidates, root, "release");
+    }
+
+    RuntimeAssetLayoutDto {
+        resource_dir: resource_dir.map(|path| path.display().to_string()),
+        dev_roots: dev_roots
+            .into_iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        release_roots: release_roots
+            .into_iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        candidates,
+    }
+}
+
+fn push_runtime_asset_candidates(candidates: &mut Vec<RuntimeAssetPathDto>, root: &Path, source: &str) {
+    for (label, kind, relative, required) in [
+        ("resource dir", "directory", PathBuf::new(), false),
+        (
+            "KataGo bin",
+            "directory",
+            PathBuf::from("runtime").join("katago").join("bin"),
+            false,
+        ),
+        (
+            "KataGo models",
+            "directory",
+            PathBuf::from("runtime").join("katago").join("models"),
+            false,
+        ),
+        (
+            "KataGo configs",
+            "directory",
+            PathBuf::from("runtime").join("katago").join("configs"),
+            false,
+        ),
+        (
+            "readboard runtime",
+            "directory",
+            PathBuf::from("runtime").join("readboard"),
+            false,
+        ),
+    ] {
+        candidates.push(RuntimeAssetPathDto {
+            label: label.to_string(),
+            kind: kind.to_string(),
+            source: source.to_string(),
+            path: root.join(relative).display().to_string(),
+            required,
+        });
+    }
+}
+
+fn validate_runtime_asset_layout_from_layout(layout: RuntimeAssetLayoutDto) -> RuntimeAssetValidationDto {
+    let missing = layout
+        .candidates
+        .iter()
+        .filter(|candidate| !Path::new(&candidate.path).exists())
+        .map(|candidate| RuntimeAssetMissingWarningDto {
+            label: candidate.label.clone(),
+            kind: candidate.kind.clone(),
+            source: candidate.source.clone(),
+            path: candidate.path.clone(),
+            message: format!("{} candidate is missing at {}", candidate.label, candidate.path),
+        })
+        .collect::<Vec<_>>();
+    let warnings = missing
+        .iter()
+        .map(|missing| missing.message.clone())
+        .collect::<Vec<_>>();
+
+    RuntimeAssetValidationDto {
+        layout,
+        missing,
+        warnings,
+    }
+}
+
 fn default_app_preferences() -> AppPreferencesDto {
     AppPreferencesDto {
         show_ownership: default_show_ownership(),
@@ -1187,6 +1963,16 @@ fn parse_engine_profiles_settings(contents: &str, path: &Path) -> Result<EngineP
         .and_then(normalize_engine_profiles_settings)
 }
 
+fn load_engine_profiles_settings_at_path(path: &Path) -> Result<EngineProfilesSettingsDto, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => parse_engine_profiles_settings(&contents, path),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            normalize_engine_profiles_settings(default_engine_profiles_settings())
+        }
+        Err(err) => Err(format!("failed to read {}: {err}", path.display())),
+    }
+}
+
 fn load_legacy_engine_profile_settings(app_handle: &AppHandle) -> Result<EngineProfilesSettingsDto, String> {
     let legacy_path = legacy_engine_profile_path()?;
     match fs::read_to_string(&legacy_path) {
@@ -1245,6 +2031,25 @@ fn normalize_engine_profiles_settings(
         settings.selected_profile_id = DEFAULT_ENGINE_PROFILE_ID.to_string();
     }
     settings.profiles = normalized_profiles;
+    Ok(settings)
+}
+
+fn save_engine_profiles_settings_at_path(
+    path: &Path,
+    settings: EngineProfilesSettingsDto,
+) -> Result<EngineProfilesSettingsDto, String> {
+    let settings = normalize_engine_profiles_settings(settings)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create engine profile directory {}: {err}",
+                parent.display()
+            )
+        })?;
+    }
+    let json = serde_json::to_string_pretty(&settings)
+        .map_err(|err| format!("failed to serialize engine profiles: {err}"))?;
+    fs::write(path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))?;
     Ok(settings)
 }
 
@@ -2049,6 +2854,10 @@ pub fn run() {
             classify_problems,
             katago_launch_plan,
             engine_asset_checks,
+            preview_legacy_config_migration,
+            apply_legacy_config_migration,
+            resolve_runtime_asset_layout,
+            validate_runtime_asset_layout,
             load_app_preferences,
             save_app_preferences,
             load_engine_profile_settings,
@@ -2078,6 +2887,260 @@ mod tests {
 
     fn remove_native_sgf_temp_file(path: &Path) {
         let _ = fs::remove_file(path);
+    }
+
+    fn native_config_temp_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("lizzieyzy-{name}-{}", Uuid::new_v4()))
+    }
+
+    #[test]
+    fn legacy_config_preview_does_not_write_files() {
+        let dir = native_config_temp_dir("legacy-preview");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("lizzie.properties");
+        let legacy_text = r#"
+            // Lizzie-style JSON-ish config
+            {
+                "show-candidates": false,
+                "candidateLimit": 42,
+                "showOwnership": true,
+                "theme": "high-contrast",
+                "engine": {
+                    "engineCommand": "/opt/katago/katago",
+                    "modelPath": "/opt/katago/model.bin.gz",
+                    "configPath": "/opt/katago/analysis.cfg",
+                },
+            }
+        "#;
+        fs::write(&legacy_path, legacy_text).unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let after = fs::read_to_string(&legacy_path).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(after, legacy_text);
+        let preferences = preview.preferences.unwrap();
+        assert!(!preferences.show_candidates);
+        assert_eq!(preferences.candidate_limit, 20);
+        assert_eq!(preferences.board_theme, "high-contrast");
+        let profiles = preview.engine_profiles.unwrap();
+        assert_eq!(profiles.profiles[0].profile.engine_path, "/opt/katago/katago");
+        assert_eq!(
+            profiles.profiles[0].profile.model_path.as_deref(),
+            Some("/opt/katago/model.bin.gz")
+        );
+    }
+
+    #[test]
+    fn legacy_config_apply_writes_normalized_preferences_and_profile() {
+        let dir = native_config_temp_dir("legacy-apply");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        fs::write(
+            &legacy_path,
+            r#"{
+                "showCandidates": true,
+                "candidateLimit": 999,
+                "maxVisits": 1200,
+                "showPolicy": false,
+                "boardTheme": "unknown-theme",
+                "enginePath": "/bin/katago",
+                "modelPath": "/models/default.bin.gz",
+                "configPath": "/configs/analysis.cfg"
+            }"#,
+        )
+        .unwrap();
+
+        let applied =
+            apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path).unwrap();
+        let preferences =
+            serde_json::from_str::<AppPreferencesDto>(&fs::read_to_string(&preferences_path).unwrap())
+                .unwrap();
+        let profiles =
+            serde_json::from_str::<EngineProfilesSettingsDto>(&fs::read_to_string(&profiles_path).unwrap())
+                .unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(applied.preferences_written);
+        assert!(applied.engine_profiles_written);
+        assert_eq!(preferences.candidate_limit, 20);
+        assert_eq!(preferences.default_max_visits, 1200);
+        assert_eq!(preferences.board_theme, "classic");
+        assert_eq!(profiles.selected_profile_id, DEFAULT_ENGINE_PROFILE_ID);
+        assert_eq!(profiles.profiles[0].profile.engine_path, "/bin/katago");
+        assert_eq!(profiles.profiles[0].max_visits, 1200);
+    }
+
+    #[test]
+    fn legacy_config_ignores_unrelated_nested_generic_fields() {
+        let dir = native_config_temp_dir("legacy-whitelist");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        fs::write(
+            &legacy_path,
+            r#"{
+                "recentFile": {
+                    "path": "/tmp/game.sgf",
+                    "theme": "high-contrast",
+                    "config": "/tmp/not-engine.cfg"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(preview.preferences.is_none());
+        assert!(preview.engine_profiles.is_none());
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("no supported legacy config fields")));
+    }
+
+    #[test]
+    fn legacy_config_apply_merges_with_existing_preferences_and_profiles() {
+        let dir = native_config_temp_dir("legacy-merge");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        save_app_preferences_at_path(
+            &preferences_path,
+            AppPreferencesDto {
+                auto_load_cache: false,
+                review_mode: "deep".to_string(),
+                candidate_limit: 4,
+                ..default_app_preferences()
+            },
+        )
+        .unwrap();
+        save_engine_profiles_settings_at_path(
+            &profiles_path,
+            EngineProfilesSettingsDto {
+                selected_profile_id: "custom".to_string(),
+                profiles: vec![
+                    EngineProfileRecordDto {
+                        id: DEFAULT_ENGINE_PROFILE_ID.to_string(),
+                        profile: EngineProfileDto {
+                            name: "Existing Default".to_string(),
+                            engine_path: "/old/katago".to_string(),
+                            model_path: Some("/old/model.bin.gz".to_string()),
+                            config_path: Some("/old/analysis.cfg".to_string()),
+                            working_dir: Some("/old".to_string()),
+                            backend: EngineBackend::KataGoAnalysis,
+                        },
+                        max_visits: 4321,
+                    },
+                    EngineProfileRecordDto {
+                        id: "custom".to_string(),
+                        profile: EngineProfileDto {
+                            name: "Custom Engine".to_string(),
+                            engine_path: "/custom/engine".to_string(),
+                            model_path: None,
+                            config_path: None,
+                            working_dir: None,
+                            backend: EngineBackend::GenericGtp,
+                        },
+                        max_visits: 99,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        fs::write(
+            &legacy_path,
+            r#"{
+                "candidateLimit": 6,
+                "engine": {
+                    "path": "/new/katago"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let applied =
+            apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path).unwrap();
+        let preferences =
+            serde_json::from_str::<AppPreferencesDto>(&fs::read_to_string(&preferences_path).unwrap())
+                .unwrap();
+        let profiles =
+            serde_json::from_str::<EngineProfilesSettingsDto>(&fs::read_to_string(&profiles_path).unwrap())
+                .unwrap();
+        let default_profile = profiles
+            .profiles
+            .iter()
+            .find(|record| record.id == DEFAULT_ENGINE_PROFILE_ID)
+            .unwrap();
+        let custom_profile = profiles
+            .profiles
+            .iter()
+            .find(|record| record.id == "custom")
+            .unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(applied.preferences_written);
+        assert!(applied.engine_profiles_written);
+        assert_eq!(preferences.candidate_limit, 6);
+        assert!(!preferences.auto_load_cache);
+        assert_eq!(preferences.review_mode, "deep");
+        assert_eq!(default_profile.profile.engine_path, "/new/katago");
+        assert_eq!(
+            default_profile.profile.model_path.as_deref(),
+            Some("/old/model.bin.gz")
+        );
+        assert_eq!(default_profile.max_visits, 4321);
+        assert_eq!(custom_profile.profile.engine_path, "/custom/engine");
+        assert_eq!(custom_profile.max_visits, 99);
+    }
+
+    #[test]
+    fn legacy_config_missing_or_invalid_path_returns_error() {
+        let missing = std::env::temp_dir().join(format!("lizzieyzy-missing-{}.json", Uuid::new_v4()));
+        let error = preview_legacy_config_migration_from_path(&missing).unwrap_err();
+        assert!(error.contains("failed to read legacy config"));
+
+        let empty_error = preview_legacy_config_migration("  ".to_string()).unwrap_err();
+        assert!(empty_error.contains("path must not be empty"));
+    }
+
+    #[test]
+    fn legacy_config_no_supported_fields_succeeds_with_warning() {
+        let dir = native_config_temp_dir("legacy-empty");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        fs::write(&legacy_path, r#"{"unrelated": true}"#).unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(preview.preferences.is_none());
+        assert!(preview.engine_profiles.is_none());
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("no supported legacy config fields")));
+    }
+
+    #[test]
+    fn runtime_asset_validation_missing_assets_returns_warnings_not_panic() {
+        let dir = native_config_temp_dir("runtime-assets");
+        fs::create_dir_all(&dir).unwrap();
+        let layout =
+            resolve_runtime_asset_layout_for_paths(dir.join("dev-root"), Some(dir.join("resources")));
+
+        let validation = validate_runtime_asset_layout_from_layout(layout);
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(!validation.missing.is_empty());
+        assert_eq!(validation.missing.len(), validation.warnings.len());
+        assert!(validation
+            .missing
+            .iter()
+            .any(|warning| warning.path.contains("runtime/katago/bin")));
     }
 
     #[test]

@@ -18,8 +18,10 @@ GOLDEN_SGF_FIXTURES = [
     "tests/golden/basic_19x19.sgf",
     "tests/golden/sgf_compat_variations.sgf",
     "tests/golden/sgf_ff4_compat.sgf",
+    "tests/golden/sgf_reorder_variations.sgf",
 ]
 COMPAT_FIXTURE = "tests/golden/sgf_ff4_compat.sgf"
+REORDER_FIXTURE = "tests/golden/sgf_reorder_variations.sgf"
 ROOT_PACKAGE_SCRIPTS = ["desktop:dev", "desktop:build", "desktop:tauri-build", "validate"]
 DESKTOP_PACKAGE_SCRIPTS = ["dev", "build", "preview", "tauri:dev", "tauri:build"]
 TAURI_COMMANDS = [
@@ -30,6 +32,7 @@ TAURI_COMMANDS = [
 PENDING_TAURI_COMMANDS = [
     "update_sgf_node_properties",
 ]
+PENDING_REORDER_TAURI_COMMAND = "reorder_sgf_variation"
 
 
 @dataclass
@@ -116,6 +119,31 @@ class UserFlowSmoke:
             f"{COMPAT_FIXTURE} includes variations, comments, setup properties, and labels",
         )
 
+    def check_sgf_reorder_fixture(self) -> None:
+        text = self.read_text(REORDER_FIXTURE)
+        if text is None:
+            return
+        required_tokens = {
+            "C[": "comments",
+            "ZZ[": "unknown property",
+            "LB[": "labels",
+            "TR[": "annotations",
+        }
+        missing = [label for token, label in required_tokens.items() if token not in text]
+        sibling_count = count_variation_children_at_depth(text, 1)
+        subtree_count = count_variation_children_at_depth(text, 2)
+        if sibling_count < 3:
+            missing.append(f"3 sibling variations under one parent (found {sibling_count})")
+        if subtree_count < 1:
+            missing.append("nested subtree below a sibling variation")
+        if missing:
+            self.fail("sgf_reorder_fixture", "fixture missing reorder coverage: " + ", ".join(missing))
+            return
+        self.pass_(
+            "sgf_reorder_fixture",
+            f"{REORDER_FIXTURE} covers sibling variation reorder shape, comments, unknown properties, labels, annotations, and a subtree",
+        )
+
     def check_package_scripts(self) -> None:
         root_package = self.load_json("package.json")
         desktop_package = self.load_json("apps/desktop/package.json")
@@ -159,6 +187,15 @@ class UserFlowSmoke:
             else:
                 self.pending_legacy_properties_command(command)
 
+        command = PENDING_REORDER_TAURI_COMMAND
+        if has_tauri_command_function(text, command) and command_registered_in_handler(text, command):
+            self.pass_("tauri_sgf_reorder_command", f"{command} is defined and registered")
+        else:
+            self.pending(
+                "tauri_sgf_reorder_command",
+                f"{command} is not yet registered; keep this as a TODO gate until SGF variation reorder lands",
+            )
+
     def pending_legacy_properties_command(self, command: str) -> None:
         self.pending(
             "tauri_sgf_properties_command",
@@ -178,6 +215,7 @@ class UserFlowSmoke:
     def run(self) -> list[SmokeResult]:
         self.check_golden_sgf_fixtures()
         self.check_sgf_compat_fixture()
+        self.check_sgf_reorder_fixture()
         self.check_package_scripts()
         self.check_tauri_commands()
         self.check_future_ui_tauri_gate()
@@ -196,6 +234,31 @@ def command_registered_in_handler(text: str, command: str) -> bool:
         if end is not None and re.search(r"\b" + re.escape(command) + r"\b", text[start:end]):
             return True
     return False
+
+
+def count_variation_children_at_depth(text: str, parent_depth: int) -> int:
+    count = 0
+    depth = 0
+    escaped = False
+    in_value = False
+    for index, char in enumerate(text):
+        if in_value:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "]":
+                in_value = False
+            continue
+        if char == "[":
+            in_value = True
+        elif char == "(":
+            if depth == parent_depth and text[index + 1 : index + 2] == ";":
+                count += 1
+            depth += 1
+        elif char == ")":
+            depth -= 1
+    return count
 
 
 def find_matching_bracket(text: str, open_index: int) -> int | None:

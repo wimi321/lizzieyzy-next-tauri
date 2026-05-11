@@ -14,11 +14,13 @@ Covered checks:
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Golden SGF fixtures | Automated | Verifies `tests/golden/basic_19x19.sgf`, `tests/golden/sgf_compat_variations.sgf`, and `tests/golden/sgf_ff4_compat.sgf` exist and are non-empty. |
+| Golden SGF fixtures | Automated | Verifies `tests/golden/basic_19x19.sgf`, `tests/golden/sgf_compat_variations.sgf`, `tests/golden/sgf_ff4_compat.sgf`, and `tests/golden/sgf_reorder_variations.sgf` exist and are non-empty. |
 | SGF compatibility fixture shape | Automated | Verifies the FF4 compatibility fixture contains variations, comments, setup properties, and labels. |
+| SGF variation reorder fixture shape | Automated | Verifies the reorder fixture has three sibling variations under one parent, comments, an unknown property, labels/annotations, and a nested subtree. |
 | Package entry points | Automated | Verifies root and desktop package scripts expose dev/build/Tauri entry points. |
 | SGF edit Tauri commands | Automated | Verifies `update_sgf_node_comment`, `append_sgf_move`, and `delete_sgf_node` are defined as Tauri commands and registered in `generate_handler!`. |
 | SGF node property editing command | Pending-safe | Reports `update_sgf_node_properties` as PASS if Worker A has registered it; otherwise reports PENDING without failing the smoke gate. |
+| SGF variation reorder command | Pending-safe | Reports `reorder_sgf_variation` as PASS if the local Tauri command is defined and registered; otherwise reports PENDING without failing the fixture gate. |
 
 ## Deferred Runtime Gates
 
@@ -26,7 +28,7 @@ These are not marked complete by the smoke skeleton:
 
 | Gate | Status | Required evidence before completion |
 | --- | --- | --- |
-| Real Tauri UI flow | Pending | Launch desktop runtime, open a real SGF, navigate variations, edit comments/properties, append/delete nodes, save, reopen, and verify board state. |
+| Real Tauri UI flow | Pending | Launch desktop runtime, open a real SGF, navigate/reorder variations, edit comments/properties, append/delete nodes, save, reopen, and verify board state. |
 | KataGo analysis flow | Pending | Controlled KataGo binary/model/config evidence, one-shot analysis, full-game analysis, cancellation, cache hit, and failure reporting. |
 | Readboard sidecar flow | Pending | Controlled sidecar/runtime evidence for probe and sync paths with unsupported/error states recorded distinctly. |
 | Fox/Yike live provider flow | Pending | Real environment, account/session/network evidence, request/response capture, rate-limit/session-expiry behavior, and no claim of live parity from offline contracts alone. |
@@ -34,4 +36,4 @@ These are not marked complete by the smoke skeleton:
 
 ## Current QA Position
 
-Passing `scripts/smoke_user_flows.py` means the repository still has the local fixture and command surface needed for the SGF annotation smoke path. It does not prove external live parity, production installer readiness, or successful desktop UI automation.
+Passing `scripts/smoke_user_flows.py` means the repository still has the local fixture and command surface needed for the SGF annotation and variation reorder smoke paths. Variation reorder is currently covered as a local Tauri command/fixture gate; real desktop UI smoke for interactive reorder, save, reopen, and board-state parity remains pending. It does not prove external live parity, production installer readiness, or successful desktop UI automation.

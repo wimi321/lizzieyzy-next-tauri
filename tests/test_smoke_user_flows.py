@@ -39,6 +39,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             pending_names = {result.name for result in results if result.status == "PENDING"}
             self.assertEqual([], failures)
             self.assertIn("tauri_sgf_properties_command", pending_names)
+            self.assertIn("tauri_sgf_reorder_command", pending_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
 
     def test_properties_command_passes_when_worker_a_command_is_registered(self) -> None:
@@ -52,6 +53,22 @@ class SmokeUserFlowsTests(unittest.TestCase):
                 result for result in results if result.name == "tauri_sgf_properties_command"
             ]
             self.assertEqual(["PASS"], [result.status for result in properties_results])
+
+    def test_reorder_command_passes_when_command_is_registered(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(
+                root,
+                include_properties_command=True,
+                include_reorder_command=True,
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            reorder_results = [
+                result for result in results if result.name == "tauri_sgf_reorder_command"
+            ]
+            self.assertEqual(["PASS"], [result.status for result in reorder_results])
 
     def test_missing_label_fixture_token_fails(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -68,8 +85,28 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("sgf_compat_fixture", failures)
             self.assertIn("labels", failures["sgf_compat_fixture"])
 
+    def test_reorder_fixture_requires_three_sibling_variations(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, include_properties_command=False)
+            (root / smoke_user_flows.REORDER_FIXTURE).write_text(
+                "(;FF[4]GM[1]SZ[9]C[root]ZZ[x];B[dd]LB[dd:A]TR[dd](;W[cf]C[one])(;W[fd]C[two]))\n",
+                encoding="utf-8",
+            )
 
-def create_complete_smoke_fixture(root: Path, *, include_properties_command: bool) -> None:
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("sgf_reorder_fixture", failures)
+            self.assertIn("3 sibling variations", failures["sgf_reorder_fixture"])
+
+
+def create_complete_smoke_fixture(
+    root: Path,
+    *,
+    include_properties_command: bool,
+    include_reorder_command: bool = False,
+) -> None:
     write_json(
         root / "package.json",
         {
@@ -99,6 +136,10 @@ def create_complete_smoke_fixture(root: Path, *, include_properties_command: boo
         root / smoke_user_flows.COMPAT_FIXTURE,
         "(;FF[4]GM[1]SZ[9]AB[aa]AW[bb]AE[cc]PL[W]LB[aa:A]C[root](;B[dd]C[branch]))\n",
     )
+    write(
+        root / smoke_user_flows.REORDER_FIXTURE,
+        "(;FF[4]GM[1]SZ[9]C[root]ZZ[x];B[dd]LB[dd:A]TR[dd](;W[cf]C[one]ZZ[a];B[fc]C[child])(;W[fd]C[two]ZZ[b](;B[df]C[nested]))(;W[dc]C[three]ZZ[c]))\n",
+    )
     properties_command = ""
     properties_handler = ""
     if include_properties_command:
@@ -107,6 +148,14 @@ def create_complete_smoke_fixture(root: Path, *, include_properties_command: boo
         fn update_sgf_node_properties() {}
         """
         properties_handler = "update_sgf_node_properties,"
+    reorder_command = ""
+    reorder_handler = ""
+    if include_reorder_command:
+        reorder_command = """
+        #[tauri::command]
+        fn reorder_sgf_variation() {}
+        """
+        reorder_handler = "reorder_sgf_variation,"
     write(
         root / "apps/desktop/src-tauri/src/lib.rs",
         f"""
@@ -120,6 +169,7 @@ def create_complete_smoke_fixture(root: Path, *, include_properties_command: boo
         fn delete_sgf_node() {{}}
 
         {properties_command}
+        {reorder_command}
 
         fn run() {{
             tauri::generate_handler![
@@ -127,6 +177,7 @@ def create_complete_smoke_fixture(root: Path, *, include_properties_command: boo
                 append_sgf_move,
                 delete_sgf_node,
                 {properties_handler}
+                {reorder_handler}
             ];
         }}
         """,

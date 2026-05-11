@@ -39,6 +39,12 @@ export type DeleteSgfNodeResult = {
   parent_node_id: string;
 };
 
+export type ReorderSgfVariationResult = {
+  sgf_text: string;
+  node_id: string;
+  parent_node_id: string;
+};
+
 export type SgfPropertyUpdate = {
   key: string;
   values: string[];
@@ -262,6 +268,13 @@ export async function deleteSgfNode(sgfText: string, nodeId: string): Promise<De
     throw new Error("真实 SGF node deletion requires Tauri backend. Browser preview cannot delete SGF nodes or variations.");
   }
   return await invoke<DeleteSgfNodeResult>("delete_sgf_node", { sgfText, nodeId });
+}
+
+export async function reorderSgfVariation(sgfText: string, nodeId: string, targetIndex: number): Promise<ReorderSgfVariationResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("真实 SGF variation reordering requires Tauri backend. Browser preview cannot reorder SGF variations.");
+  }
+  return await invoke<ReorderSgfVariationResult>("reorder_sgf_variation", { sgfText, nodeId, targetIndex });
 }
 
 export async function replaySgfPositionAtNode(sgfText: string, nodeId: string): Promise<PositionDto> {

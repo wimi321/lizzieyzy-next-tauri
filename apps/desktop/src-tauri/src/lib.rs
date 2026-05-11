@@ -46,6 +46,13 @@ struct DeleteSgfNodeResultDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct ReorderSgfVariationResultDto {
+    sgf_text: String,
+    node_id: NodeId,
+    parent_node_id: NodeId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct SgfPropertyUpdateDto {
     key: String,
     values: Vec<String>,
@@ -528,6 +535,21 @@ fn delete_sgf_node(sgf_text: String, node_id: NodeId) -> Result<DeleteSgfNodeRes
     let result = sgf::delete_sgf_node(&sgf_text, node_id).map_err(|err| err.to_string())?;
     Ok(DeleteSgfNodeResultDto {
         sgf_text: result.sgf_text,
+        parent_node_id: result.parent_node_id,
+    })
+}
+
+#[tauri::command]
+fn reorder_sgf_variation(
+    sgf_text: String,
+    node_id: NodeId,
+    target_index: usize,
+) -> Result<ReorderSgfVariationResultDto, String> {
+    let result =
+        sgf::reorder_sgf_variation(&sgf_text, node_id, target_index).map_err(|err| err.to_string())?;
+    Ok(ReorderSgfVariationResultDto {
+        sgf_text: result.sgf_text,
+        node_id: result.node_id,
         parent_node_id: result.parent_node_id,
     })
 }
@@ -2019,6 +2041,7 @@ pub fn run() {
             update_sgf_node_properties,
             append_sgf_move,
             delete_sgf_node,
+            reorder_sgf_variation,
             replay_sgf_position_at_node,
             read_sgf_file,
             write_sgf_file,
@@ -2366,6 +2389,57 @@ mod tests {
         let error = delete_sgf_node(input.to_string(), tree.root_id).unwrap_err();
 
         assert!(error.to_ascii_lowercase().contains("root"));
+    }
+
+    #[test]
+    fn command_reorders_sgf_variation_and_returns_new_node_id() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch];B[dd]C[child]))";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = reorder_sgf_variation(input.to_string(), branch_id, 0).unwrap();
+        let updated_tree = parse_sgf_tree(result.sgf_text).unwrap().unwrap();
+        let moved = updated_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.node_id)
+            .unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert_eq!(moved.comment.as_deref(), Some("branch"));
+        assert_eq!(moved.variation_index, 0);
+        assert!(moved.is_mainline);
+        assert!(updated_tree
+            .nodes
+            .iter()
+            .any(|node| node.comment.as_deref() == Some("child") && node.parent_id == Some(result.node_id)));
+    }
+
+    #[test]
+    fn command_reorder_sgf_variation_reports_out_of_range() {
+        let input = "(;SZ[5];B[aa](;W[bb])(;W[cc]C[branch]))";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let error = reorder_sgf_variation(input.to_string(), branch_id, 2).unwrap_err();
+
+        assert!(error.contains("out of range"));
     }
 
     #[test]

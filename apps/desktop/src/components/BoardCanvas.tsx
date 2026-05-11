@@ -1,12 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { AnalysisFrameDto, PositionDto } from "../domain/types";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import type { AnalysisFrameDto, PlayerColor, PositionDto } from "../domain/types";
 import { isPoint, vertexLabel } from "../domain/board";
 
-type Props = { position: PositionDto; analysis?: AnalysisFrameDto; selectedCandidateIndex?: number | null };
+type Props = {
+  position: PositionDto;
+  analysis?: AnalysisFrameDto;
+  selectedCandidateIndex?: number | null;
+  onPlayPoint?: (point: { x: number; y: number }) => void;
+  canEdit?: boolean;
+  editColor?: PlayerColor;
+};
 type OverlayMode = "candidates" | "ownership" | "policy";
 type PolicyPoint = { x: number; y: number; value: number };
 
-export function BoardCanvas({ position, analysis, selectedCandidateIndex }: Props) {
+export function BoardCanvas({ position, analysis, selectedCandidateIndex, onPlayPoint, canEdit = false, editColor }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>("candidates");
   const boardPointCount = position.board_size * position.board_size;
@@ -14,6 +21,14 @@ export function BoardCanvas({ position, analysis, selectedCandidateIndex }: Prop
   const policyPoints = useMemo(() => getTopPolicyPoints(analysis?.policy, position.board_size, 12), [analysis?.policy, position.board_size]);
   const hasPolicy = policyPoints.length > 0;
   const effectiveOverlayMode = overlayMode === "ownership" && !hasOwnership ? "candidates" : overlayMode === "policy" && !hasPolicy ? "candidates" : overlayMode;
+  const occupiedPoints = useMemo(() => new Set(position.stones.map((stone) => pointKey(stone.x, stone.y))), [position.stones]);
+
+  function handleCanvasClick(event: MouseEvent<HTMLCanvasElement>) {
+    if (!canEdit || !onPlayPoint) return;
+    const point = canvasEventToBoardPoint(event, position.board_size);
+    if (!point || occupiedPoints.has(pointKey(point.x, point.y))) return;
+    onPlayPoint(point);
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -95,13 +110,41 @@ export function BoardCanvas({ position, analysis, selectedCandidateIndex }: Prop
   }, [position, analysis, selectedCandidateIndex, effectiveOverlayMode, hasOwnership, hasPolicy, policyPoints]);
 
   return <div className="board-canvas" style={{ position: "relative", overflow: "hidden" }}>
-    <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} aria-label="Go board" />
+    <canvas
+      ref={canvasRef}
+      onClick={handleCanvasClick}
+      style={{ display: "block", width: "100%", height: "100%", cursor: canEdit && onPlayPoint ? "crosshair" : "default" }}
+      aria-label={canEdit && editColor ? `Go board, editing ${editColor} moves` : "Go board"}
+    />
     <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 6, padding: 4, borderRadius: 6, background: "rgba(255,255,255,.82)", boxShadow: "0 4px 14px rgba(15,23,42,.14)" }} aria-label="Board overlay mode">
       <OverlayButton label="Candidates" active={effectiveOverlayMode === "candidates"} onClick={() => setOverlayMode("candidates")} />
       <OverlayButton label="Ownership" active={effectiveOverlayMode === "ownership"} disabled={!hasOwnership} onClick={() => setOverlayMode("ownership")} />
       <OverlayButton label="Policy" active={effectiveOverlayMode === "policy"} disabled={!hasPolicy} onClick={() => setOverlayMode("policy")} />
     </div>
   </div>;
+}
+
+function canvasEventToBoardPoint(event: MouseEvent<HTMLCanvasElement>, boardSize: number): { x: number; y: number } | null {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const cssSize = Math.min(rect.width, rect.height);
+  if (cssSize <= 0 || boardSize < 2) return null;
+  const offsetX = (rect.width - cssSize) / 2;
+  const offsetY = (rect.height - cssSize) / 2;
+  const padding = cssSize * 0.07;
+  const grid = (cssSize - padding * 2) / (boardSize - 1);
+  const boardX = event.clientX - rect.left - offsetX;
+  const boardY = event.clientY - rect.top - offsetY;
+  const x = Math.round((boardX - padding) / grid);
+  const y = Math.round((boardY - padding) / grid);
+  if (x < 0 || y < 0 || x >= boardSize || y >= boardSize) return null;
+  const snapX = padding + x * grid;
+  const snapY = padding + y * grid;
+  const distance = Math.hypot(boardX - snapX, boardY - snapY);
+  return distance <= grid * 0.42 ? { x, y } : null;
+}
+
+function pointKey(x: number, y: number): string {
+  return `${x}:${y}`;
 }
 
 function OverlayButton({ label, active, disabled, onClick }: { label: string; active: boolean; disabled?: boolean; onClick: () => void }) {

@@ -8,6 +8,7 @@ import { PreferencesPanel } from "./components/PreferencesPanel";
 import { ProviderPanel } from "./components/ProviderPanel";
 import { LegacyShell } from "./components/LegacyShell";
 import { SgfTreePanel } from "./components/SgfTreePanel";
+import * as backendApi from "./api/backend";
 import {
   analyzeKataGoOnce,
   cancelKataGoAnalysis,
@@ -30,7 +31,7 @@ import { clampMoveNumberToPositions, createDemoGame, replayGamePositions, select
 import type { AnalysisCacheRecord, CacheStatus, GameCacheKey, JsonValue } from "./domain/cache";
 import { defaultAppPreferences, normalizeAppPreferences, type AppPreferences } from "./domain/preferences";
 import { providerDocumentName, providerLabel, providerSourceLabel, type ProviderImportResult } from "./domain/providers";
-import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, PositionDto, ProblemMarkerDto, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
+import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, MoveVertex, PlayerColor, PositionDto, ProblemMarkerDto, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 const demoSgf = "(;GM[1]FF[4]SZ[19]KM[7.5]PB[Lee Changho]PW[Rui Naiwei]RE[B+R];B[pd];W[dd];B[pp];W[dp];B[jq];W[qj];B[nc];W[fc];B[qf];W[cn];B[cp];W[do];B[co];W[dn];B[fq];W[eq];B[fp];W[gp];B[gq];W[hp])";
 const demoGame = createDemoGame();
@@ -41,6 +42,7 @@ type PendingAnalysisTerminalEvent =
 type CacheEngineKind = "fake" | "katago";
 type CachedAnalysisPayload = { frames: AnalysisFrameDto[]; problems: ProblemMarkerDto[] };
 type PendingPreferencesSave = { version: number; preferences: AppPreferences };
+type AppendSgfMove = (sgfText: string, parentNodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
 type AnalysisCacheLoadResult =
   | { status: "hit"; record: AnalysisCacheRecord; engineKind: CacheEngineKind }
   | { status: "miss" }
@@ -72,6 +74,8 @@ export function App() {
   const [isSgfTreeLoading, setIsSgfTreeLoading] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
   const [isCommentSaving, setIsCommentSaving] = useState(false);
+  const [isMoveAppending, setIsMoveAppending] = useState(false);
+  const [editColor, setEditColor] = useState<PlayerColor>("black");
   const [treeNodePositionOverride, setTreeNodePositionOverride] = useState<PositionDto | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
   const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
@@ -127,6 +131,11 @@ export function App() {
   const maxMove = Math.max(positions.at(-1)?.move_number ?? 0, 1);
   const documentName = useMemo(() => currentFilePath ? fileNameFromPath(currentFilePath) : fallbackFileName ?? "Untitled SGF", [currentFilePath, fallbackFileName]);
   const saveFileName = documentName.toLowerCase().endsWith(".sgf") ? documentName : `${documentName}.sgf`;
+  const isBusy = isKataGoRunning || isCommentSaving || isMoveAppending;
+
+  useEffect(() => {
+    setEditColor(currentPosition.to_play);
+  }, [currentPosition.to_play, selectedSgfNodeId]);
 
   useEffect(() => {
     setSelectedCandidateIndex(null);
@@ -594,6 +603,71 @@ export function App() {
     }
   }
 
+  async function handleAppendMove(vertex: MoveVertex) {
+    const parentNodeId = selectedSgfNodeId;
+    if (!parentNodeId) {
+      setMessage("Select an SGF tree node before appending a move.");
+      return;
+    }
+    if (isBusy) return;
+
+    const sgfTreeRequest = beginSgfTreeLoad();
+    const sourceVersion = sgfTextEditVersionRef.current;
+    const sourceText = sgfText;
+    setIsMoveAppending(true);
+    setMessage("Appending move to SGF...");
+    try {
+      const result = normalizeAppendSgfMoveResult(await callAppendSgfMove(sourceText, parentNodeId, editColor, vertex));
+      if (sgfTextEditVersionRef.current !== sourceVersion) {
+        setMessage("Append move cancelled because the SGF source changed while the edit was running.");
+        return;
+      }
+
+      sgfTextEditVersionRef.current += 1;
+      setSgfText(result.sgfText);
+      setDirty(true);
+      clearReviewData();
+      resetAnalysisCacheState();
+
+      const [parsed, replayed, updatedTree] = await Promise.all([
+        parseSgfSummary(result.sgfText),
+        replaySgfPositions(result.sgfText),
+        parseSgfTree(result.sgfText)
+      ]);
+      const selectedNode = applySgfTreeSelectedNode(updatedTree, result.newNodeId, sgfTreeRequest);
+      setGame(parsed);
+      setPositions(replayed);
+      setSgfTreeError(null);
+      setCommentDraft(selectedNode?.comment ?? "");
+
+      let replayWarning = "";
+      if (selectedNode) {
+        try {
+          const replayRequest = beginTreeNodeReplay();
+          const position = await replaySgfPositionAtNode(result.sgfText, selectedNode.id);
+          if (treeNodeReplayRequestVersionRef.current === replayRequest) {
+            setTreeNodePositionOverride(position);
+            setCurrentMove(clampMoveNumberToPositions(replayed, position.move_number));
+          }
+        } catch (error) {
+          setTreeNodePositionOverride(null);
+          setCurrentMove(clampMoveNumberToPositions(replayed, selectedNode.move_number ?? replayed.at(-1)?.move_number ?? parsed.moves.length));
+          replayWarning = ` Position replay failed: ${errorMessage(error)}`;
+        }
+      } else {
+        clearTreeNodePositionOverride();
+        setCurrentMove(clampMoveNumberToPositions(replayed, replayed.at(-1)?.move_number ?? parsed.moves.length));
+      }
+
+      setMessage(`Move appended to SGF.${replayWarning}`);
+    } catch (error) {
+      setMessage(`Append move failed: ${errorMessage(error)}`);
+    } finally {
+      setIsMoveAppending(false);
+      finishSgfTreeLoad(sgfTreeRequest);
+    }
+  }
+
   async function refreshSgfTree(text: string, targetMove: number, showLoading = true) {
     const requestVersion = beginSgfTreeLoad(showLoading);
     try {
@@ -847,13 +921,30 @@ export function App() {
     setCacheRecord(null);
   }
 
+  async function callAppendSgfMove(sgfText: string, parentNodeId: string, color: PlayerColor, vertex: MoveVertex): Promise<unknown> {
+    const appendSgfMove = (backendApi as unknown as { appendSgfMove?: AppendSgfMove }).appendSgfMove;
+    if (!appendSgfMove) {
+      throw new Error("appendSgfMove is not available yet. Bridge/Core needs to expose the SGF append API.");
+    }
+    return await appendSgfMove(sgfText, parentNodeId, color, vertex);
+  }
+
   return (
     <LegacyShell
       themeClassName={preferences.boardTheme === "high-contrast" ? "theme-high-contrast" : ""}
       architectureLabel={health?.architecture ?? "Tauri 2 + React review workspace"}
       backendStatusLabel={health?.rust_backend_ready ? "Rust backend ready" : "Browser fallback"}
       cacheBadge={<CacheStatusBadge status={cacheStatus} record={cacheRecord} error={cacheError} />}
-      board={<BoardCanvas position={currentPosition} analysis={visibleCurrentFrame} selectedCandidateIndex={selectedCandidateIndex} />}
+      board={
+        <BoardCanvas
+          position={currentPosition}
+          analysis={visibleCurrentFrame}
+          selectedCandidateIndex={selectedCandidateIndex}
+          canEdit={!isBusy && selectedSgfNodeId !== null}
+          editColor={editColor}
+          onPlayPoint={(point) => void handleAppendMove({ point })}
+        />
+      }
       chart={<WinrateChart frames={frames} currentMove={currentMove} />}
       analysisPanel={
         <div className="legacy-review-stack">
@@ -883,10 +974,25 @@ export function App() {
           />
         </div>
       }
-      providerPanel={<ProviderPanel disabled={isKataGoRunning || isCommentSaving} onImport={handleProviderImport} />}
+      providerPanel={
+        <div className="sgf-edit-provider-stack">
+          <section className="sgf-edit-panel" aria-label="SGF move editing">
+            <div className="sgf-edit-header">
+              <strong>Append move</strong>
+              <span>{colorLabel(editColor)} to play</span>
+            </div>
+            <div className="sgf-edit-controls" aria-label="Move color">
+              <button type="button" aria-pressed={editColor === "black"} disabled={isBusy} onClick={() => setEditColor("black")}>B</button>
+              <button type="button" aria-pressed={editColor === "white"} disabled={isBusy} onClick={() => setEditColor("white")}>W</button>
+              <button type="button" disabled={isBusy || selectedSgfNodeId === null} onClick={() => void handleAppendMove("pass")}>Pass</button>
+            </div>
+          </section>
+          <ProviderPanel disabled={isBusy} onImport={handleProviderImport} />
+        </div>
+      }
       enginePanel={
         <EngineSetupPanel
-          disabled={isKataGoRunning || isCommentSaving}
+          disabled={isBusy}
           onRun={handleRunKataGo}
           onAnalyzeGame={handleAnalyzeKataGoGame}
           onCancelAnalysis={handleCancelKataGoAnalysis}
@@ -898,7 +1004,7 @@ export function App() {
         <PreferencesPanel
           preferences={preferences}
           status={preferencesStatus}
-          disabled={isKataGoRunning || isCommentSaving}
+          disabled={isBusy}
           onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
         />
       }
@@ -909,7 +1015,7 @@ export function App() {
       currentMove={currentMove}
       maxMove={maxMove}
       message={message}
-      isBusy={isKataGoRunning || isCommentSaving}
+      isBusy={isBusy}
       canSave={dirty}
       onOpen={handleOpenSgfDocument}
       onSave={() => handleSaveSgfDocument(false)}
@@ -989,6 +1095,22 @@ function formatSgfNodeLabel(node: SgfTreeNodeDto): string {
   if (node.move_number === null || node.move_number === undefined) return "root";
   const line = node.is_mainline ? "mainline" : `variation ${node.variation_index + 1}`;
   return `${line} move ${node.move_number}`;
+}
+
+function normalizeAppendSgfMoveResult(result: unknown): { sgfText: string; newNodeId: string } {
+  if (!isUnknownRecord(result)) throw new Error("appendSgfMove returned an invalid response.");
+  const sgfText = typeof result.sgfText === "string" ? result.sgfText : typeof result.sgf_text === "string" ? result.sgf_text : null;
+  const newNodeId = typeof result.newNodeId === "string" ? result.newNodeId : typeof result.new_node_id === "string" ? result.new_node_id : null;
+  if (!sgfText || !newNodeId) throw new Error("appendSgfMove response must include sgfText and newNodeId.");
+  return { sgfText, newNodeId };
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function colorLabel(color: PlayerColor): string {
+  return color === "black" ? "Black" : "White";
 }
 
 function errorMessage(error: unknown): string {

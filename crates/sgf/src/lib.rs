@@ -32,6 +32,12 @@ pub struct SgfProperty {
     pub values: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppendSgfMoveResult {
+    pub sgf_text: String,
+    pub new_node_id: NodeId,
+}
+
 #[derive(Debug, Error)]
 pub enum SgfError {
     #[error("SGF is empty")]
@@ -40,6 +46,8 @@ pub enum SgfError {
     Malformed,
     #[error("SGF node was not found")]
     NodeNotFound,
+    #[error("illegal SGF move: {0}")]
+    IllegalMove(String),
     #[error("unsupported board size: {0}")]
     UnsupportedBoardSize(u8),
 }
@@ -350,6 +358,57 @@ pub fn update_sgf_node_comment(
     let node = find_sgf_node_mut(root, node_id).ok_or(SgfError::NodeNotFound)?;
     set_node_comment(node, comment);
     serialize_sgf_document(&document)
+}
+
+pub fn append_sgf_move(
+    input: &str,
+    parent_node_id: NodeId,
+    color: PlayerColor,
+    vertex: MoveVertex,
+) -> Result<AppendSgfMoveResult, SgfError> {
+    let mut document = parse_sgf(input)?;
+    let root = document.root.as_ref().ok_or(SgfError::Malformed)?;
+    let parent_path = find_sgf_node_path(root, parent_node_id).ok_or(SgfError::NodeNotFound)?;
+    let parent_child_count = find_sgf_node_at_path(root, &parent_path)
+        .ok_or(SgfError::NodeNotFound)?
+        .children
+        .len();
+
+    let mut replay = replay_sgf_state_at_path(&document, &parent_path)?;
+    if !replay.errors.is_empty() {
+        return Err(SgfError::IllegalMove(replay.errors.join("; ")));
+    }
+    let sgf_move = MoveDto {
+        color,
+        vertex: vertex.clone(),
+        move_number: replay.move_number + 1,
+    };
+    replay
+        .board
+        .play(to_core_color(color), to_core_vertex(&vertex))
+        .map_err(|error| SgfError::IllegalMove(format_rule_error(&sgf_move, error)))?;
+
+    let new_node = SgfNode {
+        properties: vec![SgfProperty {
+            key: match color {
+                PlayerColor::Black => "B".to_string(),
+                PlayerColor::White => "W".to_string(),
+            },
+            values: vec![serialize_vertex(&vertex, document.board_size)?],
+        }],
+        children: Vec::new(),
+    };
+    let root = document.root.as_mut().ok_or(SgfError::Malformed)?;
+    let parent = find_sgf_node_mut_at_path(root, &parent_path).ok_or(SgfError::NodeNotFound)?;
+    parent.children.push(new_node);
+
+    let mut new_path = parent_path;
+    new_path.push(parent_child_count);
+    let new_node_id = stable_sgf_node_id(&new_path);
+    Ok(AppendSgfMoveResult {
+        sgf_text: serialize_sgf_document(&document)?,
+        new_node_id,
+    })
 }
 
 pub fn replay_sgf_position_at_node(input: &str, node_id: NodeId) -> Result<PositionDto, SgfError> {
@@ -1299,9 +1358,21 @@ fn find_sgf_node_path_inner(node: &SgfNode, node_id: NodeId, path: &mut Vec<usiz
 
 fn find_sgf_node_mut(root: &mut SgfNode, node_id: NodeId) -> Option<&mut SgfNode> {
     let path = find_sgf_node_path(root, node_id)?;
+    find_sgf_node_mut_at_path(root, &path)
+}
+
+fn find_sgf_node_at_path<'a>(root: &'a SgfNode, path: &[usize]) -> Option<&'a SgfNode> {
     let mut current = root;
     for index in path {
-        current = current.children.get_mut(index)?;
+        current = current.children.get(*index)?;
+    }
+    Some(current)
+}
+
+fn find_sgf_node_mut_at_path<'a>(root: &'a mut SgfNode, path: &[usize]) -> Option<&'a mut SgfNode> {
+    let mut current = root;
+    for index in path {
+        current = current.children.get_mut(*index)?;
     }
     Some(current)
 }
@@ -1328,16 +1399,7 @@ fn set_node_comment(node: &mut SgfNode, comment: Option<&str>) {
 }
 
 fn replay_sgf_position_at_path(document: &SgfDocument, path: &[usize]) -> Result<PositionDto, SgfError> {
-    let mut replay = SgfReplayState::new(document.board_size)?;
-    let mut node = document.root.as_ref().ok_or(SgfError::Malformed)?;
-
-    replay_sgf_node(node, &mut replay)?;
-
-    for index in path {
-        node = node.children.get(*index).ok_or(SgfError::NodeNotFound)?;
-        replay_sgf_node(node, &mut replay)?;
-    }
-
+    let replay = replay_sgf_state_at_path(document, path)?;
     Ok(PositionDto {
         board_size: document.board_size,
         move_number: replay.move_number,
@@ -1348,6 +1410,20 @@ fn replay_sgf_position_at_path(document: &SgfDocument, path: &[usize]) -> Result
         last_move: replay.last_move,
         errors: replay.errors,
     })
+}
+
+fn replay_sgf_state_at_path(document: &SgfDocument, path: &[usize]) -> Result<SgfReplayState, SgfError> {
+    let mut replay = SgfReplayState::new(document.board_size)?;
+    let mut node = document.root.as_ref().ok_or(SgfError::Malformed)?;
+
+    replay_sgf_node(node, &mut replay)?;
+
+    for index in path {
+        node = node.children.get(*index).ok_or(SgfError::NodeNotFound)?;
+        replay_sgf_node(node, &mut replay)?;
+    }
+
+    Ok(replay)
 }
 
 struct SgfReplayState {
@@ -1946,6 +2022,152 @@ mod tests {
         assert_eq!(mainline.comment.as_deref(), Some("main"));
         assert!(updated.contains("(;W[bb]C[main])"));
         assert!(updated.contains("(;W[cc]C[branch updated])"));
+    }
+
+    #[test]
+    fn appends_move_to_leaf_mainline_roundtrip_and_exposes_new_node_id() {
+        let input = "(;SZ[5]XY[keep];B[aa]C[first])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = append_sgf_move(
+            input,
+            parent_id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap();
+
+        assert_eq!(result.sgf_text, "(;SZ[5]XY[keep];B[aa]C[first];W[bb])");
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        let reparsed_tree = to_sgf_tree_dto(&reparsed).unwrap().unwrap();
+        let new_node = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.new_node_id)
+            .unwrap();
+        assert_eq!(new_node.parent_id, Some(parent_id));
+        assert_eq!(new_node.move_number, Some(2));
+        assert_eq!(new_node.color, Some(PlayerColor::White));
+        assert_eq!(new_node.vertex, Some(MoveVertex::Point(PointDto { x: 1, y: 1 })));
+        assert_eq!(reparsed.moves.len(), 2);
+    }
+
+    #[test]
+    fn appending_under_parent_with_existing_child_creates_sibling_variation() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let parent = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap();
+
+        let result = append_sgf_move(
+            input,
+            parent.id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 3, y: 3 }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.sgf_text,
+            "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch])(;W[dd]))"
+        );
+        let reparsed_tree = to_sgf_tree_dto(&parse_sgf(&result.sgf_text).unwrap())
+            .unwrap()
+            .unwrap();
+        let updated_parent = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == parent.id)
+            .unwrap();
+        assert_eq!(updated_parent.child_ids.len(), 3);
+        assert!(result.sgf_text.contains("(;W[bb]C[main])"));
+        assert!(result.sgf_text.contains("(;W[cc]C[branch])"));
+
+        let new_node = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.new_node_id)
+            .unwrap();
+        assert_eq!(new_node.variation_index, 2);
+        assert!(!new_node.is_mainline);
+    }
+
+    #[test]
+    fn appends_pass_move_and_replays_at_new_node() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = append_sgf_move(input, parent_id, PlayerColor::White, MoveVertex::Pass).unwrap();
+
+        assert_eq!(result.sgf_text, "(;SZ[5];B[aa];W[])");
+        let position = replay_sgf_position_at_node(&result.sgf_text, result.new_node_id).unwrap();
+        assert_eq!(position.move_number, 2);
+        assert!(matches!(
+            position.last_move.as_ref().unwrap().vertex,
+            MoveVertex::Pass
+        ));
+        assert!(position.errors.is_empty());
+    }
+
+    #[test]
+    fn append_rejects_occupied_point_and_leaves_input_replayable() {
+        let input = "(;SZ[5];B[aa])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let error = append_sgf_move(
+            input,
+            parent_id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 0, y: 0 }),
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, SgfError::IllegalMove(_)));
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
+    }
+
+    #[test]
+    fn append_rejects_suicide_against_parent_branch_position() {
+        let input = "(;SZ[5];W[ab];W[ba];W[cb];W[bc])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(4))
+            .unwrap()
+            .id;
+
+        let error = append_sgf_move(
+            input,
+            parent_id,
+            PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, SgfError::IllegalMove(message) if message.contains("suicide")));
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
     }
 
     #[test]

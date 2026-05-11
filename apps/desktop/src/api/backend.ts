@@ -29,6 +29,11 @@ export type SgfDocument = {
   sgfText: string;
 };
 
+export type AppendSgfMoveResult = {
+  sgf_text: string;
+  new_node_id: string;
+};
+
 export type AnalysisProgressPayload = {
   job_id: string;
   completed: number;
@@ -212,6 +217,18 @@ export async function updateSgfNodeComment(sgfText: string, nodeId: string, comm
     throw new Error("Editing SGF node comments requires the Tauri desktop backend. Browser preview cannot persist branch-safe SGF edits.");
   }
   return await invoke<string>("update_sgf_node_comment", { sgfText, nodeId, comment });
+}
+
+export async function appendSgfMove(
+  sgfText: string,
+  parentNodeId: string,
+  color: PlayerColor,
+  vertex: MoveVertex
+): Promise<AppendSgfMoveResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("真实 SGF move editing requires Tauri backend. Browser preview cannot append SGF moves or variations.");
+  }
+  return await invoke<AppendSgfMoveResult>("append_sgf_move", { sgfText, parentNodeId, color, vertex });
 }
 
 export async function replaySgfPositionAtNode(sgfText: string, nodeId: string): Promise<PositionDto> {

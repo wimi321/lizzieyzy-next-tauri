@@ -371,8 +371,18 @@ button:disabled {
 }
 
 .legacy-right-pane {
+  display: grid;
   min-width: 0;
   min-height: 0;
+}
+
+.legacy-review-stack {
+  display: grid;
+  grid-template-rows: minmax(240px, 0.9fr) minmax(260px, 1fr);
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 
 .legacy-right-pane .analysis-panel {
@@ -952,4 +962,234 @@ button.path-picker-button {
     grid-column: 3;
     grid-row: 1 / span 2;
   }
+}
+
+.sgf-tree-panel {
+  display: grid;
+  grid-template-rows: auto minmax(120px, 1fr) auto;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid #aab2bf;
+  border-radius: 4px;
+  background: #f5f7fa;
+  color: #18202b;
+}
+
+.sgf-tree-header,
+.sgf-comment-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.sgf-tree-header h2,
+.sgf-comment-header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.sgf-tree-header div {
+  min-width: 0;
+}
+
+.sgf-tree-header span,
+.sgf-tree-header strong,
+.sgf-comment-header span {
+  max-width: 170px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sgf-tree-header strong {
+  color: #27313f;
+}
+
+.sgf-tree-state {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 96px;
+  padding: 10px;
+  border: 1px solid #d2d8e0;
+  border-radius: 4px;
+  background: #eef2f6;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sgf-tree-state strong {
+  color: #18202b;
+  font-size: 13px;
+}
+
+.sgf-tree-state.sgf-tree-error {
+  border-color: #f3b5b5;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.sgf-tree-list {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.sgf-tree-list li {
+  min-width: 0;
+  padding-left: calc(var(--sgf-depth) * 14px);
+}
+
+button.sgf-tree-node {
+  display: grid;
+  grid-template-columns: 10px 20px minmax(64px, auto) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid #d7dde5;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  box-shadow: none;
+}
+
+button.sgf-tree-node:hover,
+button.sgf-tree-node:focus-visible {
+  border-color: #93c5fd;
+  background: #eef6ff;
+  outline: none;
+}
+
+button.sgf-tree-node.is-selected {
+  border-color: #fb923c;
+  background: #fff7ed;
+  box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.28);
+}
+
+button.sgf-tree-node.is-current-move {
+  border-left-color: #2563eb;
+  border-left-width: 3px;
+}
+
+.sgf-tree-rail {
+  width: 10px;
+  height: 100%;
+  min-height: 18px;
+  border-left: 1px solid #b8c1cc;
+  border-bottom: 1px solid #b8c1cc;
+}
+
+.sgf-tree-mainline .sgf-tree-rail {
+  border-left-color: #7f8a99;
+}
+
+.sgf-tree-variation .sgf-tree-rail {
+  border-left-style: dashed;
+  border-bottom-style: dashed;
+}
+
+.sgf-tree-stone {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #7f8a99;
+  border-radius: 50%;
+  background: #dbe2ea;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.sgf-tree-stone.black {
+  border-color: #111827;
+  background: #1f2937;
+  color: #f8fafc;
+}
+
+.sgf-tree-stone.white {
+  border-color: #7f8a99;
+  background: #ffffff;
+  color: #18202b;
+}
+
+.sgf-tree-move,
+.sgf-tree-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sgf-tree-summary {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.sgf-tree-flags {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.sgf-tree-flags span {
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: #eef2f6;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.sgf-comment-editor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid #d2d8e0;
+}
+
+.sgf-comment-editor textarea {
+  height: 92px;
+  min-height: 68px;
+  padding: 8px;
+}
+
+.sgf-comment-editor button {
+  justify-self: end;
+  min-width: 104px;
+  height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.sgf-comment-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
 }

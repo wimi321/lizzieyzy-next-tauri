@@ -39,6 +39,12 @@ pub struct AppendSgfMoveResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditSgfMoveResult {
+    pub sgf_text: String,
+    pub node_id: NodeId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteSgfNodeResult {
     pub sgf_text: String,
     pub parent_node_id: NodeId,
@@ -73,8 +79,12 @@ pub enum SgfError {
     NodeNotFound,
     #[error("cannot delete the SGF root node")]
     CannotDeleteRoot,
+    #[error("cannot edit the SGF root node")]
+    CannotEditRoot,
     #[error("cannot reorder the SGF root node")]
     CannotReorderRoot,
+    #[error("SGF node is not a move node")]
+    NonMoveNode,
     #[error("variation target index is out of range")]
     VariationIndexOutOfRange,
     #[error("illegal SGF move: {0}")]
@@ -517,6 +527,38 @@ pub fn append_sgf_move(
     Ok(AppendSgfMoveResult {
         sgf_text: serialize_sgf_document(&document)?,
         new_node_id,
+    })
+}
+
+pub fn edit_sgf_move(
+    input: &str,
+    node_id: NodeId,
+    color: PlayerColor,
+    vertex: MoveVertex,
+) -> Result<EditSgfMoveResult, SgfError> {
+    let mut document = parse_sgf(input)?;
+    validate_vertex_on_board(&vertex, document.board_size)?;
+
+    let root = document.root.as_ref().ok_or(SgfError::Malformed)?;
+    let target_path = find_sgf_node_path(root, node_id).ok_or(SgfError::NodeNotFound)?;
+    if target_path.is_empty() {
+        return Err(SgfError::CannotEditRoot);
+    }
+    let target = find_sgf_node_at_path(root, &target_path).ok_or(SgfError::NodeNotFound)?;
+    if !has_move_property(target) {
+        return Err(SgfError::NonMoveNode);
+    }
+    node_move_metadata(target, document.board_size)?;
+
+    let serialized_vertex = serialize_vertex(&vertex, document.board_size)?;
+    let root = document.root.as_mut().ok_or(SgfError::Malformed)?;
+    let target = find_sgf_node_mut_at_path(root, &target_path).ok_or(SgfError::NodeNotFound)?;
+    set_node_move(target, color, serialized_vertex)?;
+    validate_replayable_document(&document)?;
+
+    Ok(EditSgfMoveResult {
+        sgf_text: serialize_sgf_document(&document)?,
+        node_id,
     })
 }
 
@@ -1351,7 +1393,67 @@ fn player_to_play(node: &SgfNode) -> Result<Option<PlayerColor>, SgfError> {
 fn has_move_property(node: &SgfNode) -> bool {
     node.properties
         .iter()
-        .any(|property| property.key == "B" || property.key == "W")
+        .any(|property| is_move_property_key(&property.key))
+}
+
+fn is_move_property_key(key: &str) -> bool {
+    key == "B" || key == "W"
+}
+
+fn validate_vertex_on_board(vertex: &MoveVertex, board_size: u8) -> Result<(), SgfError> {
+    match vertex {
+        MoveVertex::Pass => Ok(()),
+        MoveVertex::Point(point) if point.x < board_size && point.y < board_size => Ok(()),
+        MoveVertex::Point(point) => Err(SgfError::IllegalMove(format!(
+            "move at {} is outside board size {}",
+            vertex_label(&MoveVertex::Point(*point)),
+            board_size
+        ))),
+    }
+}
+
+fn set_node_move(node: &mut SgfNode, color: PlayerColor, serialized_vertex: String) -> Result<(), SgfError> {
+    let insert_index = node
+        .properties
+        .iter()
+        .position(|property| is_move_property_key(&property.key))
+        .ok_or(SgfError::NonMoveNode)?;
+
+    node.properties
+        .retain(|property| !is_move_property_key(&property.key));
+    node.properties.insert(
+        insert_index.min(node.properties.len()),
+        SgfProperty {
+            key: match color {
+                PlayerColor::Black => "B".to_string(),
+                PlayerColor::White => "W".to_string(),
+            },
+            values: vec![serialized_vertex],
+        },
+    );
+    Ok(())
+}
+
+fn validate_replayable_document(document: &SgfDocument) -> Result<(), SgfError> {
+    let root = document.root.as_ref().ok_or(SgfError::Malformed)?;
+    let mut paths = Vec::new();
+    collect_sgf_node_paths(root, &mut Vec::new(), &mut paths);
+    for path in paths {
+        let replay = replay_sgf_state_at_path(document, &path)?;
+        if !replay.errors.is_empty() {
+            return Err(SgfError::IllegalMove(replay.errors.join("; ")));
+        }
+    }
+    Ok(())
+}
+
+fn collect_sgf_node_paths(node: &SgfNode, current: &mut Vec<usize>, paths: &mut Vec<Vec<usize>>) {
+    paths.push(current.clone());
+    for (index, child) in node.children.iter().enumerate() {
+        current.push(index);
+        collect_sgf_node_paths(child, current, paths);
+        current.pop();
+    }
 }
 
 fn build_sgf_tree_dto(root: &SgfNode, board_size: u8) -> Result<SgfTreeDto, SgfError> {
@@ -2312,6 +2414,207 @@ mod tests {
 
         assert!(matches!(error, SgfError::IllegalMove(message) if message.contains("suicide")));
         assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
+    }
+
+    #[test]
+    fn edits_mainline_move_and_keeps_node_id_stable() {
+        let input = "(;SZ[5];B[aa];W[bb])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(2))
+            .unwrap()
+            .id;
+
+        let result = edit_sgf_move(
+            input,
+            node_id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 2, y: 2 }),
+        )
+        .unwrap();
+
+        assert_eq!(result.node_id, node_id);
+        assert_eq!(result.sgf_text, "(;SZ[5];B[aa];W[cc])");
+        let reparsed_tree = to_sgf_tree_dto(&parse_sgf(&result.sgf_text).unwrap())
+            .unwrap()
+            .unwrap();
+        let edited = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == node_id)
+            .unwrap();
+        assert_eq!(edited.color, Some(PlayerColor::White));
+        assert_eq!(edited.vertex, Some(MoveVertex::Point(PointDto { x: 2, y: 2 })));
+        assert!(replay_sgf_position_at_node(&result.sgf_text, node_id)
+            .unwrap()
+            .errors
+            .is_empty());
+    }
+
+    #[test]
+    fn edits_branch_move_without_touching_sibling_variation() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let result = edit_sgf_move(
+            input,
+            branch_id,
+            PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 3, y: 3 }),
+        )
+        .unwrap();
+
+        assert_eq!(result.sgf_text, "(;SZ[5];B[aa](;W[bb]C[main])(;B[dd]C[branch]))");
+        let reparsed_tree = to_sgf_tree_dto(&parse_sgf(&result.sgf_text).unwrap())
+            .unwrap()
+            .unwrap();
+        let branch = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == branch_id)
+            .unwrap();
+        assert_eq!(branch.color, Some(PlayerColor::Black));
+        assert_eq!(branch.vertex, Some(MoveVertex::Point(PointDto { x: 3, y: 3 })));
+        assert!(result.sgf_text.contains("(;W[bb]C[main])"));
+    }
+
+    #[test]
+    fn edits_move_to_pass() {
+        let input = "(;SZ[5];B[aa];W[bb])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(2))
+            .unwrap()
+            .id;
+
+        let result = edit_sgf_move(input, node_id, PlayerColor::White, MoveVertex::Pass).unwrap();
+
+        assert_eq!(result.sgf_text, "(;SZ[5];B[aa];W[])");
+        let position = replay_sgf_position_at_node(&result.sgf_text, node_id).unwrap();
+        assert_eq!(position.last_move.as_ref().unwrap().vertex, MoveVertex::Pass);
+        assert!(position.errors.is_empty());
+    }
+
+    #[test]
+    fn edit_preserves_comment_markup_unknown_properties_and_children() {
+        let input = "(;SZ[5];B[aa]C[old]N[name]TR[bb]LB[cc:A]ZZ[keep];W[dd]C[child])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let result = edit_sgf_move(
+            input,
+            node_id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 2, y: 2 }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.sgf_text,
+            "(;SZ[5];W[cc]C[old]N[name]TR[bb]LB[cc:A]ZZ[keep];W[dd]C[child])"
+        );
+        assert!(!result.sgf_text.contains(";B[cc]"));
+        let reparsed_tree = to_sgf_tree_dto(&parse_sgf(&result.sgf_text).unwrap())
+            .unwrap()
+            .unwrap();
+        let edited = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == node_id)
+            .unwrap();
+        assert_eq!(edited.comment.as_deref(), Some("old"));
+        assert_eq!(edited.name.as_deref(), Some("name"));
+        assert_eq!(edited.child_ids.len(), 1);
+        assert!(edited.properties.iter().any(|property| property.key == "ZZ"));
+    }
+
+    #[test]
+    fn edit_rejects_root_and_non_move_node() {
+        let input = "(;SZ[5]C[root];B[aa];C[note];W[bb])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let root_error = edit_sgf_move(
+            input,
+            tree.root_id,
+            PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap_err();
+        assert!(matches!(root_error, SgfError::CannotEditRoot));
+
+        let note_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("note"))
+            .unwrap()
+            .id;
+        let non_move_error = edit_sgf_move(
+            input,
+            note_id,
+            PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap_err();
+        assert!(matches!(non_move_error, SgfError::NonMoveNode));
+    }
+
+    #[test]
+    fn edit_rejects_occupied_out_of_board_and_illegal_descendant() {
+        let input = "(;SZ[5];B[aa];W[bb];B[cc])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let white_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(2))
+            .unwrap()
+            .id;
+        let first_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let occupied = edit_sgf_move(
+            input,
+            white_id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 0, y: 0 }),
+        )
+        .unwrap_err();
+        assert!(matches!(occupied, SgfError::IllegalMove(_)));
+
+        let out_of_board = edit_sgf_move(
+            input,
+            white_id,
+            PlayerColor::White,
+            MoveVertex::Point(PointDto { x: 5, y: 0 }),
+        )
+        .unwrap_err();
+        assert!(matches!(out_of_board, SgfError::IllegalMove(message) if message.contains("outside board")));
+
+        let illegal_descendant = edit_sgf_move(
+            input,
+            first_id,
+            PlayerColor::Black,
+            MoveVertex::Point(PointDto { x: 1, y: 1 }),
+        )
+        .unwrap_err();
+        assert!(matches!(illegal_descendant, SgfError::IllegalMove(_)));
     }
 
     #[test]

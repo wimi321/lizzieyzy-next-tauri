@@ -78,6 +78,34 @@ pub struct GameDto {
     pub moves: Vec<MoveDto>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SgfPropertyDto {
+    pub key: String,
+    pub values: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SgfTreeNodeDto {
+    pub id: NodeId,
+    pub parent_id: Option<NodeId>,
+    pub child_ids: Vec<NodeId>,
+    pub variation_index: usize,
+    pub depth: u32,
+    pub move_number: Option<u32>,
+    pub color: Option<PlayerColor>,
+    pub vertex: Option<MoveVertex>,
+    pub name: Option<String>,
+    pub comment: Option<String>,
+    pub properties: Vec<SgfPropertyDto>,
+    pub is_mainline: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SgfTreeDto {
+    pub root_id: NodeId,
+    pub nodes: Vec<SgfTreeNodeDto>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandidateMoveDto {
     pub vertex: MoveVertex,

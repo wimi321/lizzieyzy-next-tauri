@@ -1,4 +1,7 @@
-use app_model::{GameDto, GameSummaryDto, MoveDto, MoveVertex, PlayerColor, PointDto, PositionDto, StoneDto};
+use app_model::{
+    GameDto, GameSummaryDto, MoveDto, MoveVertex, NodeId, PlayerColor, PointDto, PositionDto, SgfPropertyDto,
+    SgfTreeDto, SgfTreeNodeDto, StoneDto,
+};
 use go_core::{Board, Color, Point, RuleError, Vertex};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -219,6 +222,14 @@ pub fn serialize_sgf_document(document: &SgfDocument) -> Result<String, SgfError
 
 pub fn to_sgf(document: &SgfDocument) -> Result<String, SgfError> {
     serialize_sgf_document(document)
+}
+
+pub fn to_sgf_tree_dto(document: &SgfDocument) -> Result<Option<SgfTreeDto>, SgfError> {
+    document
+        .root
+        .as_ref()
+        .map(|root| build_sgf_tree_dto(root, document.board_size))
+        .transpose()
 }
 
 pub fn replay_sgf_positions(input: &str) -> Result<Vec<PositionDto>, SgfError> {
@@ -1154,6 +1165,113 @@ fn has_move_property(node: &SgfNode) -> bool {
         .any(|property| property.key == "B" || property.key == "W")
 }
 
+fn build_sgf_tree_dto(root: &SgfNode, board_size: u8) -> Result<SgfTreeDto, SgfError> {
+    let mut nodes = Vec::new();
+    let root_id = push_sgf_tree_node(root, SgfTreeNodeContext::root(), board_size, &mut nodes)?;
+    Ok(SgfTreeDto { root_id, nodes })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SgfTreeNodeContext {
+    parent_id: Option<NodeId>,
+    variation_index: usize,
+    depth: u32,
+    previous_move_number: u32,
+    is_mainline: bool,
+}
+
+impl SgfTreeNodeContext {
+    fn root() -> Self {
+        Self {
+            parent_id: None,
+            variation_index: 0,
+            depth: 0,
+            previous_move_number: 0,
+            is_mainline: true,
+        }
+    }
+
+    fn child(self, parent_id: NodeId, variation_index: usize, previous_move_number: u32) -> Self {
+        Self {
+            parent_id: Some(parent_id),
+            variation_index,
+            depth: self.depth + 1,
+            previous_move_number,
+            is_mainline: self.is_mainline && variation_index == 0,
+        }
+    }
+}
+
+fn push_sgf_tree_node(
+    node: &SgfNode,
+    context: SgfTreeNodeContext,
+    board_size: u8,
+    nodes: &mut Vec<SgfTreeNodeDto>,
+) -> Result<NodeId, SgfError> {
+    let id = Uuid::new_v4();
+    let (color, vertex) = node_move_metadata(node, board_size)?;
+    let move_number = color.map(|_| context.previous_move_number + 1);
+    let child_previous_move_number = move_number.unwrap_or(context.previous_move_number);
+    let node_index = nodes.len();
+
+    nodes.push(SgfTreeNodeDto {
+        id,
+        parent_id: context.parent_id,
+        child_ids: Vec::new(),
+        variation_index: context.variation_index,
+        depth: context.depth,
+        move_number,
+        color,
+        vertex,
+        name: first_property_value(node, "N").cloned(),
+        comment: first_property_value(node, "C").cloned(),
+        properties: node_property_dtos(node),
+        is_mainline: context.is_mainline,
+    });
+
+    let mut child_ids = Vec::with_capacity(node.children.len());
+    for (variation_index, child) in node.children.iter().enumerate() {
+        let child_context = context.child(id, variation_index, child_previous_move_number);
+        child_ids.push(push_sgf_tree_node(child, child_context, board_size, nodes)?);
+    }
+    nodes[node_index].child_ids = child_ids;
+
+    Ok(id)
+}
+
+fn node_move_metadata(
+    node: &SgfNode,
+    board_size: u8,
+) -> Result<(Option<PlayerColor>, Option<MoveVertex>), SgfError> {
+    for property in &node.properties {
+        let color = match property.key.as_str() {
+            "B" => PlayerColor::Black,
+            "W" => PlayerColor::White,
+            _ => continue,
+        };
+        let Some(raw) = property.values.first() else {
+            return Err(SgfError::Malformed);
+        };
+        return Ok((Some(color), Some(parse_vertex(raw, board_size)?)));
+    }
+
+    Ok((None, None))
+}
+
+fn first_property_value<'a>(node: &'a SgfNode, key: &str) -> Option<&'a String> {
+    property_values(node, key).and_then(|values| values.first())
+}
+
+fn node_property_dtos(node: &SgfNode) -> Vec<SgfPropertyDto> {
+    node.properties
+        .iter()
+        .map(|property| SgfPropertyDto {
+            key: property.key.clone(),
+            values: property.values.clone(),
+        })
+        .collect()
+}
+
 fn apply_setup_properties(board: &mut Board, node: &SgfNode, board_size: u8) -> Result<(), SgfError> {
     for property in &node.properties {
         let color = match property.key.as_str() {
@@ -1517,6 +1635,68 @@ mod tests {
         let doc = parse_sgf("(;SZ[5];B[aa](;W[bb];B[cc])(;W[dd]))").unwrap();
         assert_eq!(doc.moves.len(), 3);
         assert_eq!(doc.moves[1].vertex, MoveVertex::Point(PointDto { x: 1, y: 1 }));
+    }
+
+    #[test]
+    fn exposes_sgf_tree_dto_with_variations_and_comments() {
+        let doc = parse_sgf("(;SZ[5]C[root];B[aa]N[one]C[first](;W[bb]C[main])(;W[cc]N[var]C[branch];B[]))")
+            .unwrap();
+        let tree = to_sgf_tree_dto(&doc).unwrap().unwrap();
+
+        assert_eq!(tree.nodes.len(), 5);
+
+        let root = tree.nodes.iter().find(|node| node.id == tree.root_id).unwrap();
+        assert_eq!(root.parent_id, None);
+        assert_eq!(root.depth, 0);
+        assert_eq!(root.move_number, None);
+        assert_eq!(root.comment.as_deref(), Some("root"));
+        assert_eq!(root.child_ids.len(), 1);
+        assert!(root.is_mainline);
+
+        let first_move = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap();
+        assert_eq!(first_move.parent_id, Some(root.id));
+        assert_eq!(first_move.name.as_deref(), Some("one"));
+        assert_eq!(first_move.comment.as_deref(), Some("first"));
+        assert_eq!(first_move.color, Some(PlayerColor::Black));
+        assert_eq!(
+            first_move.vertex,
+            Some(MoveVertex::Point(PointDto { x: 0, y: 0 }))
+        );
+        assert_eq!(first_move.child_ids.len(), 2);
+
+        let mainline_reply = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("main"))
+            .unwrap();
+        assert_eq!(mainline_reply.parent_id, Some(first_move.id));
+        assert_eq!(mainline_reply.variation_index, 0);
+        assert_eq!(mainline_reply.move_number, Some(2));
+        assert!(mainline_reply.is_mainline);
+
+        let branch_reply = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap();
+        assert_eq!(branch_reply.parent_id, Some(first_move.id));
+        assert_eq!(branch_reply.variation_index, 1);
+        assert_eq!(branch_reply.move_number, Some(2));
+        assert_eq!(branch_reply.name.as_deref(), Some("var"));
+        assert!(!branch_reply.is_mainline);
+
+        let branch_pass = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(3))
+            .unwrap();
+        assert_eq!(branch_pass.parent_id, Some(branch_reply.id));
+        assert_eq!(branch_pass.vertex, Some(MoveVertex::Pass));
+        assert!(!branch_pass.is_mainline);
     }
 
     #[test]

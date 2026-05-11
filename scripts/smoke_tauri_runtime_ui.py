@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -263,24 +265,41 @@ def sanitize_string(value: str, *, root: Path, temp_dir: Path) -> str:
     return sanitized
 
 
-def write_evidence(path: Path, report: Any, *, root: Path, temp_dir: Path) -> None:
+def write_evidence(path: Path, evidence: Any, *, root: Path, temp_dir: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    sanitized = sanitize_evidence(report, root=root, temp_dir=temp_dir)
+    sanitized = sanitize_evidence(evidence, root=root, temp_dir=temp_dir)
     path.write_text(json.dumps(sanitized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def start_tauri(root: Path, sgf_path: Path, report_path: Path, log_path: Path) -> subprocess.Popen[bytes]:
+def start_tauri(
+    root: Path,
+    sgf_path: Path,
+    report_path: Path,
+    log_path: Path,
+    *,
+    phase: str,
+    expected_report_path: Path | None = None,
+) -> subprocess.Popen[bytes]:
     env = os.environ.copy()
     env.update(
         {
             "VITE_LIZZIEYZY_RUNTIME_SMOKE": "1",
             "VITE_LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH": str(sgf_path),
             "VITE_LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH": str(report_path),
+            "VITE_LIZZIEYZY_RUNTIME_SMOKE_PHASE": phase,
             "LIZZIEYZY_RUNTIME_SMOKE": "1",
             "LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH": str(sgf_path),
             "LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH": str(report_path),
+            "LIZZIEYZY_RUNTIME_SMOKE_PHASE": phase,
         }
     )
+    if expected_report_path is not None:
+        env.update(
+            {
+                "VITE_LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH": str(expected_report_path),
+                "LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH": str(expected_report_path),
+            }
+        )
     log_file = log_path.open("wb")
     try:
         process = subprocess.Popen(
@@ -314,6 +333,13 @@ def stop_process(process: subprocess.Popen[bytes], *, grace_seconds: float = 5.0
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         return
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            return
+        time.sleep(0.1)
+    if process.poll() is None:
+        raise SmokeError(f"failed to stop tauri:dev process group for pid {process.pid}")
 
 
 def wait_for_report(report_path: Path, process: subprocess.Popen[bytes], *, timeout_seconds: float) -> Any:
@@ -336,6 +362,194 @@ def wait_for_report(report_path: Path, process: subprocess.Popen[bytes], *, time
     raise SmokeError(f"timed out after {timeout_seconds:g}s waiting for runtime smoke report")
 
 
+def launch_runtime_smoke(
+    root: Path,
+    *,
+    phase: str,
+    sgf_path: Path,
+    report_path: Path,
+    log_path: Path,
+    expected_report_path: Path | None = None,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    started_at = time.time()
+    process = start_tauri(
+        root,
+        sgf_path,
+        report_path,
+        log_path,
+        phase=phase,
+        expected_report_path=expected_report_path,
+    )
+    launch: dict[str, Any] = {
+        "phase": phase,
+        "pid": process.pid,
+        "sgfPath": str(sgf_path),
+        "reportPath": str(report_path),
+        "expectedReportPath": str(expected_report_path) if expected_report_path is not None else None,
+        "logPath": str(log_path),
+        "startedAtUnix": started_at,
+        "stopped": False,
+    }
+    stop_error: SmokeError | None = None
+    try:
+        report = wait_for_report(report_path, process, timeout_seconds=timeout_seconds)
+        launch["report"] = report
+        return launch
+    finally:
+        try:
+            stop_process(process)
+            launch["stopped"] = True
+            launch["exitCode"] = process.poll()
+            launch["stoppedAtUnix"] = time.time()
+        except SmokeError as exc:
+            launch["stopError"] = str(exc)
+            stop_error = exc
+        if stop_error is not None:
+            raise stop_error
+
+
+def validate_reopen_report(report: Any) -> list[str]:
+    if not isinstance(report, dict):
+        return ["second launch report root must be an object"]
+    failures: list[str] = []
+    if report.get("schema") != SCHEMA:
+        failures.append(f"second launch schema must be {SCHEMA}")
+    if str(report.get("status", "")).lower() != "pass":
+        failures.append("second launch status must be pass")
+    checks = report.get("checks")
+    if not isinstance(checks, list):
+        failures.append("second launch checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    for required in ("runtime_started", "sgf_loaded", "reopen_state_verified", "save_reopen_roundtrip"):
+        check = check_by_name.get(required)
+        if not isinstance(check, dict):
+            failures.append(f"second launch missing required check: {required}")
+        elif str(check.get("status", "")).lower() != "pass":
+            failures.append(f"second launch check not pass: {required}")
+    runtime_evidence = check_evidence(check_by_name.get("runtime_started"))
+    if runtime_evidence is None or runtime_evidence.get("tauriInternals") is not True:
+        failures.append("second launch runtime_started evidence must confirm real Tauri runtime")
+    return failures
+
+
+def validate_save_reopen_proof(first_launch: dict[str, Any], second_launch: dict[str, Any], sgf_path: Path) -> list[str]:
+    failures: list[str] = []
+    if first_launch.get("phase") != "edit-save":
+        failures.append("first launch phase must be edit-save")
+    if second_launch.get("phase") != "reopen-verify":
+        failures.append("second launch phase must be reopen-verify")
+    if first_launch.get("stopped") is not True:
+        failures.append("first launch process must be stopped before reopen")
+    if second_launch.get("stopped") is not True:
+        failures.append("second launch process must be stopped")
+    first_pid = first_launch.get("pid")
+    second_pid = second_launch.get("pid")
+    if not isinstance(first_pid, int) or not isinstance(second_pid, int):
+        failures.append("launch evidence must include process ids")
+    elif first_pid == second_pid:
+        failures.append("second launch must use a different Tauri process id")
+    if first_launch.get("reportPath") == second_launch.get("reportPath"):
+        failures.append("launches must use distinct report paths")
+    if first_launch.get("sgfPath") != str(sgf_path) or second_launch.get("sgfPath") != str(sgf_path):
+        failures.append("both launches must use the same SGF path")
+    first_stopped_at = first_launch.get("stoppedAtUnix")
+    second_started_at = second_launch.get("startedAtUnix")
+    if isinstance(first_stopped_at, (int, float)) and isinstance(second_started_at, (int, float)):
+        if first_stopped_at > second_started_at:
+            failures.append("first launch must stop before second launch starts")
+    else:
+        failures.append("launch evidence must include stop/start timing")
+    return failures
+
+
+def build_combined_evidence(first_launch: dict[str, Any], second_launch: dict[str, Any]) -> dict[str, Any]:
+    first_report = first_launch.get("report")
+    second_report = second_launch.get("report")
+    compatible_report = first_report if isinstance(first_report, dict) else {}
+    evidence = copy.deepcopy(compatible_report)
+    evidence["name"] = "ui_tauri_runtime_smoke_save_reopen"
+    evidence["firstLaunch"] = first_launch
+    evidence["secondLaunch"] = second_launch
+    evidence["saveReopenProof"] = {
+        "firstPhase": first_launch.get("phase"),
+        "secondPhase": second_launch.get("phase"),
+        "sameSgfPath": first_launch.get("sgfPath") == second_launch.get("sgfPath"),
+        "distinctProcesses": first_launch.get("pid") != second_launch.get("pid"),
+        "firstStoppedBeforeSecondStarted": (
+            isinstance(first_launch.get("stoppedAtUnix"), (int, float))
+            and isinstance(second_launch.get("startedAtUnix"), (int, float))
+            and first_launch["stoppedAtUnix"] <= second_launch["startedAtUnix"]
+        ),
+    }
+    enrich_save_readback_check(evidence, second_launch)
+    evidence["status"] = "pass"
+    return evidence
+
+
+def enrich_save_readback_check(evidence: dict[str, Any], second_launch: dict[str, Any]) -> None:
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return
+    second_report = second_launch.get("report")
+    second_checks = second_report.get("checks") if isinstance(second_report, dict) else None
+    reopen_details: dict[str, Any] = {}
+    if isinstance(second_checks, list):
+        reopen_check = next(
+            (
+                check
+                for check in second_checks
+                if isinstance(check, dict) and check.get("name") == "reopen_state_verified"
+            ),
+            None,
+        )
+        maybe_details = check_evidence(reopen_check)
+        if isinstance(maybe_details, dict):
+            reopen_details = maybe_details
+    for check in checks:
+        if not isinstance(check, dict) or check.get("name") != "save_readback_roundtrip":
+            continue
+        details = check_evidence(check)
+        if details is None:
+            details = {}
+            check["details"] = details
+        details["secondLaunch"] = {
+            "launchIndex": 2,
+            "status": "pass",
+            "phase": second_launch.get("phase"),
+            "pid": second_launch.get("pid"),
+            "stopped": second_launch.get("stopped"),
+            "reportPath": second_launch.get("reportPath"),
+        }
+        details["reopen"] = {
+            "path": second_launch.get("sgfPath"),
+            "status": "pass",
+            "matchesSaved": True,
+            "secondLaunch": True,
+        }
+        details["afterReopen"] = {
+            "treeOrderVerified": reopen_details.get("treeOrderVerified") is True,
+            "commentsVerified": reopen_details.get("commentsVerified") is True,
+            "propertiesVerified": reopen_details.get("propertiesVerified") is True,
+            "moveCountVerified": reopen_details.get("moveCountVerified") is True,
+            "boardStateVerified": reopen_details.get("boardStateVerified") is True,
+            "deletedTargetAbsent": reopen_details.get("absentAfterReopen") is True,
+        }
+        return
+
+
+def print_failure_paths(temp_dir: Path, paths: list[Path]) -> None:
+    print(f"failure artifacts retained in: {temp_dir}", file=sys.stderr)
+    for path in paths:
+        suffix = "" if path.exists() else " (missing)"
+        print(f"artifact: {path}{suffix}", file=sys.stderr)
+
+
 def run(root: Path, *, timeout_seconds: float, evidence_out: Path | None) -> int:
     root = root.resolve()
     if platform.system() != "Darwin":
@@ -345,29 +559,63 @@ def run(root: Path, *, timeout_seconds: float, evidence_out: Path | None) -> int
         print(f"Repository root does not exist: {root}", file=sys.stderr)
         return 2
 
-    with tempfile.TemporaryDirectory(prefix="lizzieyzy-runtime-smoke-") as temp:
-        temp_dir = Path(temp)
+    temp_dir = Path(tempfile.mkdtemp(prefix="lizzieyzy-runtime-smoke-"))
+    keep_temp_dir = True
+    try:
         sgf_path = temp_dir / "runtime-smoke.sgf"
-        report_path = temp_dir / "runtime-smoke-report.json"
-        log_path = temp_dir / "tauri-dev.log"
+        first_report_path = temp_dir / "runtime-smoke-report-a.json"
+        second_report_path = temp_dir / "runtime-smoke-report-b.json"
+        first_log_path = temp_dir / "tauri-dev-a.log"
+        second_log_path = temp_dir / "tauri-dev-b.log"
         write_runtime_sgf(sgf_path)
-        process = start_tauri(root, sgf_path, report_path, log_path)
+
         try:
-            report = wait_for_report(report_path, process, timeout_seconds=timeout_seconds)
-            failures = validate_report(report)
+            first_launch = launch_runtime_smoke(
+                root,
+                phase="edit-save",
+                sgf_path=sgf_path,
+                report_path=first_report_path,
+                log_path=first_log_path,
+                timeout_seconds=timeout_seconds,
+            )
+            first_report = first_launch.get("report")
+            failures = validate_report(first_report)
             if failures:
-                raise SmokeError("; ".join(failures))
+                raise SmokeError("first launch report invalid: " + "; ".join(failures))
+
+            second_launch = launch_runtime_smoke(
+                root,
+                phase="reopen-verify",
+                sgf_path=sgf_path,
+                report_path=second_report_path,
+                log_path=second_log_path,
+                expected_report_path=first_report_path,
+                timeout_seconds=timeout_seconds,
+            )
+            second_report = second_launch.get("report")
+            failures = validate_reopen_report(second_report)
+            if failures:
+                raise SmokeError("second launch report invalid: " + "; ".join(failures))
+            failures = validate_save_reopen_proof(first_launch, second_launch, sgf_path)
+            if failures:
+                raise SmokeError("save/reopen proof invalid: " + "; ".join(failures))
+
+            evidence = build_combined_evidence(first_launch, second_launch)
             if evidence_out is not None:
-                write_evidence(evidence_out, report, root=root, temp_dir=temp_dir)
-            print(f"PASS Tauri runtime UI smoke: {len(REQUIRED_CHECKS)} required checks passed")
+                write_evidence(evidence_out, evidence, root=root, temp_dir=temp_dir)
+            print(
+                f"PASS Tauri runtime UI smoke: {len(REQUIRED_CHECKS)} required checks passed; "
+                "save/reopen verified across two Tauri launches"
+            )
+            keep_temp_dir = False
             return 0
         except SmokeError as exc:
             print(f"FAIL Tauri runtime UI smoke: {exc}", file=sys.stderr)
-            if log_path.is_file():
-                print(f"tauri:dev log: {log_path}", file=sys.stderr)
+            print_failure_paths(temp_dir, [first_report_path, second_report_path, first_log_path, second_log_path])
             return 1
-        finally:
-            stop_process(process)
+    finally:
+        if not keep_temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:

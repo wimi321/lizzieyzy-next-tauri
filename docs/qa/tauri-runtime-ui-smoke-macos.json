@@ -28,7 +28,8 @@
     },
     {
       "details": {
-        "comment": "runtime smoke branch 2026-05-11T22:16:53.688Z",
+        "comment": "runtime smoke branch persisted",
+        "expectedComment": "runtime smoke branch persisted",
         "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
       },
       "name": "comment_edit",
@@ -36,6 +37,10 @@
     },
     {
       "details": {
+        "expectedProperties": {
+          "LB": "aa:A",
+          "N": "runtime-smoke-branch"
+        },
         "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
       },
       "name": "property_edit",
@@ -43,6 +48,7 @@
     },
     {
       "details": {
+        "color": "white",
         "nodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
         "vertex": "0,0"
       },
@@ -93,40 +99,500 @@
     },
     {
       "details": {
-        "bytes": 269,
+        "afterReopen": {
+          "boardStateVerified": true,
+          "commentsVerified": true,
+          "deletedTargetAbsent": true,
+          "moveCountVerified": true,
+          "propertiesVerified": true,
+          "treeOrderVerified": true
+        },
+        "bytes": 254,
         "path": "<tmp>/runtime-smoke.sgf",
         "readbackMatchesSaved": true,
         "readbackStatus": "matched_saved_text",
         "readbackVerified": true,
+        "reopen": {
+          "matchesSaved": true,
+          "path": "<tmp>/runtime-smoke.sgf",
+          "secondLaunch": true,
+          "status": "pass"
+        },
         "saveVerified": true,
         "savedPath": "<tmp>/runtime-smoke.sgf",
-        "savedStatus": "matched_edited_text"
+        "savedStatus": "matched_edited_text",
+        "secondLaunch": {
+          "launchIndex": 2,
+          "phase": "reopen-verify",
+          "pid": 21846,
+          "reportPath": "<tmp>/runtime-smoke-report-b.json",
+          "status": "pass",
+          "stopped": true
+        }
       },
       "name": "save_readback_roundtrip",
       "status": "pass"
     },
     {
       "details": {
-        "boardInvariant": "readback_replay_has_no_errors",
-        "invariant": "readback_replay_has_no_errors",
+        "absentAfterDelete": true,
+        "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+        "deletedTargetVertex": "1,0",
+        "expectedSiblingCount": 3,
+        "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
         "invariantVerified": true,
+        "moveCount": 3,
         "moveNumber": 2,
         "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+        "positionCount": 4,
         "replayErrorsAbsent": true,
-        "stones": 2,
+        "siblingCountAfterDelete": 3,
+        "siblingCountVerified": true,
+        "stones": 3,
+        "targetExistsAfterDelete": false,
         "verified": true
       },
       "name": "board_state_verified",
       "status": "pass"
     }
   ],
-  "finishedAt": "2026-05-11T22:16:53.714Z",
-  "name": "ui_tauri_runtime_smoke",
+  "expected": {
+    "appendColor": "white",
+    "branchComment": "runtime smoke branch persisted",
+    "branchLabel": "aa:A",
+    "branchName": "runtime-smoke-branch",
+    "deletedTargetVertex": "1,0",
+    "editTargetVertex": "1,0",
+    "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+    "reorderTargetIndex": 0,
+    "savedMoveCount": 3,
+    "savedPositionCount": 4,
+    "siblingCountAfterDelete": 3
+  },
+  "expectedReportPath": null,
+  "finishedAt": "2026-05-11T22:34:20.053Z",
+  "firstLaunch": {
+    "exitCode": -15,
+    "expectedReportPath": null,
+    "logPath": "<tmp>/tauri-dev-a.log",
+    "phase": "edit-save",
+    "pid": 21560,
+    "report": {
+      "checks": [
+        {
+          "details": {
+            "platform": "MacIntel",
+            "tauriInternals": true,
+            "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+          },
+          "name": "runtime_started",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "bytes": 211,
+            "path": "<tmp>/runtime-smoke.sgf"
+          },
+          "name": "sgf_loaded",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "moveNumber": 2,
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+            "stones": 2
+          },
+          "name": "branch_navigation",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "comment": "runtime smoke branch persisted",
+            "expectedComment": "runtime smoke branch persisted",
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
+          },
+          "name": "comment_edit",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "expectedProperties": {
+              "LB": "aa:A",
+              "N": "runtime-smoke-branch"
+            },
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
+          },
+          "name": "property_edit",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "color": "white",
+            "nodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+            "vertex": "0,0"
+          },
+          "name": "append_move",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "confirmedVertex": "1,0",
+            "editVertex": "1,0",
+            "nodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+            "targetVertex": "1,0"
+          },
+          "name": "edit_move",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "indexAfterMove": 0,
+            "movedIsMainline": true,
+            "movedNodeId": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+            "oldNodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+            "parentNodeId": "e5a4c351-fade-8164-d036-441c451f9404",
+            "siblingCount": 4,
+            "siblingIndex": 0,
+            "targetIndex": 0,
+            "variationIndexAfterMove": 0
+          },
+          "name": "variation_reorder",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "absentAfterDelete": true,
+            "deleteAbsence": true,
+            "deletedNodeId": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+            "deletedNodeIdBeforeDelete": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+            "deletedTargetVertex": "1,0",
+            "existsAfterDelete": false,
+            "movedNodeId": "bb5b8fe1-1e76-5e55-9419-cf3413e4ffb9",
+            "oldNodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
+            "parentNodeId": "e5a4c351-fade-8164-d036-441c451f9404",
+            "remainingSiblingCount": 3,
+            "targetExistsAfterDelete": false
+          },
+          "name": "delete_node",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "bytes": 254,
+            "path": "<tmp>/runtime-smoke.sgf",
+            "readbackMatchesSaved": true,
+            "readbackStatus": "matched_saved_text",
+            "readbackVerified": true,
+            "saveVerified": true,
+            "savedPath": "<tmp>/runtime-smoke.sgf",
+            "savedStatus": "matched_edited_text"
+          },
+          "name": "save_readback_roundtrip",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "absentAfterDelete": true,
+            "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "deletedTargetVertex": "1,0",
+            "expectedSiblingCount": 3,
+            "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "invariantVerified": true,
+            "moveCount": 3,
+            "moveNumber": 2,
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+            "positionCount": 4,
+            "replayErrorsAbsent": true,
+            "siblingCountAfterDelete": 3,
+            "siblingCountVerified": true,
+            "stones": 3,
+            "targetExistsAfterDelete": false,
+            "verified": true
+          },
+          "name": "board_state_verified",
+          "status": "pass"
+        }
+      ],
+      "expected": {
+        "appendColor": "white",
+        "branchComment": "runtime smoke branch persisted",
+        "branchLabel": "aa:A",
+        "branchName": "runtime-smoke-branch",
+        "deletedTargetVertex": "1,0",
+        "editTargetVertex": "1,0",
+        "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+        "reorderTargetIndex": 0,
+        "savedMoveCount": 3,
+        "savedPositionCount": 4,
+        "siblingCountAfterDelete": 3
+      },
+      "expectedReportPath": null,
+      "finishedAt": "2026-05-11T22:34:20.053Z",
+      "name": "ui_tauri_runtime_smoke",
+      "phase": "edit-save",
+      "platform": "macos",
+      "reportPath": "<tmp>/runtime-smoke-report-a.json",
+      "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+      "sgfPath": "<tmp>/runtime-smoke.sgf",
+      "startedAt": "2026-05-11T22:34:20.025Z",
+      "status": "pass",
+      "steps": [
+        {
+          "details": {
+            "boardSize": 9,
+            "moveCount": 3
+          },
+          "name": "parse source summary",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "lastMove": 3,
+            "positions": 4
+          },
+          "name": "replay source positions",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "nodes": 6,
+            "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+          },
+          "name": "parse source tree",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "nodes": 6,
+            "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+          },
+          "name": "parse source tree for edit targets",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "nodes": 6,
+            "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+          },
+          "name": "parse tree before append",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "boardSize": 9,
+            "moveCount": 3
+          },
+          "name": "parse readback summary",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "lastMove": 3,
+            "positions": 4
+          },
+          "name": "replay readback positions",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "nodes": 6,
+            "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+          },
+          "name": "parse readback tree",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "appendColor": "white",
+            "branchComment": "runtime smoke branch persisted",
+            "branchLabel": "aa:A",
+            "branchName": "runtime-smoke-branch",
+            "deletedTargetVertex": "1,0",
+            "editTargetVertex": "1,0",
+            "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "reorderTargetIndex": 0,
+            "savedMoveCount": 3,
+            "savedPositionCount": 4,
+            "siblingCountAfterDelete": 3
+          },
+          "name": "edit-save expected reopen proof fields",
+          "status": "pass"
+        }
+      ]
+    },
+    "reportPath": "<tmp>/runtime-smoke-report-a.json",
+    "sgfPath": "<tmp>/runtime-smoke.sgf",
+    "startedAtUnix": 1778538855.884485,
+    "stopped": true,
+    "stoppedAtUnix": 1778538860.867147
+  },
+  "name": "ui_tauri_runtime_smoke_save_reopen",
+  "phase": "edit-save",
   "platform": "macos",
-  "reportPath": "<tmp>/runtime-smoke-report.json",
+  "reportPath": "<tmp>/runtime-smoke-report-a.json",
+  "saveReopenProof": {
+    "distinctProcesses": true,
+    "firstPhase": "edit-save",
+    "firstStoppedBeforeSecondStarted": true,
+    "sameSgfPath": true,
+    "secondPhase": "reopen-verify"
+  },
   "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+  "secondLaunch": {
+    "exitCode": -15,
+    "expectedReportPath": "<tmp>/runtime-smoke-report-a.json",
+    "logPath": "<tmp>/tauri-dev-b.log",
+    "phase": "reopen-verify",
+    "pid": 21846,
+    "report": {
+      "checks": [
+        {
+          "details": {
+            "platform": "MacIntel",
+            "tauriInternals": true,
+            "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+          },
+          "name": "runtime_started",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "bytes": 254,
+            "path": "<tmp>/runtime-smoke.sgf"
+          },
+          "name": "sgf_loaded",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "absentAfterReopen": true,
+            "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "boardStateVerified": true,
+            "comment": "runtime smoke branch persisted",
+            "commentsVerified": true,
+            "deletedTargetVertex": "1,0",
+            "expectedComment": "runtime smoke branch persisted",
+            "expectedProperties": {
+              "LB": "aa:A",
+              "N": "runtime-smoke-branch"
+            },
+            "expectedSiblingCount": 3,
+            "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "invariantVerified": true,
+            "moveCount": 3,
+            "moveCountVerified": true,
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+            "positionCount": 4,
+            "propertiesVerified": true,
+            "reorderTargetIndex": 0,
+            "replayErrorsAbsent": true,
+            "siblingCountAfterReopen": 3,
+            "targetExistsAfterReopen": false,
+            "treeOrderVerified": true,
+            "variationDeletePersisted": true,
+            "verified": true
+          },
+          "name": "reopen_state_verified",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "expectedMoveCount": 3,
+            "expectedPositionCount": 4,
+            "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "readbackVerified": true,
+            "reopenVerified": true,
+            "reopenedPath": "<tmp>/runtime-smoke.sgf",
+            "savedPath": "<tmp>/runtime-smoke.sgf",
+            "savedStateLoaded": true,
+            "verified": true
+          },
+          "name": "save_reopen_roundtrip",
+          "status": "pass"
+        }
+      ],
+      "expected": {
+        "appendColor": "white",
+        "branchComment": "runtime smoke branch persisted",
+        "branchLabel": "aa:A",
+        "branchName": "runtime-smoke-branch",
+        "deletedTargetVertex": "1,0",
+        "editTargetVertex": "1,0",
+        "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+        "reorderTargetIndex": 0,
+        "savedMoveCount": 3,
+        "savedPositionCount": 4,
+        "siblingCountAfterDelete": 3
+      },
+      "expectedReportPath": "<tmp>/runtime-smoke-report-a.json",
+      "finishedAt": "2026-05-11T22:34:24.510Z",
+      "name": "ui_tauri_runtime_smoke",
+      "phase": "reopen-verify",
+      "platform": "macos",
+      "reportPath": "<tmp>/runtime-smoke-report-b.json",
+      "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+      "sgfPath": "<tmp>/runtime-smoke.sgf",
+      "startedAt": "2026-05-11T22:34:24.491Z",
+      "status": "pass",
+      "steps": [
+        {
+          "details": {
+            "boardSize": 9,
+            "moveCount": 3
+          },
+          "name": "parse reopened summary",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "lastMove": 3,
+            "positions": 4
+          },
+          "name": "replay reopened positions",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "nodes": 6,
+            "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+          },
+          "name": "parse reopened tree",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "boardSize": 9,
+            "moveCount": 3
+          },
+          "name": "parse reopened state summary",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "lastMove": 3,
+            "positions": 4
+          },
+          "name": "replay reopened state positions",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "nodes": 6,
+            "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
+          },
+          "name": "parse reopened state tree",
+          "status": "pass"
+        }
+      ]
+    },
+    "reportPath": "<tmp>/runtime-smoke-report-b.json",
+    "sgfPath": "<tmp>/runtime-smoke.sgf",
+    "startedAtUnix": 1778538860.867286,
+    "stopped": true,
+    "stoppedAtUnix": 1778538865.367191
+  },
   "sgfPath": "<tmp>/runtime-smoke.sgf",
-  "startedAt": "2026-05-11T22:16:53.688Z",
+  "startedAt": "2026-05-11T22:34:20.025Z",
   "status": "pass",
   "steps": [
     {
@@ -191,6 +657,23 @@
         "rootId": "ed501f94-0b38-1970-fcdb-2556b4bf9b32"
       },
       "name": "parse readback tree",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "appendColor": "white",
+        "branchComment": "runtime smoke branch persisted",
+        "branchLabel": "aa:A",
+        "branchName": "runtime-smoke-branch",
+        "deletedTargetVertex": "1,0",
+        "editTargetVertex": "1,0",
+        "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+        "reorderTargetIndex": 0,
+        "savedMoveCount": 3,
+        "savedPositionCount": 4,
+        "siblingCountAfterDelete": 3
+      },
+      "name": "edit-save expected reopen proof fields",
       "status": "pass"
     }
   ]

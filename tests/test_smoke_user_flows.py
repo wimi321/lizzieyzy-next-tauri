@@ -104,6 +104,28 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("ui_tauri_runtime_smoke", pending)
             self.assertIn("variation_reorder target index must be 0", pending["ui_tauri_runtime_smoke"])
 
+    def test_runtime_evidence_requires_second_launch_reopen_fields(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_tauri_runtime_ui_evidence()
+            roundtrip = find_evidence_check(evidence, "save_readback_roundtrip")["evidence"]
+            assert isinstance(roundtrip, dict)
+            roundtrip.pop("secondLaunch")
+            roundtrip.pop("reopen")
+            roundtrip.pop("afterReopen")
+            write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("ui_tauri_runtime_smoke", failures)
+            self.assertIn("ui_tauri_runtime_smoke", pending)
+            self.assertIn("secondLaunch object", pending["ui_tauri_runtime_smoke"])
+            self.assertIn("reopen object", pending["ui_tauri_runtime_smoke"])
+            self.assertIn("afterReopen object", pending["ui_tauri_runtime_smoke"])
+
     def test_runtime_evidence_uses_save_readback_roundtrip_name(self) -> None:
         self.assertIn("save_readback_roundtrip", smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)
         self.assertNotIn("save_reopen_roundtrip", smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)
@@ -380,6 +402,13 @@ def valid_tauri_runtime_ui_evidence() -> dict[str, object]:
         "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
         "status": "pass",
         "platform": "macos",
+        "firstLaunch": {"phase": "edit-save", "stopped": True, "pid": 111},
+        "secondLaunch": {"phase": "reopen-verify", "stopped": True, "pid": 222},
+        "saveReopenProof": {
+            "sameSgfPath": True,
+            "distinctProcesses": True,
+            "firstStoppedBeforeSecondStarted": True,
+        },
         "checks": [
             {"name": name, "status": "pass", "evidence": valid_runtime_check_evidence(name)}
             for name in smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS
@@ -403,7 +432,19 @@ def valid_runtime_check_evidence(name: str) -> dict[str, object]:
     if name == "delete_node":
         return {"deletedNodeId": "variation-c", "existsAfterDelete": False}
     if name == "save_readback_roundtrip":
-        return {"savedPath": "<tmp>/runtime-smoke.sgf", "readbackMatchesSaved": True}
+        return {
+            "savedPath": "<tmp>/runtime-smoke.sgf",
+            "readbackMatchesSaved": True,
+            "secondLaunch": {"launchIndex": 2, "status": "pass"},
+            "reopen": {"path": "<tmp>/runtime-smoke.sgf", "status": "pass", "matchesSaved": True},
+            "afterReopen": {
+                "treeOrderVerified": True,
+                "commentsVerified": True,
+                "propertiesVerified": True,
+                "moveCountVerified": True,
+                "boardStateVerified": True,
+            },
+        }
     if name == "board_state_verified":
         return {"invariant": "replayed position count equals parsed move count plus initial position", "verified": True}
     return {"observed": True}

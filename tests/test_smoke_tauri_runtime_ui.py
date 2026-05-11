@@ -20,8 +20,10 @@ SPEC.loader.exec_module(smoke_tauri_runtime_ui)
 
 
 class FakeProcess:
-    pid = 12345
     returncode = None
+
+    def __init__(self, pid: int = 12345) -> None:
+        self.pid = pid
 
     def poll(self) -> int | None:
         return self.returncode
@@ -35,7 +37,7 @@ class SmokeTauriRuntimeUiTests(unittest.TestCase):
 
     def test_validate_report_rejects_missing_required_check(self) -> None:
         report = valid_report()
-        report["checks"] = report["checks"][:-1]
+        report["checks"] = [check for check in report["checks"] if check["name"] != "board_state_verified"]
 
         failures = smoke_tauri_runtime_ui.validate_report(report)
 
@@ -100,19 +102,22 @@ class SmokeTauriRuntimeUiTests(unittest.TestCase):
             self.assertEqual("<repo>/apps/desktop", sanitized["path"])
             self.assertEqual("<tmp>/tauri-dev.log", sanitized["nested"][0]["log"])
 
-    def test_run_writes_sanitized_evidence_after_valid_report(self) -> None:
+    def test_run_writes_sanitized_two_launch_evidence_after_valid_reports(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "repo"
             root.mkdir()
             evidence_out = Path(tmp) / "evidence.json"
-            report = valid_report()
-            report["sgfPath"] = str(Path(tmp) / "repo" / "sample.sgf")
-            process = FakeProcess()
+            first_report = valid_report()
+            first_report["sgfPath"] = str(Path(tmp) / "repo" / "sample.sgf")
+            second_report = valid_report()
+            second_report["sgfPath"] = str(Path(tmp) / "repo" / "sample.sgf")
+            first_process = FakeProcess(111)
+            second_process = FakeProcess(222)
 
             with (
                 patch.object(smoke_tauri_runtime_ui.platform, "system", return_value="Darwin"),
-                patch.object(smoke_tauri_runtime_ui, "start_tauri", return_value=process),
-                patch.object(smoke_tauri_runtime_ui, "wait_for_report", return_value=report),
+                patch.object(smoke_tauri_runtime_ui, "start_tauri", side_effect=[first_process, second_process]) as start_tauri,
+                patch.object(smoke_tauri_runtime_ui, "wait_for_report", side_effect=[first_report, second_report]),
                 patch.object(smoke_tauri_runtime_ui, "stop_process") as stop_process,
                 contextlib.redirect_stdout(io.StringIO()),
                 contextlib.redirect_stderr(io.StringIO()),
@@ -120,9 +125,16 @@ class SmokeTauriRuntimeUiTests(unittest.TestCase):
                 exit_code = smoke_tauri_runtime_ui.run(root, timeout_seconds=0.1, evidence_out=evidence_out)
 
             self.assertEqual(0, exit_code)
-            stop_process.assert_called_once_with(process)
+            self.assertEqual(2, start_tauri.call_count)
+            self.assertEqual("edit-save", start_tauri.call_args_list[0].kwargs["phase"])
+            self.assertEqual("reopen-verify", start_tauri.call_args_list[1].kwargs["phase"])
+            self.assertEqual(2, stop_process.call_count)
             written = json.loads(evidence_out.read_text(encoding="utf-8"))
             self.assertEqual("<repo>/sample.sgf", written["sgfPath"])
+            self.assertEqual("edit-save", written["firstLaunch"]["phase"])
+            self.assertEqual("reopen-verify", written["secondLaunch"]["phase"])
+            self.assertTrue(written["saveReopenProof"]["distinctProcesses"])
+            self.assertIn("checks", written)
 
     def test_run_returns_failure_for_invalid_report(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -143,6 +155,42 @@ class SmokeTauriRuntimeUiTests(unittest.TestCase):
             self.assertEqual(1, exit_code)
             stop_process.assert_called_once_with(process)
 
+    def test_validate_reopen_report_requires_real_tauri_runtime_evidence(self) -> None:
+        report = valid_report()
+        find_check(report, "runtime_started")["evidence"] = {"tauriInternals": False}
+
+        failures = smoke_tauri_runtime_ui.validate_reopen_report(report)
+
+        self.assertIn("second launch runtime_started evidence must confirm real Tauri runtime", failures)
+
+    def test_validate_save_reopen_proof_rejects_same_process(self) -> None:
+        first_launch = {
+            "phase": "edit-save",
+            "pid": 123,
+            "sgfPath": "/tmp/game.sgf",
+            "reportPath": "/tmp/a.json",
+            "startedAtUnix": 1.0,
+            "stoppedAtUnix": 2.0,
+            "stopped": True,
+        }
+        second_launch = {
+            "phase": "reopen-verify",
+            "pid": 123,
+            "sgfPath": "/tmp/game.sgf",
+            "reportPath": "/tmp/b.json",
+            "startedAtUnix": 3.0,
+            "stoppedAtUnix": 4.0,
+            "stopped": True,
+        }
+
+        failures = smoke_tauri_runtime_ui.validate_save_reopen_proof(
+            first_launch,
+            second_launch,
+            Path("/tmp/game.sgf"),
+        )
+
+        self.assertIn("second launch must use a different Tauri process id", failures)
+
 
 def valid_report() -> dict[str, object]:
     return {
@@ -152,11 +200,16 @@ def valid_report() -> dict[str, object]:
         "checks": [
             {"name": name, "status": "pass", "evidence": valid_evidence_for(name)}
             for name in smoke_tauri_runtime_ui.REQUIRED_CHECKS
+        ] + [
+            {"name": "reopen_state_verified", "status": "pass", "evidence": valid_evidence_for("reopen_state_verified")},
+            {"name": "save_reopen_roundtrip", "status": "pass", "evidence": valid_evidence_for("save_reopen_roundtrip")},
         ],
     }
 
 
 def valid_evidence_for(name: str) -> dict[str, object]:
+    if name == "runtime_started":
+        return {"tauriInternals": True, "userAgent": "Tauri", "platform": "MacIntel"}
     if name == "variation_reorder":
         return {
             "nodeId": "variation-b",
@@ -175,6 +228,17 @@ def valid_evidence_for(name: str) -> dict[str, object]:
         return {"savedPath": "<tmp>/runtime-smoke.sgf", "readbackMatchesSaved": True}
     if name == "board_state_verified":
         return {"invariant": "replayed position count equals parsed move count plus initial position", "verified": True}
+    if name == "reopen_state_verified":
+        return {
+            "treeOrderVerified": True,
+            "commentsVerified": True,
+            "propertiesVerified": True,
+            "moveCountVerified": True,
+            "boardStateVerified": True,
+            "absentAfterReopen": True,
+        }
+    if name == "save_reopen_roundtrip":
+        return {"reopenVerified": True, "verified": True}
     return {"observed": True}
 
 

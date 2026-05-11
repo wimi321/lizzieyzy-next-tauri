@@ -21,6 +21,7 @@ import {
   type ReadboardSidecarSyncSnapshotResult,
   type YikeUrlDescriptor
 } from "../domain/providers";
+import type { PlayerColor, PositionDto, StoneDto } from "../domain/types";
 
 type Props = {
   disabled?: boolean;
@@ -69,6 +70,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canImport = !disabled && payload.trim().length > 0;
   const canProbeReadboard = !disabled;
   const canSyncReadboard = !disabled && readboardProtocolLine.trim().length > 0;
+  const canImportReadboardSnapshot = !disabled && readboardSyncResult?.position != null;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
     ? statuses.fetch
     : statuses.import !== initialStatuses.import
@@ -173,6 +175,18 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     } catch (error) {
       setReadboardSyncResult(null);
       setOperationStatus("readboardSync", `Readboard preview failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function handleImportReadboardSnapshot() {
+    if (!readboardSyncResult?.position) return;
+    setOperationStatus("readboardSync", "Importing readboard snapshot...");
+    try {
+      const result = buildReadboardSnapshotImportResult(readboardSyncResult, optionalTrimmed(readboardEndpoint));
+      await onImport(result);
+      setOperationStatus("readboardSync", readboardSnapshotImportStatus(result));
+    } catch (error) {
+      setOperationStatus("readboardSync", `Readboard snapshot import failed: ${errorMessage(error)}`);
     }
   }
 
@@ -308,7 +322,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             onChange={(event) => setReadboardProtocolLine(event.target.value)}
           />
         </label>
-        <button onClick={() => void handleReadboardSync()} disabled={!canSyncReadboard}>Preview snapshot</button>
+        <div className="provider-grid">
+          <button onClick={() => void handleReadboardSync()} disabled={!canSyncReadboard}>Preview snapshot</button>
+          <button onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import snapshot</button>
+        </div>
         <p className="provider-status" title={statuses.readboardSync}>{statuses.readboardSync}</p>
         {readboardSyncResult ? (
           <dl className="provider-preview">
@@ -411,6 +428,91 @@ function buildFetchImportRequest(result: ProviderFetchResult, fallbackSourceUrl:
   };
 }
 
+function buildReadboardSnapshotImportResult(result: ReadboardSidecarSyncSnapshotResult, endpoint: string | null): ProviderImportResult {
+  if (!result.position) throw new Error("Preview a readboard snapshot with a position before importing.");
+  const sgfBuild = buildReadboardSnapshotSgf(result.position);
+  const metadata = normalizeMetadata({
+    source_url: endpoint,
+    source_id: result.snapshot_id,
+    title: `Readboard snapshot ${result.snapshot_id}`,
+    provider_status: "snapshot_only",
+    extra: {
+      import_kind: "readboard_snapshot",
+      history_scope: "current_position_only_not_complete_game_history",
+      snapshot_id: result.snapshot_id,
+      board_size: String(result.position.board_size),
+      move_number: String(result.position.move_number),
+      to_play: result.position.to_play
+    }
+  });
+  const warnings = [
+    "Readboard snapshot import contains only the current board position; it is not a complete game history.",
+    "Move order, captures, comments, clock data, and earlier variations are not reconstructed from this snapshot.",
+    ...result.warnings,
+    ...result.position.errors,
+    ...sgfBuild.warnings
+  ];
+  return {
+    provider: "readboard_snapshot",
+    sgf_text: sgfBuild.sgfText,
+    summary: {
+      provider: "readboard_snapshot",
+      source_id: result.snapshot_id,
+      board_size: result.position.board_size,
+      move_count: 0
+    },
+    metadata,
+    warnings
+  };
+}
+
+function buildReadboardSnapshotSgf(position: PositionDto): { sgfText: string; warnings: string[] } {
+  const boardSize = normalizeBoardSize(position.board_size);
+  const warnings: string[] = [];
+  if (boardSize !== position.board_size) {
+    warnings.push(`Readboard board size ${position.board_size} was normalized to ${boardSize} for SGF SZ.`);
+  }
+
+  const blackStones = uniqueSortedSgfPoints(position.stones, "black", boardSize, warnings);
+  const whiteStones = uniqueSortedSgfPoints(position.stones, "white", boardSize, warnings);
+  const properties = [`FF[4]`, `GM[1]`, `SZ[${boardSize}]`];
+  if (blackStones.length > 0) properties.push(`AB${blackStones.map((point) => `[${point}]`).join("")}`);
+  if (whiteStones.length > 0) properties.push(`AW${whiteStones.map((point) => `[${point}]`).join("")}`);
+  properties.push(`PL[${playerColorSgfValue(position.to_play)}]`);
+  return { sgfText: `(;${properties.join("")})`, warnings };
+}
+
+function normalizeBoardSize(boardSize: number): number {
+  if (Number.isInteger(boardSize) && boardSize >= 1 && boardSize <= 52) return boardSize;
+  return 19;
+}
+
+function uniqueSortedSgfPoints(stones: StoneDto[], color: PlayerColor, boardSize: number, warnings: string[]): string[] {
+  const points = new Set<string>();
+  for (const stone of stones) {
+    if (stone.color !== color) continue;
+    if (!isBoardCoordinate(stone.x, boardSize) || !isBoardCoordinate(stone.y, boardSize)) {
+      warnings.push(`Skipped ${stone.color} stone outside ${boardSize}x${boardSize} board at (${stone.x}, ${stone.y}).`);
+      continue;
+    }
+    points.add(`${sgfCoordinate(stone.x)}${sgfCoordinate(stone.y)}`);
+  }
+  return [...points].sort();
+}
+
+function isBoardCoordinate(value: number, boardSize: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value < boardSize;
+}
+
+function sgfCoordinate(value: number): string {
+  const code = value < 26 ? 97 + value : 65 + value - 26;
+  return String.fromCharCode(code);
+}
+
+function playerColorSgfValue(color: PlayerColor): string {
+  return color === "black" ? "B" : "W";
+}
+
 function normalizeFoxFetchInput(rawInput: string): FoxFetchInput {
   const trimmed = rawInput.trim();
   if (!trimmed) throw new Error("Enter a Fox numeric chessid or command.");
@@ -459,6 +561,10 @@ function readboardSyncStatus(result: ReadboardSidecarSyncSnapshotResult): string
   const position = result.position ? `position ${result.position.board_size}x${result.position.board_size} move ${result.position.move_number}` : "no position";
   const warnings = result.warnings.length > 0 ? `, ${result.warnings.length} warning(s)` : "";
   return `Snapshot preview ${result.snapshot_id}: ${position}${warnings}.`;
+}
+
+function readboardSnapshotImportStatus(result: ProviderImportResult): string {
+  return `Imported readboard snapshot ${result.metadata.source_id ?? "current"} with ${result.summary.board_size ?? "unknown"}x${result.summary.board_size ?? "unknown"} position and ${result.warnings.length} warning(s).`;
 }
 
 function positionStatus(result: ReadboardSidecarSyncSnapshotResult): string {

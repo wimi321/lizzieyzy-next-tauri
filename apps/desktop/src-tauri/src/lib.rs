@@ -45,6 +45,18 @@ struct DeleteSgfNodeResultDto {
     parent_node_id: NodeId,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SgfPropertyUpdateDto {
+    key: String,
+    values: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct UpdateSgfNodePropertiesResultDto {
+    sgf_text: String,
+    node_id: NodeId,
+}
+
 #[derive(Debug, Default)]
 struct ReqwestProviderTransport;
 
@@ -473,6 +485,27 @@ fn update_sgf_node_comment(
     comment: Option<String>,
 ) -> Result<String, String> {
     sgf::update_sgf_node_comment(&sgf_text, node_id, comment.as_deref()).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+fn update_sgf_node_properties(
+    sgf_text: String,
+    node_id: NodeId,
+    updates: Vec<SgfPropertyUpdateDto>,
+) -> Result<UpdateSgfNodePropertiesResultDto, String> {
+    let updates = updates
+        .into_iter()
+        .map(|update| sgf::SgfPropertyUpdate {
+            key: update.key,
+            values: update.values,
+        })
+        .collect();
+    let result =
+        sgf::update_sgf_node_properties(&sgf_text, node_id, updates).map_err(|err| err.to_string())?;
+    Ok(UpdateSgfNodePropertiesResultDto {
+        sgf_text: result.sgf_text,
+        node_id: result.node_id,
+    })
 }
 
 #[tauri::command]
@@ -1983,6 +2016,7 @@ pub fn run() {
             readboard_sidecar_sync_snapshot,
             replay_sgf_positions,
             update_sgf_node_comment,
+            update_sgf_node_properties,
             append_sgf_move,
             delete_sgf_node,
             replay_sgf_position_at_node,
@@ -2110,6 +2144,65 @@ mod tests {
         let node = updated_tree.nodes.iter().find(|node| node.id == node_id).unwrap();
 
         assert_eq!(node.comment, None);
+    }
+
+    #[test]
+    fn command_updates_sgf_node_properties() {
+        let input = "(;SZ[5]PB[Old];B[aa]N[old]TR[bb]ZZ[keep])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.name.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let result = update_sgf_node_properties(
+            input.to_string(),
+            node_id,
+            vec![
+                SgfPropertyUpdateDto {
+                    key: "N".to_string(),
+                    values: vec!["new".to_string()],
+                },
+                SgfPropertyUpdateDto {
+                    key: "TR".to_string(),
+                    values: Vec::new(),
+                },
+                SgfPropertyUpdateDto {
+                    key: "LB".to_string(),
+                    values: vec!["aa:A".to_string()],
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(result.node_id, node_id);
+        assert_eq!(result.sgf_text, "(;SZ[5]PB[Old];B[aa]N[new]ZZ[keep]LB[aa:A])");
+    }
+
+    #[test]
+    fn command_rejects_invalid_sgf_property_key() {
+        let input = "(;SZ[5];B[aa]C[old])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let error = update_sgf_node_properties(
+            input.to_string(),
+            node_id,
+            vec![SgfPropertyUpdateDto {
+                key: "C1".to_string(),
+                values: vec!["new".to_string()],
+            }],
+        )
+        .unwrap_err();
+
+        assert!(error.contains("invalid SGF property key"));
     }
 
     #[test]

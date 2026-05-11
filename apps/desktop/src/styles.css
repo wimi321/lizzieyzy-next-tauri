@@ -1034,7 +1034,8 @@ button.path-picker-button {
 }
 
 .sgf-tree-header,
-.sgf-comment-header {
+.sgf-comment-header,
+.sgf-properties-header {
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -1043,7 +1044,8 @@ button.path-picker-button {
 }
 
 .sgf-tree-header h2,
-.sgf-comment-header h3 {
+.sgf-comment-header h3,
+.sgf-properties-header h3 {
   margin: 0;
   font-size: 15px;
 }
@@ -1052,17 +1054,20 @@ button.path-picker-button {
   min-width: 0;
 }
 
-.sgf-comment-header div {
+.sgf-comment-header div,
+.sgf-properties-header div {
   min-width: 0;
 }
 
-.sgf-comment-header {
+.sgf-comment-header,
+.sgf-properties-header {
   align-items: center;
 }
 
 .sgf-tree-header span,
 .sgf-tree-header strong,
-.sgf-comment-header span {
+.sgf-comment-header span,
+.sgf-properties-header span {
   max-width: 170px;
   overflow: hidden;
   color: #64748b;
@@ -1270,4 +1275,81 @@ button.sgf-delete-node-button:focus-visible:not(:disabled) {
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
+}
+
+.sgf-properties-editor {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid #d2d8e0;
+}
+
+.sgf-property-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  min-width: 0;
+}
+
+.sgf-property-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.sgf-property-field span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sgf-property-field input,
+.sgf-property-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #18202b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sgf-property-field input {
+  height: 30px;
+  padding: 5px 7px;
+}
+
+.sgf-property-field textarea {
+  height: 54px;
+  min-height: 44px;
+  padding: 6px 7px;
+  resize: vertical;
+}
+
+.sgf-property-field input:disabled,
+.sgf-property-field textarea:disabled {
+  background: #eef2f6;
+  color: #94a3b8;
+}
+
+.sgf-properties-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sgf-properties-editor > button {
+  justify-self: end;
+  min-width: 112px;
+  height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
 }

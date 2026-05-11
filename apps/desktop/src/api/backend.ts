@@ -39,6 +39,16 @@ export type DeleteSgfNodeResult = {
   parent_node_id: string;
 };
 
+export type SgfPropertyUpdate = {
+  key: string;
+  values: string[];
+};
+
+export type UpdateSgfNodePropertiesResult = {
+  sgf_text: string;
+  node_id: string;
+};
+
 export type AnalysisProgressPayload = {
   job_id: string;
   completed: number;
@@ -222,6 +232,17 @@ export async function updateSgfNodeComment(sgfText: string, nodeId: string, comm
     throw new Error("Editing SGF node comments requires the Tauri desktop backend. Browser preview cannot persist branch-safe SGF edits.");
   }
   return await invoke<string>("update_sgf_node_comment", { sgfText, nodeId, comment });
+}
+
+export async function updateSgfNodeProperties(
+  sgfText: string,
+  nodeId: string,
+  updates: SgfPropertyUpdate[]
+): Promise<UpdateSgfNodePropertiesResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("Editing SGF node properties requires the Tauri desktop backend. Browser preview cannot persist branch-safe SGF edits.");
+  }
+  return await invoke<UpdateSgfNodePropertiesResult>("update_sgf_node_properties", { sgfText, nodeId, updates });
 }
 
 export async function appendSgfMove(

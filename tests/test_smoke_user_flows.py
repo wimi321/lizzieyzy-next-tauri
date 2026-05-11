@@ -51,6 +51,63 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
 
+    def test_valid_tauri_runtime_ui_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_tauri_runtime_ui_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("ui_tauri_runtime_smoke", pass_names)
+            self.assertNotIn("ui_tauri_runtime_smoke", pending_names)
+
+    def test_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_json(
+                root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE,
+                {
+                    "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+                    "status": "pass",
+                    "platform": "macos",
+                    "checks": [{"name": "runtime_started", "status": "pass"}],
+                },
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("ui_tauri_runtime_smoke", failures)
+            self.assertIn("ui_tauri_runtime_smoke", pending)
+            self.assertIn("missing required checks", pending["ui_tauri_runtime_smoke"])
+
+    def test_semantic_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_tauri_runtime_ui_evidence()
+            find_evidence_check(evidence, "variation_reorder")["evidence"]["targetIndex"] = 2
+            write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("ui_tauri_runtime_smoke", failures)
+            self.assertIn("ui_tauri_runtime_smoke", pending)
+            self.assertIn("variation_reorder target index must be 0", pending["ui_tauri_runtime_smoke"])
+
+    def test_runtime_evidence_uses_save_readback_roundtrip_name(self) -> None:
+        self.assertIn("save_readback_roundtrip", smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)
+        self.assertNotIn("save_reopen_roundtrip", smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)
+
     def test_missing_properties_command_fails(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -312,6 +369,54 @@ def create_complete_smoke_fixture(
     create_backend_fixture(root)
     create_app_fixture(root, edit_existing_move_handler=app_edit_handler)
     create_sgf_tree_panel_fixture(root)
+
+
+def write_valid_tauri_runtime_ui_evidence(root: Path) -> None:
+    write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, valid_tauri_runtime_ui_evidence())
+
+
+def valid_tauri_runtime_ui_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+        "status": "pass",
+        "platform": "macos",
+        "checks": [
+            {"name": name, "status": "pass", "evidence": valid_runtime_check_evidence(name)}
+            for name in smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS
+        ],
+    }
+
+
+def valid_runtime_check_evidence(name: str) -> dict[str, object]:
+    if name == "variation_reorder":
+        return {
+            "nodeId": "variation-b",
+            "movedNodeId": "variation-b",
+            "targetIndex": 0,
+            "indexAfterMove": 0,
+            "variationIndexAfterMove": 0,
+            "parentNodeId": "root",
+        }
+    if name == "edit_move":
+        vertex = {"point": {"x": 3, "y": 3}}
+        return {"nodeId": "move-1", "targetVertex": vertex, "confirmedVertex": vertex}
+    if name == "delete_node":
+        return {"deletedNodeId": "variation-c", "existsAfterDelete": False}
+    if name == "save_readback_roundtrip":
+        return {"savedPath": "<tmp>/runtime-smoke.sgf", "readbackMatchesSaved": True}
+    if name == "board_state_verified":
+        return {"invariant": "replayed position count equals parsed move count plus initial position", "verified": True}
+    return {"observed": True}
+
+
+def find_evidence_check(evidence: dict[str, object], name: str) -> dict[str, object]:
+    checks = evidence["checks"]
+    assert isinstance(checks, list)
+    for check in checks:
+        assert isinstance(check, dict)
+        if check.get("name") == name:
+            return check
+    raise AssertionError(f"missing check {name}")
 
 
 def create_legacy_shell_fixture(

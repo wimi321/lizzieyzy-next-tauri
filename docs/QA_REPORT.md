@@ -10,6 +10,14 @@ Run:
 python3 scripts/smoke_user_flows.py --verbose
 ```
 
+To collect the macOS local Tauri runtime UI evidence, run:
+
+```sh
+python3 scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json
+```
+
+This runtime script creates a temporary SGF, starts `npm --prefix apps/desktop run tauri:dev` with the `VITE_LIZZIEYZY_RUNTIME_SMOKE*`/`LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH` environment variables, waits for the app-produced report JSON, validates the required check names, and writes sanitized evidence when the report status is `pass`.
+
 Covered checks:
 
 | Area | Status | Evidence |
@@ -24,15 +32,16 @@ Covered checks:
 | LegacyShell main menu surface | Automated | Statically verifies the `View`, `Engine`, `Tools`, and `Help` menu entries in `LegacyShell.tsx` are present, identifiable by label or `data-testid`, and are not disabled-only placeholders. This is static menu-surface evidence only; runtime UI automation still needs to prove each entry reaches the expected surface. |
 | Native SGF save/read-back refresh surface | Automated | Statically verifies native SGF save writes through `write_sgf_file`, reads the saved file back through `read_sgf_file`/`readSgfDocument`, and refreshes App state by parsing, replaying, rebuilding the tree, and checking cache from the read-back SGF text. This is repository-local evidence only; it is not real desktop GUI save/reopen smoke. |
 | SGF existing move edit surface | Automated | Statically verifies `sgf_existing_move_edit_surface`: `edit_sgf_move` is defined/registered and the repository-local backend/App/SgfTreePanel edit-existing-move surface is wired. This is repository-local evidence only; it is not interactive desktop edit/save/reopen proof. |
+| macOS Tauri runtime UI smoke evidence | Recorded locally on macOS | `docs/qa/tauri-runtime-ui-smoke-macos.json` was produced by `scripts/smoke_tauri_runtime_ui.py --evidence-out ...`. `smoke_user_flows.py` marks `ui_tauri_runtime_smoke` PASS because this file has schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, all required checks passing, and semantic evidence for existing-move edit, variation reorder target index, delete absence, save/read-back, and board-state invariants. |
 
 Current repository-local alpha gate result:
 
 ```text
 python3 scripts/smoke_user_flows.py --verbose
-User-flow smoke: 21 passed, 0 failed, 5 pending.
+User-flow smoke: 22 passed, 0 failed, 4 pending.
 ```
 
-With the native SGF save/read-back and existing-move-edit gates included, repository-local read-back refresh and edit-existing-move surface evidence is complete: `native_sgf_save_readback_surface` passes and verifies that backend save reads the saved file back while App save handling refreshes parse/replay/tree/cache state from the read-back text, and `sgf_existing_move_edit_surface` passes with command/frontend surface evidence. This is still not a 100% or release-ready gate because the runtime/external gates listed below remain pending.
+With the native SGF save/read-back, existing-move-edit, and macOS local Tauri runtime UI smoke gates included, repository-local read-back refresh and edit-existing-move surface evidence is complete, and `ui_tauri_runtime_smoke` now has a sanitized macOS local runtime PASS report. This is still not a 100% or release-ready gate because the runtime/external gates listed below remain pending.
 
 ## Deferred Runtime Gates
 
@@ -40,7 +49,7 @@ These are not marked complete by the smoke skeleton:
 
 | Gate | Status | Required evidence before completion |
 | --- | --- | --- |
-| Real Tauri UI flow | Pending | Launch desktop runtime, open a real SGF, navigate/reorder variations, edit comments/properties, append/delete nodes, save, reopen, and verify board state. |
+| Broader real Tauri UI flow | Pending | Record any additional manual desktop runtime coverage beyond the macOS local smoke, including real-file open paths and exploratory UI behavior. |
 | Runtime save/reopen proof | Pending | Save after comment/property edits plus append/delete/reorder, quit or restart the desktop runtime, reopen the saved SGF, and confirm tree order, node properties, comments, move count, and board state. The static `native_sgf_save_readback_surface` gate is repository-local read-back wiring evidence, not this desktop GUI proof. |
 | KataGo analysis flow | Pending | Controlled KataGo binary/model/config evidence, one-shot analysis, full-game analysis, cancellation, cache hit, and failure reporting. |
 | Readboard sidecar flow | Pending | Controlled sidecar/runtime evidence for probe and sync paths with unsupported/error states recorded distinctly. |
@@ -51,4 +60,4 @@ These are not marked complete by the smoke skeleton:
 
 Passing `scripts/smoke_user_flows.py` means the repository still has the local fixture and command surface needed for SGF comment editing, node property editing, append move/pass, delete selected non-root node/subtree, and variation reorder foundations. It does not prove that a user can complete those flows in the native desktop UI, save them, reopen the file, and get identical board/tree state.
 
-As of the current alpha gate, `scripts/smoke_user_flows.py --verbose` reports `21 passed, 0 failed, 5 pending`. Repository-local native SGF save/read-back refresh and edit-existing-move surface evidence is complete, but real desktop SGF save/reopen parity remains pending until the native Tauri GUI flow is recorded. Do not claim real desktop SGF save/reopen parity, live KataGo, Fox/Yike, readboard, production installer, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.
+As of the current alpha gate, `scripts/smoke_user_flows.py --verbose` reports `22 passed, 0 failed, 4 pending`. Repository-local native SGF save/read-back refresh, edit-existing-move surface evidence, and macOS local Tauri runtime UI smoke evidence are complete for their scoped gates, but broader desktop SGF save/reopen parity remains pending until additional native file-open/restart/manual runtime coverage is recorded. Do not claim live KataGo, Fox/Yike, readboard, production installer, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.

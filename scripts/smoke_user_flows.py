@@ -24,6 +24,21 @@ COMPAT_FIXTURE = "tests/golden/sgf_ff4_compat.sgf"
 REORDER_FIXTURE = "tests/golden/sgf_reorder_variations.sgf"
 ROOT_PACKAGE_SCRIPTS = ["desktop:dev", "desktop:build", "desktop:tauri-build", "validate"]
 DESKTOP_PACKAGE_SCRIPTS = ["dev", "build", "preview", "tauri:dev", "tauri:build"]
+TAURI_RUNTIME_UI_SMOKE_EVIDENCE = "docs/qa/tauri-runtime-ui-smoke-macos.json"
+TAURI_RUNTIME_UI_SMOKE_SCHEMA = "lizzieyzy.tauri-runtime-ui-smoke.v1"
+TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS = [
+    "runtime_started",
+    "sgf_loaded",
+    "branch_navigation",
+    "comment_edit",
+    "property_edit",
+    "append_move",
+    "edit_move",
+    "delete_node",
+    "variation_reorder",
+    "save_readback_roundtrip",
+    "board_state_verified",
+]
 TAURI_COMMANDS = [
     "update_sgf_node_comment",
     "append_sgf_move",
@@ -319,10 +334,7 @@ class UserFlowSmoke:
         )
 
     def check_external_runtime_gates(self) -> None:
-        self.pending(
-            "ui_tauri_runtime_smoke",
-            "TODO gate: automate real desktop UI flow for open SGF, navigate branches, edit/save, reopen, and verify board state",
-        )
+        self.check_tauri_runtime_ui_smoke_evidence()
         self.pending(
             "katago_live_smoke",
             "TODO gate: validate real KataGo analysis only with a controlled engine binary, model, config, and runtime evidence",
@@ -338,6 +350,30 @@ class UserFlowSmoke:
         self.pending(
             "multiplatform_packaging_smoke",
             "TODO gate: validate macOS/Windows/Linux packaging in platform-specific build environments",
+        )
+
+    def check_tauri_runtime_ui_smoke_evidence(self) -> None:
+        evidence_path = self.path(TAURI_RUNTIME_UI_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "ui_tauri_runtime_smoke",
+                f"TODO gate: run scripts/smoke_tauri_runtime_ui.py on macOS and record {TAURI_RUNTIME_UI_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(TAURI_RUNTIME_UI_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_tauri_runtime_ui_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "ui_tauri_runtime_smoke",
+                f"{TAURI_RUNTIME_UI_SMOKE_EVIDENCE} is present but not valid runtime PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "ui_tauri_runtime_smoke",
+            f"macOS local Tauri runtime UI smoke evidence passes with {len(TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)} required checks",
         )
 
     def run(self) -> list[SmokeResult]:
@@ -361,6 +397,190 @@ def missing_tauri_command_surface(text: str, commands: list[str]) -> list[str]:
         if not command_registered_in_handler(text, command):
             failures.append(f"{command} invoke handler")
     return failures
+
+
+def validate_tauri_runtime_ui_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != TAURI_RUNTIME_UI_SMOKE_SCHEMA:
+        failures.append(f"schema must be {TAURI_RUNTIME_UI_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_status_by_name: dict[str, str] = {}
+    for index, check in enumerate(checks):
+        if not isinstance(check, dict):
+            failures.append(f"checks[{index}] must be an object")
+            continue
+        name = check.get("name")
+        if not isinstance(name, str) or not name:
+            failures.append(f"checks[{index}].name must be a non-empty string")
+            continue
+        check_status_by_name[name] = str(check.get("status", "")).lower()
+    missing = [name for name in TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS if name not in check_status_by_name]
+    not_pass = [
+        name
+        for name in TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS
+        if name in check_status_by_name and check_status_by_name[name] != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_tauri_runtime_ui_semantic_checks(checks))
+    return failures
+
+
+def validate_tauri_runtime_ui_semantic_checks(checks: list[Any]) -> list[str]:
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    failures: list[str] = []
+    failures.extend(validate_variation_reorder_evidence(check_by_name.get("variation_reorder")))
+    failures.extend(validate_edit_move_evidence(check_by_name.get("edit_move")))
+    failures.extend(validate_delete_node_evidence(check_by_name.get("delete_node")))
+    failures.extend(validate_save_readback_roundtrip_evidence(check_by_name.get("save_readback_roundtrip")))
+    failures.extend(validate_board_state_evidence(check_by_name.get("board_state_verified")))
+    return failures
+
+
+def validate_variation_reorder_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["variation_reorder evidence must be an object"]
+    failures: list[str] = []
+    target_index = first_present(evidence, "targetIndex", "target_index", "newIndex", "new_index")
+    if target_index != 0:
+        failures.append("variation_reorder target index must be 0")
+    index_after_move = first_present(evidence, "indexAfterMove", "index_after_move", "siblingIndex", "sibling_index")
+    if index_after_move != target_index:
+        failures.append("variation_reorder moved node index must match target index")
+    moved_node_id = first_present(evidence, "movedNodeId", "moved_node_id", "nodeId", "node_id")
+    if not isinstance(moved_node_id, str) or not moved_node_id:
+        failures.append("variation_reorder evidence must include moved node id")
+    variation_index = first_present(evidence, "variationIndexAfterMove", "variation_index_after_move", "variationIndex", "variation_index")
+    if variation_index is not None and variation_index != target_index:
+        failures.append("variation_reorder variation index must match target index")
+    return failures
+
+
+def validate_edit_move_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["edit_move evidence must be an object"]
+    target_vertex = first_present(evidence, "targetVertex", "target_vertex", "expectedVertex", "expected_vertex")
+    confirmed_vertex = first_present(evidence, "confirmedVertex", "confirmed_vertex", "actualVertex", "actual_vertex", "readbackVertex", "readback_vertex")
+    if target_vertex is None:
+        return ["edit_move evidence must include target vertex"]
+    if confirmed_vertex is None:
+        return ["edit_move evidence must include confirmed vertex"]
+    if normalize_json_value(target_vertex) != normalize_json_value(confirmed_vertex):
+        return ["edit_move confirmed vertex must match target vertex"]
+    return []
+
+
+def validate_delete_node_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["delete_node evidence must be an object"]
+    deleted_node_id = first_present(evidence, "deletedNodeId", "deleted_node_id", "nodeId", "node_id")
+    if not isinstance(deleted_node_id, str) or not deleted_node_id:
+        return ["delete_node evidence must include deleted node id"]
+    exists_after_delete = first_present(
+        evidence,
+        "existsAfterDelete",
+        "exists_after_delete",
+        "deletedNodeExistsAfter",
+        "deleted_node_exists_after",
+    )
+    absent_after_delete = first_present(evidence, "absentAfterDelete", "absent_after_delete", "deleteAbsence", "delete_absence")
+    if exists_after_delete is False or absent_after_delete is True:
+        return []
+    return ["delete_node evidence must confirm deleted node is absent after delete"]
+
+
+def validate_save_readback_roundtrip_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["save_readback_roundtrip evidence must be an object"]
+    failures: list[str] = []
+    save_verified = first_present(evidence, "saveVerified", "save_verified")
+    saved_path = first_present(evidence, "savedPath", "saved_path", "path")
+    if save_verified is not True and not (isinstance(saved_path, str) and saved_path):
+        failures.append("save_readback_roundtrip evidence must include save verification")
+    readback_verified = first_present(
+        evidence,
+        "readbackVerified",
+        "readback_verified",
+        "readbackMatchesSaved",
+        "readback_matches_saved",
+    )
+    saved_hash = first_present(evidence, "savedHash", "saved_hash", "savedSgfHash", "saved_sgf_hash")
+    readback_hash = first_present(evidence, "readbackHash", "readback_hash", "readbackSgfHash", "readback_sgf_hash")
+    readback_status = first_present(evidence, "readbackStatus", "readback_status")
+    if readback_verified is True or readback_status == "matched_saved_text":
+        return failures
+    if isinstance(saved_hash, str) and saved_hash and saved_hash == readback_hash:
+        return failures
+    failures.append("save_readback_roundtrip evidence must include readback verification")
+    return failures
+
+
+def validate_board_state_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["board_state_verified evidence must be an object"]
+    invariant = first_present(evidence, "invariant", "invariants", "boardInvariant", "board_invariant")
+    if isinstance(invariant, str):
+        has_invariant = bool(invariant.strip())
+    elif isinstance(invariant, list):
+        has_invariant = any(isinstance(item, str) and item.strip() for item in invariant)
+    else:
+        has_invariant = False
+    verified = first_present(
+        evidence,
+        "verified",
+        "invariantVerified",
+        "invariant_verified",
+        "passed",
+        "replayErrorsAbsent",
+        "replay_errors_absent",
+    )
+    if not has_invariant:
+        return ["board_state_verified evidence must include an explicit invariant"]
+    if verified is not True:
+        return ["board_state_verified evidence must confirm invariant passed"]
+    return []
+
+
+def check_evidence(check: Any) -> dict[str, Any] | None:
+    if not isinstance(check, dict):
+        return None
+    for key in ("evidence", "details"):
+        value = check.get(key)
+        if isinstance(value, dict):
+            return value
+    return check
+
+
+def first_present(mapping: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in mapping:
+            return mapping[key]
+    return None
+
+
+def normalize_json_value(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 def missing_required_tokens(text: str, source_label: str, tokens: list[str]) -> list[str]:

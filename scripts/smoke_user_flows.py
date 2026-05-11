@@ -32,6 +32,7 @@ TAURI_COMMANDS = [
 TAURI_COMMAND_GROUPS = {
     "tauri_sgf_properties_command": ["update_sgf_node_properties"],
     "tauri_sgf_reorder_command": ["reorder_sgf_variation"],
+    "tauri_sgf_existing_move_edit_command": ["edit_sgf_move"],
     "tauri_sgf_file_commands": ["read_sgf_file", "write_sgf_file"],
     "tauri_preferences_commands": ["load_app_preferences", "save_app_preferences"],
     "tauri_engine_profile_commands": [
@@ -62,6 +63,7 @@ TAURI_COMMAND_GROUPS = {
 LEGACY_SHELL_SOURCE = "apps/desktop/src/components/LegacyShell.tsx"
 APP_SOURCE = "apps/desktop/src/App.tsx"
 BACKEND_SOURCE = "apps/desktop/src/api/backend.ts"
+SGF_TREE_PANEL_SOURCE = "apps/desktop/src/components/SgfTreePanel.tsx"
 LEGACY_SHELL_MENU_SURFACE = {
     "View": ["Candidates", "Ownership", "Policy"],
     "Engine": ["Profiles", "Assets"],
@@ -261,6 +263,61 @@ class UserFlowSmoke:
             "saveSgfDocument writes through Tauri, reads the saved SGF back, and handleSaveSgfDocument reparses/replays/tree-syncs/cache-checks the read-back text",
         )
 
+    def check_sgf_existing_move_edit_surface(self) -> None:
+        tauri_path = self.path("apps/desktop/src-tauri/src/lib.rs")
+        frontend_sources = {
+            "backend source": self.path(BACKEND_SOURCE),
+            "App source": self.path(APP_SOURCE),
+            "SgfTreePanel source": self.path(SGF_TREE_PANEL_SOURCE),
+        }
+        if not any(path.is_file() for path in frontend_sources.values()):
+            self.pending(
+                "sgf_existing_move_edit_surface",
+                "backend/App/SgfTreePanel source files absent in reduced fixture; full repository smoke must include edit-existing-move command and frontend surface evidence",
+            )
+            return
+        sources = {
+            "Tauri command source": tauri_path,
+            **frontend_sources,
+        }
+        missing_sources = [label for label, path in sources.items() if not path.is_file()]
+        if missing_sources:
+            self.fail("sgf_existing_move_edit_surface", "missing source file(s): " + ", ".join(missing_sources))
+            return
+
+        tauri_text = self.read_text("apps/desktop/src-tauri/src/lib.rs")
+        backend_text = self.read_text(BACKEND_SOURCE)
+        app_text = self.read_text(APP_SOURCE)
+        panel_text = self.read_text(SGF_TREE_PANEL_SOURCE)
+        if tauri_text is None or backend_text is None or app_text is None or panel_text is None:
+            return
+
+        failures = [
+            *missing_tauri_command_surface(tauri_text, ["edit_sgf_move"]),
+            *missing_required_tokens(
+                backend_text,
+                "backend",
+                ["editSgfMove", "edit_sgf_move"],
+            ),
+            *missing_required_tokens(
+                app_text,
+                "App",
+                ["handleEditExistingMove", "callEditSgfMove", "normalizeEditSgfMoveResult", "sgfMoveEditMode"],
+            ),
+            *missing_required_tokens(
+                panel_text,
+                "SgfTreePanel",
+                ["moveEditMode", "canEditSelectedMove", "onEditSelectedMovePass"],
+            ),
+        ]
+        if failures:
+            self.fail("sgf_existing_move_edit_surface", "missing edit-existing-move surface: " + ", ".join(failures))
+            return
+        self.pass_(
+            "sgf_existing_move_edit_surface",
+            "edit_sgf_move is defined/registered and frontend backend/App/SgfTreePanel edit-existing-move surface is wired",
+        )
+
     def check_external_runtime_gates(self) -> None:
         self.pending(
             "ui_tauri_runtime_smoke",
@@ -291,6 +348,7 @@ class UserFlowSmoke:
         self.check_tauri_commands()
         self.check_legacy_shell_menu_surface()
         self.check_native_sgf_save_readback_surface()
+        self.check_sgf_existing_move_edit_surface()
         self.check_external_runtime_gates()
         return self.results
 
@@ -303,6 +361,10 @@ def missing_tauri_command_surface(text: str, commands: list[str]) -> list[str]:
         if not command_registered_in_handler(text, command):
             failures.append(f"{command} invoke handler")
     return failures
+
+
+def missing_required_tokens(text: str, source_label: str, tokens: list[str]) -> list[str]:
+    return [f"{source_label} missing {token}" for token in tokens if not re.search(r"\b" + re.escape(token) + r"\b", text)]
 
 
 def has_tauri_command_function(text: str, command: str) -> bool:

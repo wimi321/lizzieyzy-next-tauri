@@ -50,12 +50,35 @@ class LegacyParityMatrixTests(unittest.TestCase):
             failures = {result.name for result in results if not result.ok}
             self.assertIn("status_tokens", failures)
 
+    def test_rejects_missing_required_section(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_minimal_matrix(root, omit_section="UI")
+
+            results = validate_legacy_parity.LegacyParityValidator(root).run()
+
+            failures = {result.name for result in results if not result.ok}
+            self.assertIn("required_sections", failures)
+            self.assertIn("matrix_rows", failures)
+
+    def test_rejects_placeholder_evidence_or_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_minimal_matrix(root, evidence_override="TBD")
+
+            results = validate_legacy_parity.LegacyParityValidator(root).run()
+
+            failures = {result.name for result in results if not result.ok}
+            self.assertIn("acceptance_evidence", failures)
+
     def _write_minimal_matrix(
         self,
         root: Path,
         *,
         extra_intro: str = "",
         status_override: str | None = None,
+        evidence_override: str | None = None,
+        omit_section: str | None = None,
     ) -> None:
         statuses = {
             "UI": status_override or "partial",
@@ -67,13 +90,15 @@ class LegacyParityMatrixTests(unittest.TestCase):
         }
         sections = []
         for section in validate_legacy_parity.REQUIRED_SECTIONS:
+            if section == omit_section:
+                continue
             sections.append(
                 f"""
 ## {section}
 
 | Legacy Capability | Current Status | Acceptance Evidence | External Gate | Notes |
 | --- | --- | --- | --- | --- |
-| {section} capability | `{statuses[section]}` | Evidence names tests and smoke checks for this area. | External gate recorded or explicitly not required. | Notes explain scope. |
+| {section} capability | `{statuses[section]}` | {evidence_override or "Evidence names tests and smoke checks for this area."} | External gate recorded or explicitly not required. | Notes explain scope. |
 """
             )
         write(root / "docs/LEGACY_PARITY_MATRIX.md", "# Legacy Parity Matrix\n\n" + extra_intro + "\n".join(sections))

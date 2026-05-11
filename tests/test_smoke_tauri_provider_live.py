@@ -107,6 +107,7 @@ class SmokeTauriProviderLiveTests(unittest.TestCase):
             requests=valid_requests(),
             timeout_seconds=1.5,
         )
+        evidence["platform"] = "macos"
 
         self.assertEqual([], smoke_user_flows.validate_provider_live_smoke_evidence(evidence))
 

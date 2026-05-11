@@ -41,6 +41,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertEqual([], failures)
             self.assertIn("tauri_sgf_edit_commands", pass_names)
             self.assertIn("legacy_shell_menu_surface", pass_names)
+            self.assertIn("native_sgf_save_readback_surface", pass_names)
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
@@ -159,6 +160,30 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shell_menu_surface", failures)
             self.assertIn("Tools/Providers menu entry missing", failures["legacy_shell_menu_surface"])
 
+    def test_native_sgf_save_readback_missing_backend_readback_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_backend_fixture(root, read_back_after_save=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("native_sgf_save_readback_surface", failures)
+            self.assertIn("backend saveSgfDocument does not read back the saved SGF", failures["native_sgf_save_readback_surface"])
+
+    def test_native_sgf_save_readback_missing_app_refresh_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_app_fixture(root, refresh_after_save=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("native_sgf_save_readback_surface", failures)
+            self.assertIn("App handleSaveSgfDocument missing uses saved.sgfText/read-back text", failures["native_sgf_save_readback_surface"])
+
 
 def create_complete_smoke_fixture(
     root: Path,
@@ -233,6 +258,8 @@ def create_complete_smoke_fixture(
         """,
     )
     create_legacy_shell_fixture(root)
+    create_backend_fixture(root)
+    create_app_fixture(root)
 
 
 def create_legacy_shell_fixture(
@@ -286,6 +313,106 @@ def create_legacy_shell_fixture(
             {",".join(menu_blocks)}
           ];
           return menuGroups;
+        }}
+        """,
+    )
+
+
+def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> None:
+    if read_back_after_save:
+        save_body = """
+        const targetPath = path ?? await save({ filters: sgfDialogFilters, defaultPath: defaultFileName });
+        if (!targetPath) return null;
+        await invoke<void>("write_sgf_file", { path: targetPath, sgfText });
+        const savedSgfText = await invoke<string>("read_sgf_file", { path: targetPath });
+        return { path: targetPath, sgfText: savedSgfText };
+        """
+    else:
+        save_body = """
+        const targetPath = path ?? await save({ filters: sgfDialogFilters, defaultPath: defaultFileName });
+        if (!targetPath) return null;
+        await invoke<void>("write_sgf_file", { path: targetPath, sgfText });
+        return { path: targetPath, sgfText };
+        """
+    write(
+        root / smoke_user_flows.BACKEND_SOURCE,
+        f"""
+        import {{ invoke }} from "@tauri-apps/api/core";
+        import {{ open, save }} from "@tauri-apps/plugin-dialog";
+
+        const sgfDialogFilters = [{{ name: "SGF files", extensions: ["sgf", "txt"] }}];
+
+        export type SgfDocument = {{
+          path: string | null;
+          sgfText: string;
+        }};
+
+        export async function openSgfDocument(): Promise<SgfDocument | null> {{
+          const selected = await open({{ multiple: false, directory: false, filters: sgfDialogFilters }});
+          if (typeof selected !== "string") return null;
+          const sgfText = await invoke<string>("read_sgf_file", {{ path: selected }});
+          return {{ path: selected, sgfText }};
+        }}
+
+        export async function saveSgfDocument(path: string | null, sgfText: string, defaultFileName = "review.sgf"): Promise<SgfDocument | null> {{
+          {save_body}
+        }}
+        """,
+    )
+
+
+def create_app_fixture(root: Path, *, refresh_after_save: bool = True) -> None:
+    if refresh_after_save:
+        save_body = """
+        const saved = await saveSgfDocument(saveAs ? null : currentFilePath, sgfText, saveFileName);
+        if (!saved) {
+          setMessage("Save cancelled.");
+          return;
+        }
+        setSgfText(saved.sgfText);
+        sgfTextEditVersionRef.current += 1;
+        const sgfTreeRequest = beginSgfTreeLoad();
+        const [parsed, replayed, tree] = await Promise.all([
+          parseSgfSummary(saved.sgfText),
+          replaySgfPositions(saved.sgfText),
+          parseSgfTree(saved.sgfText)
+        ]);
+        const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
+        setCurrentFilePath(saved.path);
+        setDirty(false);
+        setGame(parsed);
+        setPositions(replayed);
+        applySgfTree(tree, targetMove, sgfTreeRequest);
+        setMessage(`Saved ${saved.path ? fileNameFromPath(saved.path) : saveFileName}.`);
+        await checkAnalysisCacheForGame(saved.sgfText, saved.path, parsed, replayed, "Saved.", tree);
+        """
+    else:
+        save_body = """
+        const saved = await saveSgfDocument(saveAs ? null : currentFilePath, sgfText, saveFileName);
+        if (!saved) {
+          setMessage("Save cancelled.");
+          return;
+        }
+        setCurrentFilePath(saved.path);
+        setDirty(false);
+        setMessage(`Saved ${saved.path ? fileNameFromPath(saved.path) : saveFileName}.`);
+        """
+    write(
+        root / smoke_user_flows.APP_SOURCE,
+        f"""
+        export function App() {{
+          const currentFilePath = null;
+          const sgfText = "(;GM[1])";
+          const saveFileName = "review.sgf";
+          const sgfTextEditVersionRef = {{ current: 0 }};
+          async function handleSaveSgfDocument(saveAs = false) {{
+            try {{
+              {save_body}
+            }} catch (error) {{
+              setMessage(`Save failed: ${{error}}`);
+            }}
+          }}
+          return handleSaveSgfDocument;
         }}
         """,
     )

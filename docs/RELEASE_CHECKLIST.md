@@ -9,7 +9,7 @@ The existing Java/Swing maintenance line may have its own release process. For t
 - Do not claim full legacy parity unless Fox/Yike/readboard, legacy settings, and advanced review workflows have explicit acceptance evidence.
 - Do not claim Fox, Yike, or readboard live support in the Next app from offline contracts alone. Repository-level offline contract and runtime path evidence can be reported as implemented, but live support requires the environment smoke checks below.
 - Do not claim production packaging is complete until platform artifacts are built and verified.
-- Do not claim the current alpha gate is 100% while `scripts/smoke_user_flows.py --verbose` fails or has pending runtime/external gates.
+- Do not claim alpha gate coverage is 100% while `scripts/smoke_user_flows.py --verbose` has failures or pending runtime/external gates.
 - Do not claim LegacyShell main-menu parity while `View`, `Engine`, `Tools`, or `Help` entries are disabled-only placeholders instead of actionable, identifiable controls.
 - Keep README, migration plan, architecture doc, and release notes aligned with the actual state.
 - Every release candidate must include scaffold validation output.
@@ -29,8 +29,9 @@ cargo test --workspace
 
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` reports `18 passed, 0 failed, 5 pending`.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `19 passed, 0 failed, 5 pending`; repository-local native SGF save/read-back refresh evidence is complete.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
+- The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
 - The pending checks are real Tauri UI flow, KataGo live smoke, readboard live smoke, provider live smoke, and multiplatform packaging smoke.
 - This status must be recorded as incomplete in release notes and handoff material until the pending runtime/external gates are closed with evidence.
 
@@ -157,6 +158,7 @@ Pass: the SQLite analysis cache can be reused for the same game key.
 ### SGF Save
 
 - Save or Save As the current SGF.
+- Confirm the repository-local smoke gate has already passed `native_sgf_save_readback_surface`; this only proves save/read-back refresh wiring.
 - Reopen the saved file.
 - Confirm parse/replay and move count match expectations.
 

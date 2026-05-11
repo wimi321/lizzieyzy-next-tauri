@@ -134,6 +134,14 @@ export async function openSgfDocument(): Promise<SgfDocument | null> {
   return { path: selected, sgfText };
 }
 
+export async function readSgfDocument(path: string): Promise<SgfDocument> {
+  if (!isTauriRuntime()) {
+    throw new Error("Reading an SGF document by path requires the Tauri desktop backend. Browser preview can still open files through Import SGF.");
+  }
+  const sgfText = await invoke<string>("read_sgf_file", { path });
+  return { path, sgfText };
+}
+
 export async function saveSgfDocument(path: string | null, sgfText: string, defaultFileName = "review.sgf"): Promise<SgfDocument | null> {
   if (!isTauriRuntime()) {
     downloadSgf(sgfText, path ? fileNameFromPath(path) : defaultFileName);
@@ -146,7 +154,8 @@ export async function saveSgfDocument(path: string | null, sgfText: string, defa
   });
   if (!targetPath) return null;
   await invoke<void>("write_sgf_file", { path: targetPath, sgfText });
-  return { path: targetPath, sgfText };
+  const savedSgfText = await invoke<string>("read_sgf_file", { path: targetPath });
+  return { path: targetPath, sgfText: savedSgfText };
 }
 
 export async function analyzeKataGoOnce(profile: EngineProfileDto, sgfText: string, turn: number, maxVisits: number): Promise<AnalysisFrameDto> {

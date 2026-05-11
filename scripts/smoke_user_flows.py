@@ -60,6 +60,8 @@ TAURI_COMMAND_GROUPS = {
     ],
 }
 LEGACY_SHELL_SOURCE = "apps/desktop/src/components/LegacyShell.tsx"
+APP_SOURCE = "apps/desktop/src/App.tsx"
+BACKEND_SOURCE = "apps/desktop/src/api/backend.ts"
 LEGACY_SHELL_MENU_SURFACE = {
     "View": ["Candidates", "Ownership", "Policy"],
     "Engine": ["Profiles", "Assets"],
@@ -230,6 +232,35 @@ class UserFlowSmoke:
             f"LegacyShell exposes {item_count} View/Engine/Tools/Help menu entries as actionable, identifiable controls",
         )
 
+    def check_native_sgf_save_readback_surface(self) -> None:
+        backend_path = self.path(BACKEND_SOURCE)
+        app_path = self.path(APP_SOURCE)
+        if not backend_path.is_file() and not app_path.is_file():
+            self.pending(
+                "native_sgf_save_readback_surface",
+                "source files absent in reduced fixture; full repository smoke must include App/backend save read-back refresh evidence",
+            )
+            return
+        if not backend_path.is_file() or not app_path.is_file():
+            missing = [rel for rel, path in ((BACKEND_SOURCE, backend_path), (APP_SOURCE, app_path)) if not path.is_file()]
+            self.fail("native_sgf_save_readback_surface", "missing source file(s): " + ", ".join(missing))
+            return
+        backend_text = self.read_text(BACKEND_SOURCE)
+        app_text = self.read_text(APP_SOURCE)
+        if backend_text is None or app_text is None:
+            return
+        failures = [
+            *missing_backend_sgf_save_readback_surface(backend_text),
+            *missing_app_sgf_save_readback_refresh_surface(app_text),
+        ]
+        if failures:
+            self.fail("native_sgf_save_readback_surface", "; ".join(failures))
+            return
+        self.pass_(
+            "native_sgf_save_readback_surface",
+            "saveSgfDocument writes through Tauri, reads the saved SGF back, and handleSaveSgfDocument reparses/replays/tree-syncs/cache-checks the read-back text",
+        )
+
     def check_external_runtime_gates(self) -> None:
         self.pending(
             "ui_tauri_runtime_smoke",
@@ -259,6 +290,7 @@ class UserFlowSmoke:
         self.check_package_scripts()
         self.check_tauri_commands()
         self.check_legacy_shell_menu_surface()
+        self.check_native_sgf_save_readback_surface()
         self.check_external_runtime_gates()
         return self.results
 
@@ -352,6 +384,67 @@ def has_identifiable_menu_entry(item_body: str, item_label: str) -> bool:
     return bool(re.search(r"\bdata-testid\s*:", item_body)) or bool(
         re.search(r"\blabel\s*:\s*" + re.escape(quote_ts_string(item_label)), item_body)
     )
+
+
+def missing_backend_sgf_save_readback_surface(text: str) -> list[str]:
+    failures: list[str] = []
+    if not re.search(r"\bexport\s+async\s+function\s+readSgfDocument\s*\(", text) and not re.search(
+        r"\binvoke\s*<\s*string\s*>\s*\(\s*['\"]read_sgf_file['\"]", text
+    ):
+        failures.append("backend lacks readSgfDocument/read_sgf_file read surface")
+
+    body = find_function_body(text, "saveSgfDocument")
+    if body is None:
+        return failures + ["backend saveSgfDocument function missing"]
+    if not re.search(r"\binvoke\s*<\s*void\s*>\s*\(\s*['\"]write_sgf_file['\"]", body):
+        failures.append("backend saveSgfDocument does not invoke write_sgf_file")
+    if not (
+        re.search(r"\binvoke\s*<\s*string\s*>\s*\(\s*['\"]read_sgf_file['\"]", body)
+        or re.search(r"\breadSgfDocument\s*\(", body)
+    ):
+        failures.append("backend saveSgfDocument does not read back the saved SGF")
+    if not re.search(r"\breturn\s*\{[^}]*path\s*:\s*targetPath[^}]*sgfText\s*:", body, re.S):
+        failures.append("backend saveSgfDocument does not return a document with the read-back SGF text")
+    return failures
+
+
+def missing_app_sgf_save_readback_refresh_surface(text: str) -> list[str]:
+    failures: list[str] = []
+    body = find_function_body(text, "handleSaveSgfDocument")
+    if body is None:
+        return ["App handleSaveSgfDocument function missing"]
+    required_patterns = {
+        "uses saved.sgfText/read-back text": r"\bsaved\.sgfText\b",
+        "updates SGF text from read-back": r"\bsetSgfText\s*\(\s*saved\.sgfText\s*\)",
+        "marks SGF edit version refreshed": r"\bsgfTextEditVersionRef\.current\s*\+=",
+        "parses read-back SGF summary": r"\bparseSgfSummary\s*\(\s*saved\.sgfText\s*\)",
+        "replays read-back SGF positions": r"\breplaySgfPositions\s*\(\s*saved\.sgfText\s*\)",
+        "rebuilds read-back SGF tree": r"\bparseSgfTree\s*\(\s*saved\.sgfText\s*\)",
+        "updates parsed game state": r"\bsetGame\s*\(",
+        "updates replayed positions": r"\bsetPositions\s*\(",
+        "applies refreshed SGF tree": r"\bapplySgfTree\s*\(",
+        "refreshes analysis cache status": r"\bcheckAnalysisCacheForGame\s*\(",
+    }
+    for label, pattern in required_patterns.items():
+        if not re.search(pattern, body):
+            failures.append(f"App handleSaveSgfDocument missing {label}")
+    return failures
+
+
+def find_function_body(text: str, function_name: str) -> str | None:
+    match = re.search(
+        r"(?:\bexport\s+)?(?:\basync\s+)?\bfunction\s+"
+        + re.escape(function_name)
+        + r"\s*\([^)]*\)\s*(?::[^{]+)?\{",
+        text,
+    )
+    if not match:
+        return None
+    open_index = match.end() - 1
+    close_index = find_matching_delimiter(text, open_index, "{", "}")
+    if close_index is None:
+        return None
+    return text[open_index + 1 : close_index]
 
 
 def quote_ts_string(value: str) -> str:

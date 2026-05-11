@@ -148,6 +148,12 @@ button:disabled {
   background: #e5edf7;
 }
 
+.legacy-menu-popover button:focus-visible {
+  background: #dbeafe;
+  outline: 2px solid #2563eb;
+  outline-offset: -1px;
+}
+
 .legacy-menu-popover button:disabled {
   color: #7f8995;
   opacity: 1;
@@ -348,6 +354,13 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.legacy-focus-highlight {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16);
+  transition: box-shadow 160ms ease, outline-color 160ms ease;
 }
 
 .timeline-row {

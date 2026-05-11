@@ -21,6 +21,16 @@ Covered checks:
 | SGF edit Tauri commands | Automated | Verifies `update_sgf_node_comment`, `append_sgf_move`, `delete_sgf_node`, `update_sgf_node_properties`, and `reorder_sgf_variation` are defined as Tauri commands and registered in `generate_handler!`. |
 | SGF node property editing command | Automated | Verifies the local command surface for updating SGF node properties is present. This is command/fixture evidence only, not a reopened-file desktop proof. |
 | SGF variation reorder command | Automated | Verifies the local command surface for sibling variation reorder is present and the reorder fixture can represent the target tree shape. This is not interactive UI smoke evidence. |
+| LegacyShell main menu surface | Automated | Statically verifies the `View`, `Engine`, `Tools`, and `Help` menu entries in `LegacyShell.tsx` are present, identifiable by label or `data-testid`, and are not disabled-only placeholders. This is static menu-surface evidence only; runtime UI automation still needs to prove each entry reaches the expected surface. |
+
+Current repository-local alpha gate result:
+
+```text
+python3 scripts/smoke_user_flows.py --verbose
+User-flow smoke: 18 passed, 0 failed, 5 pending.
+```
+
+This is not a 100% or release-ready gate. The repository-local checks pass, but the runtime/external gates listed below remain pending.
 
 ## Deferred Runtime Gates
 
@@ -39,4 +49,4 @@ These are not marked complete by the smoke skeleton:
 
 Passing `scripts/smoke_user_flows.py` means the repository still has the local fixture and command surface needed for SGF comment editing, node property editing, append move/pass, delete selected non-root node/subtree, and variation reorder foundations. It does not prove that a user can complete those flows in the native desktop UI, save them, reopen the file, and get identical board/tree state.
 
-The runtime and external gates remain release-blocking for claims beyond repository-local smoke evidence. Do not claim live KataGo, Fox/Yike, readboard, production installer, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.
+As of the current alpha gate, `scripts/smoke_user_flows.py --verbose` passes repository-local checks but still reports five pending runtime/external gates. The runtime and external gates remain release-blocking for claims beyond repository-local smoke evidence. Do not claim live KataGo, Fox/Yike, readboard, production installer, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.

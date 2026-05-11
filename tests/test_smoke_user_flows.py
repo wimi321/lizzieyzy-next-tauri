@@ -40,6 +40,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             pass_names = {result.name for result in results if result.status == "PASS"}
             self.assertEqual([], failures)
             self.assertIn("tauri_sgf_edit_commands", pass_names)
+            self.assertIn("legacy_shell_menu_surface", pass_names)
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
@@ -122,6 +123,42 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("sgf_reorder_fixture", failures)
             self.assertIn("3 sibling variations", failures["sgf_reorder_fixture"])
 
+    def test_legacy_shell_literal_disabled_true_menu_item_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_legacy_shell_fixture(root, disabled_entries={("View", "Candidates")})
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_shell_menu_surface", failures)
+            self.assertIn("View/Candidates has literal disabled: true", failures["legacy_shell_menu_surface"])
+
+    def test_legacy_shell_literal_disabled_true_with_handler_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_legacy_shell_fixture(root, disabled_entries_with_handler={("Engine", "Profiles")})
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_shell_menu_surface", failures)
+            self.assertIn("Engine/Profiles has literal disabled: true", failures["legacy_shell_menu_surface"])
+
+    def test_legacy_shell_missing_menu_item_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_legacy_shell_fixture(root, omitted_entries={("Tools", "Providers")})
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_shell_menu_surface", failures)
+            self.assertIn("Tools/Providers menu entry missing", failures["legacy_shell_menu_surface"])
+
 
 def create_complete_smoke_fixture(
     root: Path,
@@ -195,6 +232,67 @@ def create_complete_smoke_fixture(
         }}
         """,
     )
+    create_legacy_shell_fixture(root)
+
+
+def create_legacy_shell_fixture(
+    root: Path,
+    *,
+    disabled_entries: set[tuple[str, str]] | None = None,
+    disabled_entries_with_handler: set[tuple[str, str]] | None = None,
+    omitted_entries: set[tuple[str, str]] | None = None,
+) -> None:
+    disabled_entries = disabled_entries or set()
+    disabled_entries_with_handler = disabled_entries_with_handler or set()
+    omitted_entries = omitted_entries or set()
+    menu_blocks: list[str] = []
+    for group, items in smoke_user_flows.LEGACY_SHELL_MENU_SURFACE.items():
+        item_blocks: list[str] = []
+        for item in items:
+            if (group, item) in omitted_entries:
+                continue
+            if (group, item) in disabled_entries:
+                item_blocks.append(f'{{ label: "{item}", disabled: true }}')
+            elif (group, item) in disabled_entries_with_handler:
+                handler_name = "on" + "".join(part for part in re_identifier_parts(item))
+                item_blocks.append(f'{{ label: "{item}", onSelect: {handler_name}, disabled: true }}')
+            else:
+                handler_name = "on" + "".join(part for part in re_identifier_parts(item))
+                item_blocks.append(f'{{ label: "{item}", onSelect: {handler_name}, disabled: isBusy }}')
+        menu_blocks.append(
+            f"""
+            {{
+              label: "{group}",
+              items: [
+                {",".join(item_blocks)}
+              ]
+            }}
+            """
+        )
+    write(
+        root / smoke_user_flows.LEGACY_SHELL_SOURCE,
+        f"""
+        export function LegacyShell() {{
+          const isBusy = false;
+          const onCandidates = () => undefined;
+          const onOwnership = () => undefined;
+          const onPolicy = () => undefined;
+          const onProfiles = () => undefined;
+          const onAssets = () => undefined;
+          const onProviders = () => undefined;
+          const onPreferences = () => undefined;
+          const onBackendstatus = () => undefined;
+          const menuGroups = [
+            {",".join(menu_blocks)}
+          ];
+          return menuGroups;
+        }}
+        """,
+    )
+
+
+def re_identifier_parts(value: str) -> list[str]:
+    return [part[:1].upper() + part[1:] for part in value.split()]
 
 
 if __name__ == "__main__":

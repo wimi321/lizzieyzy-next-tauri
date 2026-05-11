@@ -217,6 +217,62 @@ def create_user_flow_inputs(root: Path, *, omitted_commands: set[str]) -> None:
         }}
         """,
     )
+    create_legacy_shell_fixture(root, smoke_user_flows)
+
+
+def create_legacy_shell_fixture(root: Path, smoke_user_flows) -> None:
+    menu_blocks: list[str] = []
+    for group, items in smoke_user_flows.LEGACY_SHELL_MENU_SURFACE.items():
+        item_blocks = [
+            f'{{ label: "{item}", onSelect: () => focusTarget("{slug_menu_target(item)}"), disabled: isBusy }}'
+            for item in items
+        ]
+        menu_blocks.append(
+            f"""
+            {{
+              label: "{group}",
+              items: [
+                {",".join(item_blocks)}
+              ]
+            }}
+            """
+        )
+    write(
+        root / smoke_user_flows.LEGACY_SHELL_SOURCE,
+        f"""
+        export function LegacyShell() {{
+          const isBusy = false;
+          const focusTarget = (target: string) => target;
+          const menuGroups = [
+            {",".join(menu_blocks)}
+          ];
+          return (
+            <nav data-testid="legacy-menubar">
+              {{menuGroups.map((group) => (
+                <details key={{group.label}}>
+                  <summary>{{group.label}}</summary>
+                  {{group.items.map((item) => (
+                    <button
+                      key={{item.label}}
+                      type="button"
+                      disabled={{item.disabled}}
+                      data-testid={{`legacy-menu-${{group.label.toLowerCase()}}-${{item.label.toLowerCase().replaceAll(" ", "-")}}`}}
+                      onClick={{() => item.onSelect()}}
+                    >
+                      {{item.label}}
+                    </button>
+                  ))}}
+                </details>
+              ))}}
+            </nav>
+          );
+        }}
+        """,
+    )
+
+
+def slug_menu_target(label: str) -> str:
+    return label.lower().replace(" ", "-")
 
 
 def load_current_smoke_user_flows():

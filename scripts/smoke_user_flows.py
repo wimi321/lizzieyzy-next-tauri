@@ -59,6 +59,13 @@ TAURI_COMMAND_GROUPS = {
         "validate_runtime_asset_layout",
     ],
 }
+LEGACY_SHELL_SOURCE = "apps/desktop/src/components/LegacyShell.tsx"
+LEGACY_SHELL_MENU_SURFACE = {
+    "View": ["Candidates", "Ownership", "Policy"],
+    "Engine": ["Profiles", "Assets"],
+    "Tools": ["Providers", "Preferences"],
+    "Help": ["Backend status"],
+}
 
 
 @dataclass
@@ -209,6 +216,20 @@ class UserFlowSmoke:
             else:
                 self.pass_(name, ", ".join(commands) + " are defined and registered")
 
+    def check_legacy_shell_menu_surface(self) -> None:
+        text = self.read_text(LEGACY_SHELL_SOURCE)
+        if text is None:
+            return
+        failures = missing_legacy_shell_menu_surface(text, LEGACY_SHELL_MENU_SURFACE)
+        if failures:
+            self.fail("legacy_shell_menu_surface", "; ".join(failures))
+            return
+        item_count = sum(len(items) for items in LEGACY_SHELL_MENU_SURFACE.values())
+        self.pass_(
+            "legacy_shell_menu_surface",
+            f"LegacyShell exposes {item_count} View/Engine/Tools/Help menu entries as actionable, identifiable controls",
+        )
+
     def check_external_runtime_gates(self) -> None:
         self.pending(
             "ui_tauri_runtime_smoke",
@@ -237,6 +258,7 @@ class UserFlowSmoke:
         self.check_sgf_reorder_fixture()
         self.check_package_scripts()
         self.check_tauri_commands()
+        self.check_legacy_shell_menu_surface()
         self.check_external_runtime_gates()
         return self.results
 
@@ -267,6 +289,73 @@ def command_registered_in_handler(text: str, command: str) -> bool:
         if end is not None and re.search(r"\b" + re.escape(command) + r"\b", text[start:end]):
             return True
     return False
+
+
+def missing_legacy_shell_menu_surface(text: str, menu_surface: dict[str, list[str]]) -> list[str]:
+    failures: list[str] = []
+    for group_label, item_labels in menu_surface.items():
+        group_body = find_legacy_menu_group_body(text, group_label)
+        if group_body is None:
+            failures.append(f"{group_label} menu group missing")
+            continue
+        for item_label in item_labels:
+            item_body = find_legacy_menu_item_body(group_body, item_label)
+            if item_body is None:
+                failures.append(f"{group_label}/{item_label} menu entry missing")
+                continue
+            if has_literal_disabled_true(item_body):
+                failures.append(f"{group_label}/{item_label} has literal disabled: true")
+            if not has_identifiable_menu_entry(item_body, item_label):
+                failures.append(f"{group_label}/{item_label} lacks data-testid or recognizable label")
+    return failures
+
+
+def find_legacy_menu_group_body(text: str, group_label: str) -> str | None:
+    label_match = re.search(r"\blabel\s*:\s*" + re.escape(quote_ts_string(group_label)), text)
+    if not label_match:
+        return None
+    object_start = text.rfind("{", 0, label_match.start())
+    if object_start < 0:
+        return None
+    object_end = find_matching_delimiter(text, object_start, "{", "}")
+    if object_end is None:
+        return None
+    return text[object_start + 1 : object_end]
+
+
+def find_legacy_menu_item_body(group_body: str, item_label: str) -> str | None:
+    items_match = re.search(r"\bitems\s*:\s*\[", group_body)
+    if not items_match:
+        return None
+    items_start = items_match.end() - 1
+    items_end = find_matching_delimiter(group_body, items_start, "[", "]")
+    if items_end is None:
+        return None
+    items_body = group_body[items_start + 1 : items_end]
+    label_match = re.search(r"\blabel\s*:\s*" + re.escape(quote_ts_string(item_label)), items_body)
+    if not label_match:
+        return None
+    item_start = items_body.rfind("{", 0, label_match.start())
+    if item_start < 0:
+        return None
+    item_end = find_matching_delimiter(items_body, item_start, "{", "}")
+    if item_end is None:
+        return None
+    return items_body[item_start + 1 : item_end]
+
+
+def has_literal_disabled_true(item_body: str) -> bool:
+    return bool(re.search(r"\bdisabled\s*:\s*true\b", item_body))
+
+
+def has_identifiable_menu_entry(item_body: str, item_label: str) -> bool:
+    return bool(re.search(r"\bdata-testid\s*:", item_body)) or bool(
+        re.search(r"\blabel\s*:\s*" + re.escape(quote_ts_string(item_label)), item_body)
+    )
+
+
+def quote_ts_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def count_variation_children_at_depth(text: str, parent_depth: int) -> int:
@@ -301,6 +390,31 @@ def find_matching_bracket(text: str, open_index: int) -> int | None:
         if char == "[":
             depth += 1
         elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def find_matching_delimiter(text: str, open_index: int, open_char: str, close_char: str) -> int | None:
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index in range(open_index, len(text)):
+        char = text[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {'"', "'", "`"}:
+            quote = char
+        elif char == open_char:
+            depth += 1
+        elif char == close_char:
             depth -= 1
             if depth == 0:
                 return index

@@ -1,6 +1,6 @@
 import type { PositionDto } from "./types";
 
-export type ProviderKind = "yike" | "fox";
+export type ProviderKind = "yike" | "fox" | "readboard_snapshot";
 export type YikeRoomKind = "old_live_room" | "old_live_board" | "game_room" | "new_live_room";
 export type ProviderFetchMethod = "get" | "post";
 
@@ -102,7 +102,14 @@ export type YikeUrlDescriptor = {
 };
 
 export function providerLabel(provider: ProviderKind): string {
-  return provider === "yike" ? "Yike" : "Fox";
+  switch (provider) {
+    case "yike":
+      return "Yike";
+    case "fox":
+      return "Fox";
+    case "readboard_snapshot":
+      return "Readboard snapshot";
+  }
 }
 
 export function yikeRoomKindLabel(kind: YikeRoomKind): string {
@@ -125,7 +132,8 @@ export function providerSourceLabel(result: ProviderImportResult): string {
     result.metadata.room_id ??
     result.metadata.source_url ??
     result.metadata.request_url;
-  return source?.trim() ? source : "pasted payload";
+  if (source?.trim()) return source;
+  return result.provider === "readboard_snapshot" ? "current snapshot" : "pasted payload";
 }
 
 export function providerDocumentName(result: ProviderImportResult): string {

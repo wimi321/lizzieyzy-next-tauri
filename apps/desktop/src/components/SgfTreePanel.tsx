@@ -8,10 +8,13 @@ type Props = {
   currentMove: number;
   onSelectNode: (nodeId: string) => void;
   onSaveComment: (nodeId: string, comment: string) => void;
+  onDeleteNode?: (nodeId: string) => void;
+  canDelete?: boolean;
   commentDraft?: string;
   onCommentDraftChange?: (comment: string) => void;
   commentReadOnly?: boolean;
   isCommentSaving?: boolean;
+  isNodeDeleting?: boolean;
   commentActionLabel?: string;
   commentNote?: string;
   isLoading?: boolean;
@@ -33,10 +36,13 @@ export function SgfTreePanel({
   currentMove,
   onSelectNode,
   onSaveComment,
+  onDeleteNode,
+  canDelete = true,
   commentDraft,
   onCommentDraftChange,
   commentReadOnly = false,
   isCommentSaving = false,
+  isNodeDeleting = false,
   commentActionLabel = "Save Comment",
   commentNote,
   isLoading = false,
@@ -51,6 +57,8 @@ export function SgfTreePanel({
   const selectedComment = selectedNode?.comment ?? "";
   const [localDraft, setLocalDraft] = useState(selectedComment);
   const draftValue = commentDraft ?? localDraft;
+  const isSelectedRoot = Boolean(selectedNode && tree?.root_id === selectedNode.id);
+  const canDeleteSelectedNode = Boolean(canDelete && selectedNode && !isSelectedRoot && !isLoading && !isNodeDeleting && onDeleteNode);
 
   useEffect(() => {
     setLocalDraft(selectedComment);
@@ -64,6 +72,11 @@ export function SgfTreePanel({
   const handleSaveComment = () => {
     if (!selectedNode) return;
     onSaveComment(selectedNode.id, draftValue);
+  };
+
+  const handleDeleteNode = () => {
+    if (!canDeleteSelectedNode || !selectedNode || !onDeleteNode) return;
+    onDeleteNode(selectedNode.id);
   };
 
   const status = getPanelStatus({ tree, isLoading, parseError });
@@ -110,8 +123,13 @@ export function SgfTreePanel({
 
       <section className="sgf-comment-editor" aria-label="Node comment">
         <div className="sgf-comment-header">
-          <h3>Comment</h3>
-          <span>{selectedNode ? formatNodeMove(selectedNode, boardSize) : "Select a node"}</span>
+          <div>
+            <h3>Comment</h3>
+            <span>{selectedNode ? formatNodeMove(selectedNode, boardSize) : "Select a node"}</span>
+          </div>
+          <button type="button" className="sgf-delete-node-button" onClick={handleDeleteNode} disabled={!canDeleteSelectedNode}>
+            {isNodeDeleting ? "Deleting..." : "Delete Node"}
+          </button>
         </div>
         <textarea
           value={draftValue}

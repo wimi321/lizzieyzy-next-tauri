@@ -11,13 +11,16 @@ type Props = {
   onSaveComment: (nodeId: string, comment: string) => void;
   onSaveProperties?: (nodeId: string, updates: SgfPropertyUpdate[]) => void;
   onDeleteNode?: (nodeId: string) => void;
+  onReorderNode?: (nodeId: string, targetIndex: number) => void;
   canDelete?: boolean;
+  canReorder?: boolean;
   commentDraft?: string;
   onCommentDraftChange?: (comment: string) => void;
   commentReadOnly?: boolean;
   isCommentSaving?: boolean;
   isPropertySaving?: boolean;
   isNodeDeleting?: boolean;
+  isNodeReordering?: boolean;
   commentActionLabel?: string;
   commentNote?: string;
   isLoading?: boolean;
@@ -41,13 +44,16 @@ export function SgfTreePanel({
   onSaveComment,
   onSaveProperties,
   onDeleteNode,
+  onReorderNode,
   canDelete = true,
+  canReorder = true,
   commentDraft,
   onCommentDraftChange,
   commentReadOnly = false,
   isCommentSaving = false,
   isPropertySaving = false,
   isNodeDeleting = false,
+  isNodeReordering = false,
   commentActionLabel = "Save Comment",
   commentNote,
   isLoading = false,
@@ -71,6 +77,9 @@ export function SgfTreePanel({
     [selectedNode, propertyFields, propertyDraft]
   );
   const canDeleteSelectedNode = Boolean(canDelete && selectedNode && !isSelectedRoot && !isLoading && !isNodeDeleting && onDeleteNode);
+  const siblingState = useMemo(() => getSiblingState(tree, selectedNode), [tree, selectedNode]);
+  const canMoveSelectedNodeUp = Boolean(canReorder && onReorderNode && !isLoading && !isNodeReordering && siblingState.canMoveUp);
+  const canMoveSelectedNodeDown = Boolean(canReorder && onReorderNode && !isLoading && !isNodeReordering && siblingState.canMoveDown);
 
   useEffect(() => {
     setLocalDraft(selectedComment);
@@ -102,6 +111,14 @@ export function SgfTreePanel({
   const handleDeleteNode = () => {
     if (!canDeleteSelectedNode || !selectedNode || !onDeleteNode) return;
     onDeleteNode(selectedNode.id);
+  };
+
+  const handleMoveSelectedNode = (direction: -1 | 1) => {
+    if ((direction < 0 && !canMoveSelectedNodeUp) || (direction > 0 && !canMoveSelectedNodeDown)) return;
+    if (!selectedNode || !onReorderNode || siblingState.index < 0) return;
+    const targetIndex = siblingState.index + direction;
+    if (targetIndex < 0 || targetIndex >= siblingState.count) return;
+    onReorderNode(selectedNode.id, targetIndex);
   };
 
   const status = getPanelStatus({ tree, isLoading, parseError });
@@ -152,10 +169,31 @@ export function SgfTreePanel({
             <h3>Comment</h3>
             <span>{selectedNode ? formatNodeMove(selectedNode, boardSize) : "Select a node"}</span>
           </div>
-          <button type="button" className="sgf-delete-node-button" onClick={handleDeleteNode} disabled={!canDeleteSelectedNode}>
-            {isNodeDeleting ? "Deleting..." : "Delete Node"}
-          </button>
+          <div className="sgf-node-actions" aria-label="Selected node actions">
+            <button
+              type="button"
+              className="sgf-reorder-node-button"
+              onClick={() => handleMoveSelectedNode(-1)}
+              disabled={!canMoveSelectedNodeUp}
+              title={siblingState.help}
+            >
+              Move Up
+            </button>
+            <button
+              type="button"
+              className="sgf-reorder-node-button"
+              onClick={() => handleMoveSelectedNode(1)}
+              disabled={!canMoveSelectedNodeDown}
+              title={siblingState.help}
+            >
+              Move Down
+            </button>
+            <button type="button" className="sgf-delete-node-button" onClick={handleDeleteNode} disabled={!canDeleteSelectedNode}>
+              {isNodeDeleting ? "Deleting..." : "Delete Node"}
+            </button>
+          </div>
         </div>
+        <p className="sgf-variation-order-note">{siblingState.label}</p>
         <textarea
           value={draftValue}
           onChange={(event) => handleDraftChange(event.target.value)}
@@ -245,6 +283,34 @@ const rootPropertyFields: PropertyField[] = [
 
 function getPropertyFields(isRoot: boolean): PropertyField[] {
   return isRoot ? [...rootPropertyFields, ...nodePropertyFields] : nodePropertyFields;
+}
+
+function getSiblingState(tree: SgfTreeDto | null, node: SgfTreeNodeDto | null) {
+  const disabled = { index: -1, count: 0, canMoveUp: false, canMoveDown: false };
+  if (!tree || !node) {
+    return { ...disabled, label: "Select a sibling variation to reorder. Variation 1 is the mainline.", help: "Select a node with siblings to reorder variations." };
+  }
+  if (tree.root_id === node.id || node.parent_id === null || node.parent_id === undefined) {
+    return { ...disabled, label: "Root has no sibling variations. Variation 1 is the mainline.", help: "Root cannot be reordered." };
+  }
+  const parent = tree.nodes.find((candidate) => candidate.id === node.parent_id) ?? null;
+  const siblingIds = parent?.child_ids ?? [];
+  const index = siblingIds.indexOf(node.id);
+  if (!parent || index < 0) {
+    return { ...disabled, label: "Sibling order is unavailable for this node.", help: "The selected node is missing from its parent's child list." };
+  }
+  if (siblingIds.length < 2) {
+    return { ...disabled, index, count: siblingIds.length, label: "Only one sibling at this branch. Variation 1 is the mainline.", help: "At least two siblings are required to reorder." };
+  }
+  const positionLabel = `Variation ${index + 1} of ${siblingIds.length}`;
+  return {
+    index,
+    count: siblingIds.length,
+    canMoveUp: index > 0,
+    canMoveDown: index < siblingIds.length - 1,
+    label: `${positionLabel}. Variation 1 is the mainline.`,
+    help: `${positionLabel}. Move among siblings; position 1 becomes the mainline.`
+  };
 }
 
 function buildPropertyDraft(node: SgfTreeNodeDto | null, fields: PropertyField[]): Record<string, string> {

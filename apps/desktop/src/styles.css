@@ -1064,6 +1064,13 @@ button.path-picker-button {
   align-items: center;
 }
 
+.sgf-node-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  align-items: center;
+}
+
 .sgf-tree-header span,
 .sgf-tree-header strong,
 .sgf-comment-header span,
@@ -1255,6 +1262,26 @@ button.sgf-tree-node.is-current-move {
   font-size: 12px;
 }
 
+.sgf-comment-editor .sgf-node-actions button {
+  justify-self: auto;
+  min-width: 72px;
+  height: 28px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+button.sgf-reorder-node-button {
+  border-color: #b7c2d0;
+  background: linear-gradient(#ffffff, #eef2f6);
+  color: #334155;
+}
+
+button.sgf-reorder-node-button:hover:not(:disabled),
+button.sgf-reorder-node-button:focus-visible:not(:disabled) {
+  border-color: #7fa1c8;
+  background: linear-gradient(#f8fbff, #e7f0fa);
+}
+
 button.sgf-delete-node-button {
   flex: 0 0 auto;
   min-width: 96px;
@@ -1275,6 +1302,14 @@ button.sgf-delete-node-button:focus-visible:not(:disabled) {
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
+}
+
+.sgf-variation-order-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
 }
 
 .sgf-properties-editor {

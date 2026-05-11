@@ -6,6 +6,8 @@ import { EngineSetupPanel } from "./components/EngineSetupPanel";
 import { CacheStatusBadge } from "./components/CacheStatusBadge";
 import { PreferencesPanel } from "./components/PreferencesPanel";
 import { ProviderPanel } from "./components/ProviderPanel";
+import { LegacyShell } from "./components/LegacyShell";
+import { SgfTreePanel } from "./components/SgfTreePanel";
 import {
   analyzeKataGoOnce,
   cancelKataGoAnalysis,
@@ -14,6 +16,7 @@ import {
   getHealth,
   listenToKataGoAnalysisEvents,
   openSgfDocument,
+  parseSgfTree,
   parseSgfSummary,
   replaySgfPositions,
   saveSgfDocument,
@@ -25,7 +28,7 @@ import { clampMoveNumberToPositions, createDemoGame, replayGamePositions, select
 import type { AnalysisCacheRecord, CacheStatus, GameCacheKey, JsonValue } from "./domain/cache";
 import { defaultAppPreferences, normalizeAppPreferences, type AppPreferences } from "./domain/preferences";
 import { providerDocumentName, providerLabel, providerSourceLabel, type ProviderImportResult } from "./domain/providers";
-import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, PositionDto, ProblemMarkerDto } from "./domain/types";
+import type { AnalysisFrameDto, AppHealthDto, EngineProfileDto, GameDto, PositionDto, ProblemMarkerDto, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 const demoSgf = "(;GM[1]FF[4]SZ[19]KM[7.5]PB[Lee Changho]PW[Rui Naiwei]RE[B+R];B[pd];W[dd];B[pp];W[dp];B[jq];W[qj];B[nc];W[fc];B[qf];W[cn];B[cp];W[do];B[co];W[dn];B[fq];W[eq];B[fp];W[gp];B[gq];W[hp])";
 const demoGame = createDemoGame();
@@ -61,6 +64,11 @@ export function App() {
   const [cacheRecord, setCacheRecord] = useState<AnalysisCacheRecord | null>(null);
   const [cacheError, setCacheError] = useState<string | null>(null);
   const [currentCacheKey, setCurrentCacheKey] = useState<GameCacheKey | null>(null);
+  const [sgfTree, setSgfTree] = useState<SgfTreeDto | null>(null);
+  const [selectedSgfNodeId, setSelectedSgfNodeId] = useState<string | null>(null);
+  const [sgfTreeError, setSgfTreeError] = useState<string | null>(null);
+  const [isSgfTreeLoading, setIsSgfTreeLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
   const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
   const activeJobIdRef = useRef<string | null>(null);
@@ -72,6 +80,7 @@ export function App() {
   const pendingAnalysisProgressRef = useRef<Map<string, AnalysisProgress>>(new Map());
   const pendingAnalysisTerminalEventsRef = useRef<Map<string, PendingAnalysisTerminalEvent>>(new Map());
   const analysisCleanupRef = useRef<(() => void) | null>(null);
+  const sgfTreeRequestVersionRef = useRef(0);
 
   useEffect(() => {
     getHealth()
@@ -97,6 +106,10 @@ export function App() {
 
   useEffect(() => {
     return () => cleanupAnalysisListeners();
+  }, []);
+
+  useEffect(() => {
+    void refreshSgfTree(demoSgf, demoGame.moves.length, false);
   }, []);
 
   const currentFrame = useMemo(() => frames.find((f) => f.turn === currentMove) ?? frames.at(-1), [frames, currentMove]);
@@ -159,27 +172,35 @@ export function App() {
   }
 
   async function handleParseSgf() {
+    const text = sgfText;
+    const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, replayed] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(text), replaySgfPositions(text), parseSgfTree(text)]);
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       const loadedMessage = `Loaded ${parsed.summary.black_name ?? "Black"} vs ${parsed.summary.white_name ?? "White"}: ${parsed.summary.move_count} moves.`;
       setGame(parsed);
       setPositions(replayed);
-      setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
+      setCurrentMove(targetMove);
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(loadedMessage);
-      await checkAnalysisCacheForGame(sgfText, currentFilePath, parsed, replayed, loadedMessage);
+      await checkAnalysisCacheForGame(text, currentFilePath, parsed, replayed, loadedMessage, tree);
     } catch (error) {
       clearReviewData();
       resetAnalysisCacheState();
       setCurrentMove(0);
+      failSgfTreeLoad(error, sgfTreeRequest);
       setMessage(`Parse failed: ${errorMessage(error)}`);
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
   async function handleOpenSgfDocument() {
     if (dirty && !window.confirm("Discard unsaved SGF changes and open another file?")) return;
+    let sgfTreeRequest: number | null = null;
     try {
       const document = await openSgfDocument();
       if (!document) {
@@ -190,18 +211,24 @@ export function App() {
       setCurrentFilePath(document.path);
       setFallbackFileName(null);
       setDirty(false);
-      const [parsed, replayed] = await Promise.all([parseSgfSummary(document.sgfText), replaySgfPositions(document.sgfText)]);
+      sgfTreeRequest = beginSgfTreeLoad();
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(document.sgfText), replaySgfPositions(document.sgfText), parseSgfTree(document.sgfText)]);
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       const openedMessage = `Opened ${fileNameFromPath(document.path ?? "SGF")}: ${parsed.summary.move_count} moves.`;
       setGame(parsed);
       setPositions(replayed);
-      setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
+      setCurrentMove(targetMove);
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(openedMessage);
-      await checkAnalysisCacheForGame(document.sgfText, document.path, parsed, replayed, openedMessage);
+      await checkAnalysisCacheForGame(document.sgfText, document.path, parsed, replayed, openedMessage, tree);
     } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
       setMessage(`Open failed: ${errorMessage(error)}`);
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
@@ -221,19 +248,26 @@ export function App() {
   }
 
   async function handleFakeAnalyze() {
+    const text = sgfText;
+    const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, result, replayed] = await Promise.all([parseSgfSummary(sgfText), fakeAnalyze(sgfText), replaySgfPositions(sgfText)]);
+      const [parsed, result, replayed, tree] = await Promise.all([parseSgfSummary(text), fakeAnalyze(text), replaySgfPositions(text), parseSgfTree(text)]);
       const classified = await classifyProblems(result);
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       setGame(parsed);
       setPositions(replayed);
       setFrames(result);
       setProblems(classified);
-      setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
+      setCurrentMove(targetMove);
       setSelectedCandidateIndex(null);
-      const cacheMessage = await saveAnalysisCacheForGame(sgfText, currentFilePath, parsed, result, classified, "fake");
+      applySgfTree(tree, targetMove, sgfTreeRequest);
+      const cacheMessage = await saveAnalysisCacheForGame(text, currentFilePath, parsed, result, classified, "fake");
       setMessage(`Generated ${result.length} review frames with candidate moves and winrate history.${cacheMessage}`);
     } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
       setMessage(errorMessage(error));
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
@@ -242,8 +276,9 @@ export function App() {
     const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
     setIsKataGoRunning(true);
     setMessage(`Running KataGo analysis for move ${targetTurn}...`);
+    const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, replayed] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText), parseSgfTree(sgfText)]);
       const turn = clampMoveNumberToPositions(replayed, Math.min(targetTurn, replayed.at(-1)?.move_number ?? parsed.moves.length));
       const frame = await analyzeKataGoOnce(profile, sgfText, turn, visits);
       const mergedFrames = mergeAnalysisFrame(frames, frame);
@@ -253,11 +288,14 @@ export function App() {
       setProblems(await classifyProblems(mergedFrames));
       setCurrentMove(frame.turn);
       setSelectedCandidateIndex(null);
+      applySgfTree(tree, frame.turn, sgfTreeRequest);
       setMessage(`KataGo analysis completed for move ${frame.turn} with ${frame.visits} visits.`);
     } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
       setMessage(`KataGo analysis failed: ${errorMessage(error)}`);
     } finally {
       setIsKataGoRunning(false);
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
@@ -271,8 +309,10 @@ export function App() {
     setAnalysisProgress(null);
     setMessage("Starting full-game KataGo analysis...");
     let cleanup: (() => void) | null = null;
+    const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, replayed] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText), parseSgfTree(sgfText)]);
+      applySgfTree(tree, replayed.at(-1)?.move_number ?? parsed.moves.length, sgfTreeRequest);
       cleanup = await listenToKataGoAnalysisEvents({
         onProgress: (payload) => {
           if (startingAnalysisRef.current && activeJobIdRef.current === null) {
@@ -340,6 +380,7 @@ export function App() {
       if (pendingProgress) setAnalysisProgress(pendingProgress);
       setMessage(`Full-game KataGo analysis started (${jobId}).`);
     } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
       cleanup?.();
       if (analysisCleanupRef.current === cleanup) analysisCleanupRef.current = null;
       startingAnalysisRef.current = false;
@@ -350,6 +391,8 @@ export function App() {
       setAnalysisProgress(null);
       setIsKataGoRunning(false);
       setMessage(`Full-game KataGo analysis failed: ${errorMessage(error)}`);
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
@@ -366,9 +409,11 @@ export function App() {
 
   async function handleImportFile(file: File | null) {
     if (!file) return;
+    const sgfTreeRequest = beginSgfTreeLoad();
     try {
       const text = await file.text();
-      const [parsed, replayed] = await Promise.all([parseSgfSummary(text), replaySgfPositions(text)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(text), replaySgfPositions(text), parseSgfTree(text)]);
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       const importedMessage = `Imported ${file.name}: ${parsed.summary.move_count} moves.`;
       setSgfText(text);
       setCurrentFilePath(null);
@@ -376,61 +421,143 @@ export function App() {
       setDirty(false);
       setGame(parsed);
       setPositions(replayed);
-      setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
+      setCurrentMove(targetMove);
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(importedMessage);
-      await checkAnalysisCacheForGame(text, null, parsed, replayed, importedMessage);
+      await checkAnalysisCacheForGame(text, null, parsed, replayed, importedMessage, tree);
     } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
       setMessage(`Import failed: ${errorMessage(error)}`);
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
   async function handleProviderImport(result: ProviderImportResult) {
+    const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, replayed] = await Promise.all([parseSgfSummary(result.sgf_text), replaySgfPositions(result.sgf_text)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(result.sgf_text), replaySgfPositions(result.sgf_text), parseSgfTree(result.sgf_text)]);
       const source = providerSourceLabel(result);
       const warningText = result.warnings.length > 0 ? ` ${result.warnings.length} provider warning(s).` : "";
       const importedMessage = `Imported ${providerLabel(result.provider)} provider payload from ${source}: ${parsed.summary.move_count} moves.${warningText}`;
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       setSgfText(result.sgf_text);
       setCurrentFilePath(null);
       setFallbackFileName(providerDocumentName(result));
       setDirty(false);
       setGame(parsed);
       setPositions(replayed);
-      setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
+      setCurrentMove(targetMove);
       setFrames([]);
       setProblems([]);
       setSelectedCandidateIndex(null);
+      applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(importedMessage);
-      await checkAnalysisCacheForGame(result.sgf_text, null, parsed, replayed, importedMessage);
+      await checkAnalysisCacheForGame(result.sgf_text, null, parsed, replayed, importedMessage, tree);
     } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
       setMessage(`Provider import failed: ${errorMessage(error)}`);
       throw error;
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
     }
   }
 
   async function loadSample() {
-    const [parsed, replayed] = await Promise.all([parseSgfSummary(demoSgf), replaySgfPositions(demoSgf)]);
-    const sampleMessage = `Sample SGF restored: ${parsed.summary.move_count} moves.`;
-    setSgfText(demoSgf);
-    setCurrentFilePath(null);
-    setFallbackFileName("sample.sgf");
-    setDirty(false);
-    setGame(parsed);
-    setPositions(replayed);
-    setCurrentMove(replayed.at(-1)?.move_number ?? parsed.moves.length);
-    setFrames([]);
-    setProblems([]);
-    setSelectedCandidateIndex(null);
-    setMessage(sampleMessage);
-    await checkAnalysisCacheForGame(demoSgf, null, parsed, replayed, sampleMessage);
+    const sgfTreeRequest = beginSgfTreeLoad();
+    try {
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(demoSgf), replaySgfPositions(demoSgf), parseSgfTree(demoSgf)]);
+      const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
+      const sampleMessage = `Sample SGF restored: ${parsed.summary.move_count} moves.`;
+      setSgfText(demoSgf);
+      setCurrentFilePath(null);
+      setFallbackFileName("sample.sgf");
+      setDirty(false);
+      setGame(parsed);
+      setPositions(replayed);
+      setCurrentMove(targetMove);
+      setFrames([]);
+      setProblems([]);
+      setSelectedCandidateIndex(null);
+      applySgfTree(tree, targetMove, sgfTreeRequest);
+      setMessage(sampleMessage);
+      await checkAnalysisCacheForGame(demoSgf, null, parsed, replayed, sampleMessage, tree);
+    } catch (error) {
+      failSgfTreeLoad(error, sgfTreeRequest);
+      setMessage(`Sample load failed: ${errorMessage(error)}`);
+    } finally {
+      finishSgfTreeLoad(sgfTreeRequest);
+    }
   }
 
   function handleMoveSelect(moveNumber: number) {
-    setCurrentMove(clampMoveNumberToPositions(positions, moveNumber));
+    const selectedMove = clampMoveNumberToPositions(positions, moveNumber);
+    setCurrentMove(selectedMove);
     setSelectedCandidateIndex(null);
+    syncSelectedSgfNodeToMove(selectedMove);
+  }
+
+  function handleSgfTreeNodeSelect(nodeId: string) {
+    const node = sgfTree?.nodes.find((item) => item.id === nodeId);
+    setSelectedSgfNodeId(nodeId);
+    setCommentDraft(node?.comment ?? "");
+    if (node?.move_number !== null && node?.move_number !== undefined) {
+      setCurrentMove(clampMoveNumberToPositions(positions, node.move_number));
+      setSelectedCandidateIndex(null);
+    }
+    if (node && !node.is_mainline) {
+      setMessage("Variation node selected. Branch replay is tracked for parity work but board replay is still mainline-only in this slice.");
+    }
+  }
+
+  async function refreshSgfTree(text: string, targetMove: number, showLoading = true) {
+    const requestVersion = beginSgfTreeLoad(showLoading);
+    try {
+      applySgfTree(await parseSgfTree(text), targetMove, requestVersion);
+    } catch (error) {
+      failSgfTreeLoad(error, requestVersion);
+    } finally {
+      finishSgfTreeLoad(requestVersion, showLoading);
+    }
+  }
+
+  function beginSgfTreeLoad(showLoading = true): number {
+    const requestVersion = sgfTreeRequestVersionRef.current + 1;
+    sgfTreeRequestVersionRef.current = requestVersion;
+    if (showLoading) setIsSgfTreeLoading(true);
+    return requestVersion;
+  }
+
+  function finishSgfTreeLoad(requestVersion: number | null, showLoading = true) {
+    if (!showLoading || requestVersion === null) return;
+    if (sgfTreeRequestVersionRef.current === requestVersion) setIsSgfTreeLoading(false);
+  }
+
+  function failSgfTreeLoad(error: unknown, requestVersion: number | null) {
+    if (requestVersion !== null && sgfTreeRequestVersionRef.current !== requestVersion) return;
+    setSgfTree(null);
+    setSelectedSgfNodeId(null);
+    setCommentDraft("");
+    setSgfTreeError(errorMessage(error));
+  }
+
+  function applySgfTree(tree: SgfTreeDto | null, targetMove: number, requestVersion?: number | null) {
+    if (requestVersion !== undefined && requestVersion !== null && sgfTreeRequestVersionRef.current !== requestVersion) return;
+    setSgfTree(tree);
+    setSgfTreeError(null);
+    const selectedNode = selectSgfTreeNodeForMove(tree, targetMove);
+    setSelectedSgfNodeId(selectedNode?.id ?? tree?.root_id ?? null);
+    setCommentDraft(selectedNode?.comment ?? "");
+  }
+
+  function syncSelectedSgfNodeToMove(moveNumber: number, sourceTree = sgfTree) {
+    const selectedNode = selectSgfTreeNodeForMove(sourceTree, moveNumber);
+    if (!selectedNode) return;
+    setSelectedSgfNodeId(selectedNode.id);
+    setCommentDraft(selectedNode.comment ?? "");
   }
 
   function cleanupAnalysisListeners() {
@@ -478,7 +605,14 @@ export function App() {
     cleanupAnalysisListeners();
   }
 
-  async function checkAnalysisCacheForGame(text: string, filePath: string | null, parsed: GameDto, replayed: PositionDto[], baseMessage: string) {
+  async function checkAnalysisCacheForGame(
+    text: string,
+    filePath: string | null,
+    parsed: GameDto,
+    replayed: PositionDto[],
+    baseMessage: string,
+    treeForSelection: SgfTreeDto | null = sgfTree
+  ) {
     if (!preferences.autoLoadCache) {
       resetAnalysisCacheState();
       setMessage(`${baseMessage} Cache auto-load is off.`);
@@ -502,8 +636,10 @@ export function App() {
         }
         setFrames(payload.frames);
         setProblems(payload.problems);
-        setCurrentMove(clampMoveNumberToPositions(replayed, payload.frames.at(-1)?.turn ?? parsed.moves.length));
+        const cachedMove = clampMoveNumberToPositions(replayed, payload.frames.at(-1)?.turn ?? parsed.moves.length);
+        setCurrentMove(cachedMove);
         setSelectedCandidateIndex(null);
+        syncSelectedSgfNodeToMove(cachedMove, treeForSelection);
         setCacheStatus("hit");
         setCacheRecord(lookup.record);
         setMessage(`${baseMessage} Restored ${payload.frames.length} cached ${cacheEngineLabel(lookup.engineKind)} review frames.`);
@@ -608,82 +744,94 @@ export function App() {
     setCacheRecord(null);
   }
 
-  return <main className={`app-shell${preferences.boardTheme === "high-contrast" ? " theme-high-contrast" : ""}`}>
-    <header className="topbar">
-      <div>
-        <h1>LizzieYzy Next</h1>
-        <p>{health?.architecture ?? "Tauri 2 + React review workspace"}</p>
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <CacheStatusBadge status={cacheStatus} record={cacheRecord} error={cacheError} />
-        <div className="status-pill">{health?.rust_backend_ready ? "Rust backend ready" : "Browser fallback"}</div>
-      </div>
-    </header>
-    <section className="workspace">
-      <div className="left-pane">
-        <BoardCanvas position={currentPosition} analysis={visibleCurrentFrame} selectedCandidateIndex={selectedCandidateIndex} />
-        <WinrateChart frames={frames} currentMove={currentMove} />
-        <div className="timeline-row">
-          <span>Move {currentMove}</span>
-          <input className="move-slider" type="range" min={0} max={maxMove} value={Math.min(currentMove, maxMove)} onChange={(e) => setCurrentMove(clampMoveNumberToPositions(positions, Number(e.target.value)))} />
-          <span>{maxMove}</span>
+  return (
+    <LegacyShell
+      themeClassName={preferences.boardTheme === "high-contrast" ? "theme-high-contrast" : ""}
+      architectureLabel={health?.architecture ?? "Tauri 2 + React review workspace"}
+      backendStatusLabel={health?.rust_backend_ready ? "Rust backend ready" : "Browser fallback"}
+      cacheBadge={<CacheStatusBadge status={cacheStatus} record={cacheRecord} error={cacheError} />}
+      board={<BoardCanvas position={currentPosition} analysis={visibleCurrentFrame} selectedCandidateIndex={selectedCandidateIndex} />}
+      chart={<WinrateChart frames={frames} currentMove={currentMove} />}
+      analysisPanel={
+        <div className="legacy-review-stack">
+          <AnalysisPanel
+            frame={visibleCurrentFrame}
+            problems={problems}
+            boardSize={game.summary.board_size}
+            currentMove={currentMove}
+            selectedCandidateIndex={selectedCandidateIndex}
+            onSelectCandidate={setSelectedCandidateIndex}
+            onSelectProblem={handleMoveSelect}
+          />
+          <SgfTreePanel
+            tree={sgfTree}
+            selectedNodeId={selectedSgfNodeId}
+            currentMove={currentMove}
+            boardSize={game.summary.board_size}
+            isLoading={isSgfTreeLoading}
+            parseError={sgfTreeError}
+            commentDraft={commentDraft}
+            onCommentDraftChange={setCommentDraft}
+            onSelectNode={handleSgfTreeNodeSelect}
+            onSaveComment={() => setMessage("Comment persistence is not wired yet. Edit the SGF source directly, then save the SGF file.")}
+            commentReadOnly
+            commentActionLabel="Save Pending"
+            commentNote="Comments are displayed from SGF nodes. Editing and SGF round-trip persistence are still tracked in the parity matrix."
+          />
         </div>
-      </div>
-      <AnalysisPanel
-        frame={visibleCurrentFrame}
-        problems={problems}
-        boardSize={game.summary.board_size}
-        currentMove={currentMove}
-        selectedCandidateIndex={selectedCandidateIndex}
-        onSelectCandidate={setSelectedCandidateIndex}
-        onSelectProblem={handleMoveSelect}
-      />
-    </section>
-    <section className="bottom-dock">
-      <div className="sgf-tools">
-        <div className="document-row">
-          <strong title={currentFilePath ?? documentName}>{documentName}{dirty ? " *" : ""}</strong>
-          <span>{dirty ? "Unsaved changes" : "Saved"}</span>
-        </div>
-        <textarea value={sgfText} onChange={(e) => {
-          setSgfText(e.target.value);
-          setDirty(true);
-          clearReviewData();
-          resetAnalysisCacheState();
-          setCurrentMove(0);
-          setMessage("SGF edited. Parse SGF or run review to refresh.");
-        }} spellCheck={false} aria-label="SGF source" />
-        <div className="button-row">
-          <button onClick={() => void handleOpenSgfDocument()} disabled={isKataGoRunning}>Open</button>
-          <button onClick={() => void handleSaveSgfDocument(false)} disabled={isKataGoRunning || !dirty}>Save</button>
-          <button onClick={() => void handleSaveSgfDocument(true)} disabled={isKataGoRunning}>Save As</button>
-          <label className={`file-button${isKataGoRunning ? " file-button-disabled" : ""}`}>
-            Import SGF
-            <input type="file" accept=".sgf,.txt,application/x-go-sgf,text/plain" disabled={isKataGoRunning} onChange={(event) => void handleImportFile(event.target.files?.[0] ?? null)} />
-          </label>
-          <button onClick={() => void loadSample()} disabled={isKataGoRunning}>Load sample</button>
-          <button onClick={handleParseSgf} disabled={isKataGoRunning}>Parse SGF</button>
-          <button onClick={handleFakeAnalyze} disabled={isKataGoRunning}>Run review</button>
-        </div>
-      </div>
-      <ProviderPanel disabled={isKataGoRunning} onImport={handleProviderImport} />
-      <EngineSetupPanel
-        disabled={isKataGoRunning}
-        onRun={handleRunKataGo}
-        onAnalyzeGame={handleAnalyzeKataGoGame}
-        onCancelAnalysis={handleCancelKataGoAnalysis}
-        analysisProgress={analysisProgress}
-        activeJobId={activeJobId}
-      />
-      <PreferencesPanel
-        preferences={preferences}
-        status={preferencesStatus}
-        disabled={isKataGoRunning}
-        onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
-      />
-      <p className="message">{message}</p>
-    </section>
-  </main>;
+      }
+      providerPanel={<ProviderPanel disabled={isKataGoRunning} onImport={handleProviderImport} />}
+      enginePanel={
+        <EngineSetupPanel
+          disabled={isKataGoRunning}
+          onRun={handleRunKataGo}
+          onAnalyzeGame={handleAnalyzeKataGoGame}
+          onCancelAnalysis={handleCancelKataGoAnalysis}
+          analysisProgress={analysisProgress}
+          activeJobId={activeJobId}
+        />
+      }
+      preferencesPanel={
+        <PreferencesPanel
+          preferences={preferences}
+          status={preferencesStatus}
+          disabled={isKataGoRunning}
+          onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
+        />
+      }
+      documentName={documentName}
+      documentTitle={currentFilePath ?? documentName}
+      dirty={dirty}
+      sgfText={sgfText}
+      currentMove={currentMove}
+      maxMove={maxMove}
+      message={message}
+      isBusy={isKataGoRunning}
+      canSave={dirty}
+      onOpen={handleOpenSgfDocument}
+      onSave={() => handleSaveSgfDocument(false)}
+      onSaveAs={() => handleSaveSgfDocument(true)}
+      onImportFile={handleImportFile}
+      onLoadSample={loadSample}
+      onParseSgf={handleParseSgf}
+      onRunReview={handleFakeAnalyze}
+      onSgfTextChange={(value) => {
+        sgfTreeRequestVersionRef.current += 1;
+        setSgfText(value);
+        setDirty(true);
+        clearReviewData();
+        resetAnalysisCacheState();
+        setIsSgfTreeLoading(false);
+        setSgfTree(null);
+        setSelectedSgfNodeId(null);
+        setCommentDraft("");
+        setSgfTreeError(null);
+        setCurrentMove(0);
+        setMessage("SGF edited. Parse SGF or run review to refresh.");
+      }}
+      onMoveChange={handleMoveSelect}
+    />
+  );
 }
 
 function applyPreferencesToFrame(frame: AnalysisFrameDto | undefined, preferences: AppPreferences): AnalysisFrameDto | undefined {
@@ -723,6 +871,13 @@ function mergeAnalysisFrame(frames: AnalysisFrameDto[], frame: AnalysisFrameDto)
 function countAnalyzedMoves(frames: AnalysisFrameDto[], moveCount: number): number {
   const turns = new Set(frames.map((frame) => frame.turn).filter((turn) => turn > 0 && turn <= moveCount));
   return turns.size;
+}
+
+function selectSgfTreeNodeForMove(tree: SgfTreeDto | null, moveNumber: number): SgfTreeNodeDto | null {
+  if (!tree) return null;
+  if (moveNumber <= 0) return tree.nodes.find((node) => node.id === tree.root_id) ?? null;
+  const candidates = tree.nodes.filter((node) => node.move_number === moveNumber);
+  return candidates.find((node) => node.is_mainline) ?? candidates[0] ?? null;
 }
 
 function errorMessage(error: unknown): string {

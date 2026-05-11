@@ -15,6 +15,22 @@ export type PositionDto = {
 };
 export type GameSummaryDto = { id: string; board_size: number; komi: number; black_name?: string | null; white_name?: string | null; result?: string | null; move_count: number };
 export type GameDto = { summary: GameSummaryDto; moves: MoveDto[] };
+export type SgfPropertyDto = { key: string; values: string[] };
+export type SgfTreeNodeDto = {
+  id: string;
+  parent_id?: string | null;
+  child_ids: string[];
+  variation_index: number;
+  depth: number;
+  move_number?: number | null;
+  color?: PlayerColor | null;
+  vertex?: MoveVertex | null;
+  name?: string | null;
+  comment?: string | null;
+  properties: SgfPropertyDto[];
+  is_mainline: boolean;
+};
+export type SgfTreeDto = { root_id: string; nodes: SgfTreeNodeDto[] };
 export type CandidateMoveDto = { vertex: MoveVertex; visits: number; winrate_black: number; score_mean_black: number; policy_prior?: number | null; pv: MoveVertex[] };
 export type AnalysisFrameDto = { job_id: string; game_id?: string | null; node_id?: string | null; turn: number; visits: number; winrate_black: number; score_mean_black: number; score_stdev?: number | null; candidates: CandidateMoveDto[]; ownership?: number[] | null; policy?: number[] | null };
 export type ProblemMarkerDto = { turn: number; severity: "info" | "inaccuracy" | "mistake" | "blunder"; winrate_loss: number; score_loss: number; label: string };

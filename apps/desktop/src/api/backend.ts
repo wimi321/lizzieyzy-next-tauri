@@ -15,7 +15,8 @@ import type {
   MoveVertex,
   PlayerColor,
   PositionDto,
-  ProblemMarkerDto
+  ProblemMarkerDto,
+  SgfTreeDto
 } from "../domain/types";
 import { ensureInitialPosition, replayGamePositions } from "../domain/board";
 
@@ -79,6 +80,11 @@ export async function parseSgfSummary(sgfText: string): Promise<GameDto> {
   } catch {
     return parseSgfLocally(sgfText);
   }
+}
+
+export async function parseSgfTree(sgfText: string): Promise<SgfTreeDto | null> {
+  if (isTauriRuntime()) return await invoke<SgfTreeDto | null>("parse_sgf_tree", { sgfText });
+  return buildBrowserSgfTree(await parseSgfSummary(sgfText));
 }
 
 export async function fakeAnalyze(sgfText: string): Promise<AnalysisFrameDto[]> {
@@ -455,6 +461,50 @@ function numberProperty(text: string, property: string): number | null {
 function textProperty(text: string, property: string): string | null {
   const match = new RegExp(`${property}\\[([^\\]]*)\\]`, "i").exec(text);
   return match?.[1] ?? null;
+}
+
+function buildBrowserSgfTree(game: GameDto): SgfTreeDto {
+  const rootId = `${game.summary.id}:root`;
+  const nodes: SgfTreeDto["nodes"] = [
+    {
+      id: rootId,
+      parent_id: null,
+      child_ids: game.moves.length > 0 ? [`${game.summary.id}:move-1`] : [],
+      variation_index: 0,
+      depth: 0,
+      move_number: null,
+      color: null,
+      vertex: null,
+      name: null,
+      comment: null,
+      properties: [
+        { key: "SZ", values: [String(game.summary.board_size)] },
+        { key: "KM", values: [String(game.summary.komi)] }
+      ],
+      is_mainline: true
+    }
+  ];
+
+  game.moves.forEach((move, index) => {
+    const id = `${game.summary.id}:move-${index + 1}`;
+    const nextId = index + 1 < game.moves.length ? `${game.summary.id}:move-${index + 2}` : null;
+    nodes.push({
+      id,
+      parent_id: index === 0 ? rootId : `${game.summary.id}:move-${index}`,
+      child_ids: nextId ? [nextId] : [],
+      variation_index: 0,
+      depth: index + 1,
+      move_number: move.move_number,
+      color: move.color,
+      vertex: move.vertex,
+      name: null,
+      comment: null,
+      properties: [],
+      is_mainline: true
+    });
+  });
+
+  return { root_id: rootId, nodes };
 }
 
 function buildBrowserAnalysis(game: GameDto): AnalysisFrameDto[] {

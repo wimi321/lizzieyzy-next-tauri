@@ -3,7 +3,7 @@ use app_model::{
     PositionDto, ProviderError, ProviderErrorKind, ProviderFetchMethod, ProviderFetchRequest,
     ProviderFetchResult, ProviderGameMetadata, ProviderImportRequest, ProviderImportResult, ProviderKind,
     ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest,
-    ReadboardSidecarSyncSnapshotResult,
+    ReadboardSidecarSyncSnapshotResult, SgfTreeDto,
 };
 use engine_manager::{
     build_command_spec, check_assets, AnalysisBatchRunOptions, AnalysisCancelToken, AssetCheck, CommandSpec,
@@ -346,6 +346,12 @@ fn health() -> AppHealthDto {
 fn parse_sgf_summary(sgf_text: String) -> Result<app_model::GameDto, String> {
     let document = sgf::parse_sgf(&sgf_text).map_err(|err| err.to_string())?;
     Ok(sgf::to_game_dto(document))
+}
+
+#[tauri::command]
+fn parse_sgf_tree(sgf_text: String) -> Result<Option<SgfTreeDto>, String> {
+    let document = sgf::parse_sgf(&sgf_text).map_err(|err| err.to_string())?;
+    sgf::to_sgf_tree_dto(&document).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -1918,6 +1924,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             health,
             parse_sgf_summary,
+            parse_sgf_tree,
             provider_parse_yike_url,
             provider_import_from_payload,
             provider_fetch_yike,
@@ -1953,6 +1960,61 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_sgf_tree_returns_variations_and_comments() {
+        let tree = parse_sgf_tree(
+            "(;SZ[5]C[root];B[aa]N[one]C[first](;W[bb]C[main])(;W[cc]N[var]C[branch];B[]))".to_string(),
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(tree.nodes.len(), 5);
+        let root = tree.nodes.iter().find(|node| node.id == tree.root_id).unwrap();
+        assert_eq!(root.comment.as_deref(), Some("root"));
+        assert_eq!(root.child_ids.len(), 1);
+        assert!(root.is_mainline);
+
+        let first_move = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap();
+        assert_eq!(first_move.comment.as_deref(), Some("first"));
+        assert_eq!(first_move.name.as_deref(), Some("one"));
+        assert_eq!(first_move.color, Some(app_model::PlayerColor::Black));
+        assert_eq!(
+            first_move.vertex,
+            Some(MoveVertex::Point(PointDto { x: 0, y: 0 }))
+        );
+        assert_eq!(first_move.child_ids.len(), 2);
+
+        let mainline_reply = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("main"))
+            .unwrap();
+        assert_eq!(mainline_reply.variation_index, 0);
+        assert_eq!(mainline_reply.move_number, Some(2));
+        assert!(mainline_reply.is_mainline);
+
+        let branch_reply = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap();
+        assert_eq!(branch_reply.variation_index, 1);
+        assert_eq!(branch_reply.move_number, Some(2));
+        assert_eq!(branch_reply.name.as_deref(), Some("var"));
+        assert!(!branch_reply.is_mainline);
+    }
+
+    #[test]
+    fn parse_sgf_tree_reports_bad_sgf() {
+        let error = parse_sgf_tree("not sgf".to_string()).unwrap_err();
+
+        assert!(!error.is_empty());
+    }
 
     #[test]
     fn write_sgf_file_preserves_original_text_after_validation() {

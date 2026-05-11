@@ -44,6 +44,13 @@ pub struct DeleteSgfNodeResult {
     pub parent_node_id: NodeId,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReorderSgfVariationResult {
+    pub sgf_text: String,
+    pub node_id: NodeId,
+    pub parent_node_id: NodeId,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SgfPropertyUpdate {
     pub key: String,
@@ -66,6 +73,10 @@ pub enum SgfError {
     NodeNotFound,
     #[error("cannot delete the SGF root node")]
     CannotDeleteRoot,
+    #[error("cannot reorder the SGF root node")]
+    CannotReorderRoot,
+    #[error("variation target index is out of range")]
+    VariationIndexOutOfRange,
     #[error("illegal SGF move: {0}")]
     IllegalMove(String),
     #[error("invalid SGF property key: {0}")]
@@ -420,6 +431,40 @@ pub fn delete_sgf_node(input: &str, node_id: NodeId) -> Result<DeleteSgfNodeResu
 
     Ok(DeleteSgfNodeResult {
         sgf_text: serialize_sgf_document(&document)?,
+        parent_node_id,
+    })
+}
+
+pub fn reorder_sgf_variation(
+    input: &str,
+    node_id: NodeId,
+    target_index: usize,
+) -> Result<ReorderSgfVariationResult, SgfError> {
+    let mut document = parse_sgf(input)?;
+    let root = document.root.as_ref().ok_or(SgfError::Malformed)?;
+    let mut target_path = find_sgf_node_path(root, node_id).ok_or(SgfError::NodeNotFound)?;
+    let child_index = target_path.pop().ok_or(SgfError::CannotReorderRoot)?;
+    let parent_node_id = stable_sgf_node_id(&target_path);
+    let sibling_count = find_sgf_node_at_path(root, &target_path)
+        .ok_or(SgfError::NodeNotFound)?
+        .children
+        .len();
+    if target_index >= sibling_count {
+        return Err(SgfError::VariationIndexOutOfRange);
+    }
+
+    if child_index != target_index {
+        let root = document.root.as_mut().ok_or(SgfError::Malformed)?;
+        let parent = find_sgf_node_mut_at_path(root, &target_path).ok_or(SgfError::NodeNotFound)?;
+        let node = parent.children.remove(child_index);
+        parent.children.insert(target_index, node);
+    }
+
+    let mut new_path = target_path;
+    new_path.push(target_index);
+    Ok(ReorderSgfVariationResult {
+        sgf_text: serialize_sgf_document(&document)?,
+        node_id: stable_sgf_node_id(&new_path),
         parent_node_id,
     })
 }
@@ -2616,6 +2661,200 @@ mod tests {
 
         assert!(matches!(error, SgfError::CannotDeleteRoot));
         assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
+    }
+
+    #[test]
+    fn reorder_promotes_variation_to_index_zero_and_updates_mainline() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch];B[dd]C[child]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = reorder_sgf_variation(input, branch_id, 0).unwrap();
+
+        assert_eq!(result.parent_node_id, parent_id);
+        assert_eq!(result.node_id, stable_sgf_node_id(&[0, 0]));
+        assert_eq!(
+            result.sgf_text,
+            "(;SZ[5];B[aa](;W[cc]C[branch];B[dd]C[child])(;W[bb]C[main]))"
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(serialize_sgf_document(&reparsed).unwrap(), result.sgf_text);
+        assert_eq!(
+            reparsed
+                .moves
+                .iter()
+                .map(|sgf_move| sgf_move.vertex.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                MoveVertex::Point(PointDto { x: 0, y: 0 }),
+                MoveVertex::Point(PointDto { x: 2, y: 2 }),
+                MoveVertex::Point(PointDto { x: 3, y: 3 }),
+            ]
+        );
+        let reparsed_tree = to_sgf_tree_dto(&reparsed).unwrap().unwrap();
+        let moved = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.node_id)
+            .unwrap();
+        assert_eq!(moved.comment.as_deref(), Some("branch"));
+        assert_eq!(moved.variation_index, 0);
+        assert!(moved.is_mainline);
+    }
+
+    #[test]
+    fn reorder_demotes_mainline_variation_to_later_index() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let main_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("main"))
+            .unwrap()
+            .id;
+
+        let result = reorder_sgf_variation(input, main_id, 1).unwrap();
+
+        assert_eq!(result.node_id, stable_sgf_node_id(&[0, 1]));
+        assert_eq!(result.sgf_text, "(;SZ[5];B[aa](;W[cc]C[branch])(;W[bb]C[main]))");
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(
+            reparsed
+                .moves
+                .iter()
+                .map(|sgf_move| sgf_move.vertex.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                MoveVertex::Point(PointDto { x: 0, y: 0 }),
+                MoveVertex::Point(PointDto { x: 2, y: 2 }),
+            ]
+        );
+        let reparsed_tree = to_sgf_tree_dto(&reparsed).unwrap().unwrap();
+        let moved = reparsed_tree
+            .nodes
+            .iter()
+            .find(|node| node.id == result.node_id)
+            .unwrap();
+        assert_eq!(moved.comment.as_deref(), Some("main"));
+        assert_eq!(moved.variation_index, 1);
+        assert!(!moved.is_mainline);
+    }
+
+    #[test]
+    fn reorder_preserves_subtree_unknown_properties_comments_and_annotations() {
+        let input = concat!(
+            "(;SZ[5];B[aa]C[parent]",
+            "(;W[bb]C[main]TR[aa])",
+            "(;W[cc]C[branch]ZZ[keep]LB[aa:A]BM[2];B[dd]C[child]TE[1]CR[cc]))"
+        );
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+
+        let result = reorder_sgf_variation(input, branch_id, 0).unwrap();
+
+        assert_eq!(
+            result.sgf_text,
+            concat!(
+                "(;SZ[5];B[aa]C[parent]",
+                "(;W[cc]C[branch]ZZ[keep]LB[aa:A]BM[2];B[dd]C[child]TE[1]CR[cc])",
+                "(;W[bb]C[main]TR[aa]))"
+            )
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        let moved = find_sgf_node_at_path(reparsed.root.as_ref().unwrap(), &[0, 0]).unwrap();
+        assert!(moved
+            .properties
+            .iter()
+            .any(|property| property.key == "ZZ" && property.values == vec!["keep".to_string()]));
+        assert!(moved
+            .properties
+            .iter()
+            .any(|property| property.key == "LB" && property.values == vec!["aa:A".to_string()]));
+        assert!(moved
+            .properties
+            .iter()
+            .any(|property| property.key == "BM" && property.values == vec!["2".to_string()]));
+        let child = moved.children.first().unwrap();
+        assert!(child
+            .properties
+            .iter()
+            .any(|property| property.key == "C" && property.values == vec!["child".to_string()]));
+        assert!(child
+            .properties
+            .iter()
+            .any(|property| property.key == "TE" && property.values == vec!["1".to_string()]));
+        assert!(child
+            .properties
+            .iter()
+            .any(|property| property.key == "CR" && property.values == vec!["cc".to_string()]));
+    }
+
+    #[test]
+    fn reorder_root_fails() {
+        let input = "(;SZ[5]C[root];B[aa])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+
+        let error = reorder_sgf_variation(input, tree.root_id, 0).unwrap_err();
+
+        assert!(matches!(error, SgfError::CannotReorderRoot));
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
+    }
+
+    #[test]
+    fn reorder_out_of_range_fails() {
+        let input = "(;SZ[5];B[aa](;W[bb])(;W[cc]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.variation_index == 1)
+            .unwrap()
+            .id;
+
+        let error = reorder_sgf_variation(input, branch_id, 2).unwrap_err();
+
+        assert!(matches!(error, SgfError::VariationIndexOutOfRange));
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
+    }
+
+    #[test]
+    fn reorder_same_index_is_successful_noop() {
+        let input = "(;SZ[5];B[aa](;W[bb]C[main])(;W[cc]C[branch]))";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch"))
+            .unwrap()
+            .id;
+        let parent_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.move_number == Some(1))
+            .unwrap()
+            .id;
+
+        let result = reorder_sgf_variation(input, branch_id, 1).unwrap();
+
+        assert_eq!(result.sgf_text, input);
+        assert_eq!(result.node_id, branch_id);
+        assert_eq!(result.parent_node_id, parent_id);
     }
 
     #[test]

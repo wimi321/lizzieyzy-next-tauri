@@ -70,6 +70,22 @@ npm run tauri:dev
 
 Record the OS, CPU architecture, KataGo version, model path, config path, and whether the engine is bundled or local.
 
+### Required User-Facing Retest Before Local Release
+
+Run this as one continuous user flow before release notes claim SGF editing, desktop runtime, KataGo, provider, or readboard support:
+
+- Start the native desktop app with `npm run tauri:dev` or the packaged candidate, and record the exact build/commit.
+- Open a real SGF through native file open, then open at least one fixture from `tests/golden`.
+- Navigate the mainline and at least one branch; confirm board state, move number, comments, captures/pass moves where present, and variation selection update together.
+- Edit a node comment and at least one node property through the intended UI or command-backed surface.
+- Append a move or pass, delete a selected non-root node/subtree, and reorder sibling variations.
+- Save or Save As, quit or restart the desktop runtime, reopen the saved SGF, and confirm comments, properties, branch order, move count, and replayed board state round-trip.
+- Run a fake or controlled review path if a mock/fixture engine is the candidate evidence; label it as fake/controlled and do not count it as live KataGo.
+- Run the KataGo external gate only with recorded binary, model, config, OS, and success/failure output.
+- Run readboard/provider external gates only with recorded sidecar/provider environment; mark unavailable environments `SKIPPED` and keep claims limited to offline/runtime path evidence.
+
+Pass: the user can complete the whole SGF edit/save/reopen path in the desktop runtime, and any KataGo/readboard/provider claims are backed by the matching external gate evidence.
+
 ### SGF Open
 
 - Open an SGF through native file open.
@@ -135,6 +151,17 @@ Pass: the SQLite analysis cache can be reused for the same game key.
 - Confirm parse/replay and move count match expectations.
 
 Pass: saved SGF is parseable and round-trips through native open.
+
+### SGF Tree Editing
+
+- Navigate from mainline into at least one variation and back.
+- Edit a comment and a node property on a non-root node.
+- Append a child move or pass from the selected node.
+- Delete a selected non-root node/subtree and confirm the parent/selection behavior is understandable.
+- Reorder sibling variations and confirm the visible tree order changes.
+- Save, restart the desktop runtime, reopen the SGF, and confirm comments, properties, appended/deleted nodes, variation order, and board replay persisted.
+
+Pass: tree editing behaves as a user-visible desktop workflow, not only as repository command-surface evidence.
 
 ## Provider And Sidecar Manual Smoke
 
@@ -262,8 +289,13 @@ Automated checks:
 
 Manual smoke:
 - SGF open: PASS/FAIL
+- SGF branch navigation: PASS/FAIL
+- SGF comment/property edit: PASS/FAIL
+- SGF append/delete/reorder: PASS/FAIL
+- SGF save/restart/reopen round-trip: PASS/FAIL
 - Engine profile persistence: PASS/FAIL
 - Asset check: PASS/FAIL
+- Fake/controlled review path: PASS/FAIL/SKIPPED, evidence type:
 - One-position analysis: PASS/FAIL
 - Full-game analysis: PASS/FAIL
 - Cancel analysis: PASS/FAIL

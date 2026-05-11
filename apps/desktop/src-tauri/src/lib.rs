@@ -2072,6 +2072,14 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    fn native_sgf_temp_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("lizzieyzy-native-sgf-{name}-{}.sgf", Uuid::new_v4()))
+    }
+
+    fn remove_native_sgf_temp_file(path: &Path) {
+        let _ = fs::remove_file(path);
+    }
+
     #[test]
     fn parse_sgf_tree_returns_variations_and_comments() {
         let tree = parse_sgf_tree(
@@ -2477,6 +2485,120 @@ mod tests {
         let written = fs::read_to_string(&path).unwrap();
         let _ = fs::remove_file(&path);
         assert_eq!(written, sgf_text);
+    }
+
+    #[test]
+    fn native_sgf_read_sgf_file_reads_real_temp_sgf() {
+        let path = native_sgf_temp_path("read");
+        let sgf_text = "(;GM[1]FF[4]SZ[19]C[real temp file];B[dd];W[qq])";
+        fs::write(&path, sgf_text).unwrap();
+
+        let read = read_sgf_file(path.display().to_string()).unwrap();
+
+        remove_native_sgf_temp_file(&path);
+        assert_eq!(read, sgf_text);
+    }
+
+    #[test]
+    fn native_sgf_write_sgf_file_rejects_invalid_sgf_without_polluting_existing_file() {
+        let path = native_sgf_temp_path("invalid-write");
+        let original = "(;GM[1]FF[4]SZ[19]C[original];B[dd])";
+        fs::write(&path, original).unwrap();
+
+        let error = write_sgf_file(path.display().to_string(), "not sgf".to_string()).unwrap_err();
+        let after = fs::read_to_string(&path).unwrap();
+
+        remove_native_sgf_temp_file(&path);
+        assert!(error.contains("failed to parse SGF text"));
+        assert_eq!(after, original);
+    }
+
+    #[test]
+    fn native_sgf_roundtrip_preserves_parseable_tokens_after_updates_and_reorder() {
+        let path = native_sgf_temp_path("roundtrip");
+        let input = "(;GM[1]FF[4]SZ[19]KM[7.5]PB[Black]PW[White]C[root comment]\
+            ;B[dd]N[first move]TR[dd]C[first comment]\
+            (;W[qq]LB[qq:A]C[main variation])\
+            (;W[pq]CR[pq]C[branch variation];B[dp]MA[dp]C[branch child]))";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let branch_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("branch variation"))
+            .unwrap()
+            .id;
+
+        let with_comment =
+            update_sgf_node_comment(input.to_string(), branch_id, Some("branch updated".to_string()))
+                .unwrap();
+        let with_properties = update_sgf_node_properties(
+            with_comment,
+            branch_id,
+            vec![
+                SgfPropertyUpdateDto {
+                    key: "N".to_string(),
+                    values: vec!["forcing line".to_string()],
+                },
+                SgfPropertyUpdateDto {
+                    key: "LB".to_string(),
+                    values: vec!["pq:X".to_string(), "dp:Y".to_string()],
+                },
+            ],
+        )
+        .unwrap()
+        .sgf_text;
+        let reordered = reorder_sgf_variation(with_properties, branch_id, 0)
+            .unwrap()
+            .sgf_text;
+
+        write_sgf_file(path.display().to_string(), reordered).unwrap();
+        let read = read_sgf_file(path.display().to_string()).unwrap();
+        let roundtrip_tree = parse_sgf_tree(read.clone()).unwrap().unwrap();
+
+        remove_native_sgf_temp_file(&path);
+        let updated_branch = roundtrip_tree
+            .nodes
+            .iter()
+            .find(|node| {
+                node.comment.as_deref() == Some("branch updated")
+                    && node.name.as_deref() == Some("forcing line")
+                    && node.variation_index == 0
+                    && node.is_mainline
+            })
+            .unwrap();
+        let original_sibling = roundtrip_tree
+            .nodes
+            .iter()
+            .find(|node| {
+                node.comment.as_deref() == Some("main variation")
+                    && node.color == Some(app_model::PlayerColor::White)
+                    && node.vertex == Some(MoveVertex::Point(PointDto { x: 16, y: 16 }))
+            })
+            .unwrap();
+
+        assert_eq!(updated_branch.parent_id, original_sibling.parent_id);
+        assert_eq!(original_sibling.variation_index, 1);
+        assert!(!original_sibling.is_mainline);
+        for token in [
+            "GM[1]",
+            "FF[4]",
+            "SZ[19]",
+            "KM[7.5]",
+            "PB[Black]",
+            "PW[White]",
+            "C[root comment]",
+            "TR[dd]",
+            "W[qq]",
+            "LB[qq:A]",
+            "C[main variation]",
+            "CR[pq]",
+            "MA[dp]",
+            "LB[pq:X]",
+            "LB[pq:X][dp:Y]",
+            "C[branch child]",
+        ] {
+            assert!(read.contains(token), "missing token {token} in {read}");
+        }
     }
 
     #[test]

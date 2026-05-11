@@ -31,49 +31,71 @@ class SmokeUserFlowsTests(unittest.TestCase):
     def test_complete_local_smoke_inputs_pass_with_pending_external_gates(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            create_complete_smoke_fixture(root, include_properties_command=False)
+            create_complete_smoke_fixture(root)
 
             results = smoke_user_flows.UserFlowSmoke(root).run()
 
             failures = [result for result in results if result.status == "FAIL"]
             pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
             self.assertEqual([], failures)
-            self.assertIn("tauri_sgf_properties_command", pending_names)
-            self.assertIn("tauri_sgf_reorder_command", pending_names)
+            self.assertIn("tauri_sgf_edit_commands", pass_names)
+            for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
+                self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
+            self.assertIn("katago_live_smoke", pending_names)
+            self.assertIn("readboard_live_smoke", pending_names)
+            self.assertIn("provider_live_smoke", pending_names)
+            self.assertIn("multiplatform_packaging_smoke", pending_names)
 
-    def test_properties_command_passes_when_worker_a_command_is_registered(self) -> None:
+    def test_missing_properties_command_fails(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            create_complete_smoke_fixture(root, include_properties_command=True)
+            create_complete_smoke_fixture(root, omitted_commands={"update_sgf_node_properties"})
 
             results = smoke_user_flows.UserFlowSmoke(root).run()
 
-            properties_results = [
-                result for result in results if result.name == "tauri_sgf_properties_command"
-            ]
-            self.assertEqual(["PASS"], [result.status for result in properties_results])
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("tauri_sgf_properties_command", failures)
+            self.assertIn("update_sgf_node_properties function", failures["tauri_sgf_properties_command"])
+            self.assertNotIn("tauri_sgf_properties_command", {result.name for result in results if result.status == "PENDING"})
 
-    def test_reorder_command_passes_when_command_is_registered(self) -> None:
+    def test_missing_reorder_command_fails(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            create_complete_smoke_fixture(
-                root,
-                include_properties_command=True,
-                include_reorder_command=True,
-            )
+            create_complete_smoke_fixture(root, omitted_commands={"reorder_sgf_variation"})
 
             results = smoke_user_flows.UserFlowSmoke(root).run()
 
-            reorder_results = [
-                result for result in results if result.name == "tauri_sgf_reorder_command"
-            ]
-            self.assertEqual(["PASS"], [result.status for result in reorder_results])
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("tauri_sgf_reorder_command", failures)
+            self.assertIn("reorder_sgf_variation function", failures["tauri_sgf_reorder_command"])
+            self.assertNotIn("tauri_sgf_reorder_command", {result.name for result in results if result.status == "PENDING"})
+
+    def test_missing_new_local_command_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, omitted_commands={"write_sgf_file"})
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("tauri_sgf_file_commands", failures)
+            self.assertIn("write_sgf_file function", failures["tauri_sgf_file_commands"])
+
+    def test_command_function_allows_intermediate_rust_attributes(self) -> None:
+        text = """
+        #[tauri::command]
+        #[allow(clippy::too_many_arguments)]
+        fn save_analysis_cache() {}
+        """
+
+        self.assertTrue(smoke_user_flows.has_tauri_command_function(text, "save_analysis_cache"))
 
     def test_missing_label_fixture_token_fails(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            create_complete_smoke_fixture(root, include_properties_command=False)
+            create_complete_smoke_fixture(root)
             (root / smoke_user_flows.COMPAT_FIXTURE).write_text(
                 "(;FF[4]GM[1]SZ[9]AB[aa]AW[bb]AE[cc]PL[W]C[root](;B[dd]))\n",
                 encoding="utf-8",
@@ -88,7 +110,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
     def test_reorder_fixture_requires_three_sibling_variations(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            create_complete_smoke_fixture(root, include_properties_command=False)
+            create_complete_smoke_fixture(root)
             (root / smoke_user_flows.REORDER_FIXTURE).write_text(
                 "(;FF[4]GM[1]SZ[9]C[root]ZZ[x];B[dd]LB[dd:A]TR[dd](;W[cf]C[one])(;W[fd]C[two]))\n",
                 encoding="utf-8",
@@ -104,9 +126,9 @@ class SmokeUserFlowsTests(unittest.TestCase):
 def create_complete_smoke_fixture(
     root: Path,
     *,
-    include_properties_command: bool,
-    include_reorder_command: bool = False,
+    omitted_commands: set[str] | None = None,
 ) -> None:
+    omitted_commands = omitted_commands or set()
     write_json(
         root / "package.json",
         {
@@ -140,44 +162,35 @@ def create_complete_smoke_fixture(
         root / smoke_user_flows.REORDER_FIXTURE,
         "(;FF[4]GM[1]SZ[9]C[root]ZZ[x];B[dd]LB[dd:A]TR[dd](;W[cf]C[one]ZZ[a];B[fc]C[child])(;W[fd]C[two]ZZ[b](;B[df]C[nested]))(;W[dc]C[three]ZZ[c]))\n",
     )
-    properties_command = ""
-    properties_handler = ""
-    if include_properties_command:
-        properties_command = """
+    commands = [
+        *smoke_user_flows.TAURI_COMMANDS,
+        *[
+            command
+            for group in smoke_user_flows.TAURI_COMMAND_GROUPS.values()
+            for command in group
+        ],
+    ]
+    command_functions = "\n".join(
+        f"""
         #[tauri::command]
-        fn update_sgf_node_properties() {}
+        fn {command}() {{}}
         """
-        properties_handler = "update_sgf_node_properties,"
-    reorder_command = ""
-    reorder_handler = ""
-    if include_reorder_command:
-        reorder_command = """
-        #[tauri::command]
-        fn reorder_sgf_variation() {}
-        """
-        reorder_handler = "reorder_sgf_variation,"
+        for command in commands
+        if command not in omitted_commands
+    )
+    command_handlers = "\n".join(
+        f"                {command},"
+        for command in commands
+        if command not in omitted_commands
+    )
     write(
         root / "apps/desktop/src-tauri/src/lib.rs",
         f"""
-        #[tauri::command]
-        fn update_sgf_node_comment() {{}}
-
-        #[tauri::command]
-        fn append_sgf_move() {{}}
-
-        #[tauri::command]
-        fn delete_sgf_node() {{}}
-
-        {properties_command}
-        {reorder_command}
+        {command_functions}
 
         fn run() {{
             tauri::generate_handler![
-                update_sgf_node_comment,
-                append_sgf_move,
-                delete_sgf_node,
-                {properties_handler}
-                {reorder_handler}
+{command_handlers}
             ];
         }}
         """,

@@ -33,6 +33,8 @@ export type RuntimeSmokeConfig = {
   enabled: boolean;
   sgf_path?: string | null;
   report_path?: string | null;
+  expected_report_path?: string | null;
+  phase?: string | null;
 };
 
 export type AppendSgfMoveResult = {

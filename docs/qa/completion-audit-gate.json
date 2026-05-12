@@ -1,0 +1,91 @@
+{
+  "schema": "lizzieyzy.completion-audit-gate.v1",
+  "name": "completion_audit_gate",
+  "status": "pass",
+  "auditCriteriaHonest": true,
+  "evidenceInventoryComplete": true,
+  "scopedEvidenceComplete": true,
+  "noFullCompletionClaim": true,
+  "claimsFullCompletion": false,
+  "boundariesRecorded": true,
+  "smokeUserFlows": {
+    "passed": 55,
+    "failed": 0,
+    "pending": 0,
+    "baselineExcludes": [
+      "completion_audit_gate"
+    ]
+  },
+  "checks": [
+    {
+      "name": "audit_criteria_honest",
+      "status": "pass",
+      "details": {
+        "claim": "scoped completion audit criteria and evidence inventory only",
+        "notHundredPercent": true
+      }
+    },
+    {
+      "name": "evidence_inventory_complete",
+      "status": "pass",
+      "details": {
+        "requiredArtifactsRecorded": true
+      }
+    },
+    {
+      "name": "central_smoke_baseline_recorded",
+      "status": "pass",
+      "details": {
+        "selfExcludingBaseline": "55/0/0",
+        "excludes": [
+          "completion_audit_gate"
+        ]
+      }
+    },
+    {
+      "name": "scope_boundaries_recorded",
+      "status": "pass",
+      "details": {
+        "fullCompletionClaimed": false,
+        "hundredPercentComplete": false
+      }
+    }
+  ],
+  "evidenceArtifacts": [
+    {
+      "path": "docs/QA_REPORT.md",
+      "status": "recorded"
+    },
+    {
+      "path": "docs/LEGACY_PARITY_MATRIX.md",
+      "status": "recorded"
+    },
+    {
+      "path": "docs/RELEASE_CHECKLIST.md",
+      "status": "recorded"
+    },
+    {
+      "path": "docs/RELEASE_PROCESS.md",
+      "status": "recorded"
+    },
+    {
+      "path": "docs/qa/release-readiness-preflight.json",
+      "status": "recorded"
+    }
+  ],
+  "boundaries": {
+    "hundredPercentComplete": false,
+    "fullCompletionClaimed": false,
+    "releaseReady": false,
+    "fullProductionRelease": false,
+    "fullLegacyParity": false,
+    "fullProviderParity": false,
+    "fullReadboardParity": false,
+    "fullOcrParity": false,
+    "signedReleaseParity": false,
+    "notarizedReleaseParity": false,
+    "updaterParity": false,
+    "windowsLinuxProductionParity": false,
+    "bundledLargeModelParity": false
+  }
+}

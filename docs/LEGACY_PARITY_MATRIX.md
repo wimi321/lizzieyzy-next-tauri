@@ -11,6 +11,12 @@ Status tokens are intentionally narrow:
 
 Do not use this matrix to claim full Java/Swing parity. A row reaches parity only when its acceptance evidence is recorded and any external gate is passed.
 
+## Truth Sync Summary
+
+Current status is not full legacy parity. The repository has many scoped PASS evidence records, and the central smoke gate currently reports `56 passed, 0 failed, 0 pending`, but most user-facing areas remain `partial` or `external-validation-needed` because full release-target behavior, real provider accounts, arbitrary OCR/capture, full UI/layout/shortcut parity, full Java/Swing config migration, and production release validation are not closed.
+
+For the user-facing completion ledger, use `docs/COMPLETION_AUDIT.md` as the concise source of truth. This matrix remains the detailed parity ledger and must not convert scoped evidence into full parity language.
+
 ## UI
 
 | Legacy Capability | Current Status | Acceptance Evidence | External Gate | Notes |

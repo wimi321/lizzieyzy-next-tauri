@@ -2,6 +2,12 @@
 
 This process covers production release preparation for the LizzieYzy Next Tauri 2 desktop workspace. The repository keeps a safe dry-run workflow for readiness checks and a tag-driven release workflow for public release-candidate assets.
 
+## Truth Sync Summary
+
+Current evidence supports scoped release-candidate validation, not a stable production release. `scripts/smoke_user_flows.py --verbose` currently reports `56 passed, 0 failed, 0 pending`, but the completion audit still marks production release readiness as blocked by signing, notarization, updater policy, official publication, clean-machine release testing, and remaining external parity gates. Do not use unsigned or scoped evidence to imply full production readiness, full Java/Swing parity, real provider/readboard/OCR parity, bundled large-model parity, or full legacy UI/layout/shortcut parity.
+
+The user-facing completion summary is `docs/COMPLETION_AUDIT.md`; release notes should mirror that scoped status.
+
 ## Release Gates
 
 Run these checks from the repository root before tagging a candidate:

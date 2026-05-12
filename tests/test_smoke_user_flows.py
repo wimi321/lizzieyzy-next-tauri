@@ -44,6 +44,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("native_sgf_save_readback_surface", pass_names)
             self.assertIn("sgf_existing_move_edit_surface", pass_names)
             self.assertIn("legacy_config_migration_surface", pass_names)
+            self.assertIn("runtime_asset_layout_surface", pass_names)
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
@@ -588,6 +589,29 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_config_migration_surface", failures)
             self.assertIn("PreferencesPanel missing legacyConfigPath", failures["legacy_config_migration_surface"])
 
+    def test_runtime_asset_layout_surface_passes_with_frontend_wiring(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            passes = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("runtime_asset_layout_surface", failures)
+            self.assertIn("runtime_asset_layout_surface", passes)
+
+    def test_runtime_asset_layout_surface_missing_engine_setup_ui_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, runtime_asset_ui=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel missing runtimeAssetValidation", failures["runtime_asset_layout_surface"])
+
     def test_edit_existing_move_surface_reduced_fixture_all_frontend_sources_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -726,6 +750,7 @@ def create_complete_smoke_fixture(
     omitted_commands: set[str] | None = None,
     app_edit_handler: bool = True,
     preferences_migration_ui: bool = True,
+    runtime_asset_ui: bool = True,
 ) -> None:
     omitted_commands = omitted_commands or set()
     write_json(
@@ -799,6 +824,7 @@ def create_complete_smoke_fixture(
     create_app_fixture(root, edit_existing_move_handler=app_edit_handler)
     create_sgf_tree_panel_fixture(root)
     create_preferences_panel_fixture(root, migration_ui=preferences_migration_ui)
+    create_engine_setup_panel_fixture(root, runtime_asset_ui=runtime_asset_ui)
 
 
 def write_valid_tauri_runtime_ui_evidence(root: Path) -> None:
@@ -1329,6 +1355,36 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
           sgfText: string;
         }};
 
+        export type RuntimeAssetPathDto = {{
+          label: string;
+          kind: string;
+          source: string;
+          path: string;
+          required: boolean;
+        }};
+
+        export type RuntimeAssetLayoutDto = {{
+          resourceDir?: string | null;
+          devRoots: string[];
+          resourceRoots: string[];
+          releaseRoots: string[];
+          candidates: RuntimeAssetPathDto[];
+        }};
+
+        export type RuntimeAssetValidationEntryDto = RuntimeAssetPathDto & {{
+          status: string;
+          message: string;
+        }};
+
+        export type RuntimeAssetValidationDto = {{
+          layout: RuntimeAssetLayoutDto;
+          checks: RuntimeAssetValidationEntryDto[];
+          exists: RuntimeAssetValidationEntryDto[];
+          missing: RuntimeAssetValidationEntryDto[];
+          placeholders: RuntimeAssetValidationEntryDto[];
+          warnings: string[];
+        }};
+
         export async function openSgfDocument(): Promise<SgfDocument | null> {{
           const selected = await open({{ multiple: false, directory: false, filters: sgfDialogFilters }});
           if (typeof selected !== "string") return null;
@@ -1365,6 +1421,14 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
 
         export async function applyLegacyConfigMigration(path: string): Promise<LegacyConfigMigrationApplyDto> {{
           return await invoke<LegacyConfigMigrationApplyDto>("apply_legacy_config_migration", {{ path }});
+        }}
+
+        export async function resolveRuntimeAssetLayout(): Promise<RuntimeAssetLayoutDto> {{
+          return await invoke<RuntimeAssetLayoutDto>("resolve_runtime_asset_layout");
+        }}
+
+        export async function validateRuntimeAssetLayout(): Promise<RuntimeAssetValidationDto> {{
+          return await invoke<RuntimeAssetValidationDto>("validate_runtime_asset_layout");
         }}
         """,
     )
@@ -1523,6 +1587,74 @@ def create_preferences_panel_fixture(root: Path, *, migration_ui: bool = True) -
         }
         """
     write(root / smoke_user_flows.PREFERENCES_PANEL_SOURCE, body)
+
+
+def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = True) -> None:
+    if runtime_asset_ui:
+        body = """
+        import { checkEngineAssets, validateRuntimeAssetLayout } from "../api/backend";
+
+        export function EngineSetupPanel() {
+          const [runtimeAssetValidation, setRuntimeAssetValidation] = useState(null);
+          const [runtimeAssetStatus, setRuntimeAssetStatus] = useState("Checking bundled/runtime assets...");
+          const enginePath = "";
+          const modelPath = "";
+          const configPath = "";
+          const placeholderCount = runtimeAssetValidation?.placeholders.length ?? 0;
+
+          async function handleCheckRuntimeAssets() {
+            const validation = await validateRuntimeAssetLayout();
+            setRuntimeAssetValidation(validation);
+            setRuntimeAssetStatus(runtimeAssetSummary(validation));
+          }
+
+          function runtimeAssetSummary(validation) {
+            return `${validation.missing.length} missing, ${validation.placeholders.length} placeholder`;
+          }
+
+          function runtimeAssetMessages(validation) {
+            return [...validation.warnings, ...validation.placeholders.map((placeholder) => placeholder.message)];
+          }
+
+          async function handleCheckLocalAssets() {
+            await checkEngineAssets({ engine_path: enginePath, model_path: modelPath, config_path: configPath });
+          }
+
+          return (
+            <section aria-label="KataGo engine setup">
+              <div aria-label="Bundled runtime asset status">
+                <strong>Bundled/runtime assets</strong>
+                <button onClick={handleCheckRuntimeAssets}>Refresh runtime assets</button>
+                <span>{runtimeAssetStatus}</span>
+                <span>{runtimeAssetValidation}</span>
+                <span>{placeholderCount}</span>
+                <span>{runtimeAssetValidation?.checks.map((check) => check.status).join(",")}</span>
+                <span>{runtimeAssetValidation ? runtimeAssetMessages(runtimeAssetValidation).join("|") : ""}</span>
+              </div>
+              <p>Large KataGo models are not bundled by this repository.</p>
+              <div aria-label="Local asset configuration">
+                <strong>Local asset configuration</strong>
+                <input value={enginePath} />
+                <input value={modelPath} />
+                <input value={configPath} />
+                <button onClick={handleCheckLocalAssets}>Check assets</button>
+              </div>
+            </section>
+          );
+        }
+        """
+    else:
+        body = """
+        import { checkEngineAssets } from "../api/backend";
+
+        export function EngineSetupPanel() {
+          const enginePath = "";
+          const modelPath = "";
+          const configPath = "";
+          return <section>{enginePath}{modelPath}{configPath}{checkEngineAssets}</section>;
+        }
+        """
+    write(root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE, body)
 
 
 def re_identifier_parts(value: str) -> list[str]:

@@ -132,6 +132,7 @@ APP_SOURCE = "apps/desktop/src/App.tsx"
 BACKEND_SOURCE = "apps/desktop/src/api/backend.ts"
 SGF_TREE_PANEL_SOURCE = "apps/desktop/src/components/SgfTreePanel.tsx"
 PREFERENCES_PANEL_SOURCE = "apps/desktop/src/components/PreferencesPanel.tsx"
+ENGINE_SETUP_PANEL_SOURCE = "apps/desktop/src/components/EngineSetupPanel.tsx"
 LEGACY_SHELL_MENU_SURFACE = {
     "View": ["Candidates", "Ownership", "Policy"],
     "Engine": ["Profiles", "Assets"],
@@ -466,6 +467,82 @@ class UserFlowSmoke:
             "legacy Java/Swing config migration exposes backend wrappers, App handlers, and PreferencesPanel path/preview/apply/status/warnings/migrated-field UI",
         )
 
+    def check_runtime_asset_layout_surface(self) -> None:
+        sources = {
+            "backend source": self.path(BACKEND_SOURCE),
+            "EngineSetupPanel source": self.path(ENGINE_SETUP_PANEL_SOURCE),
+            "Tauri command source": self.path("apps/desktop/src-tauri/src/lib.rs"),
+        }
+        if not any(path.is_file() for label, path in sources.items() if label != "Tauri command source"):
+            self.pending(
+                "runtime_asset_layout_surface",
+                "backend/EngineSetupPanel source files absent in reduced fixture; full repository smoke must include runtime asset layout UI and API wiring evidence",
+            )
+            return
+        missing_sources = [label for label, path in sources.items() if not path.is_file()]
+        if missing_sources:
+            self.fail("runtime_asset_layout_surface", "missing source file(s): " + ", ".join(missing_sources))
+            return
+
+        backend_text = self.read_text(BACKEND_SOURCE)
+        panel_text = self.read_text(ENGINE_SETUP_PANEL_SOURCE)
+        tauri_text = self.read_text("apps/desktop/src-tauri/src/lib.rs")
+        if backend_text is None or panel_text is None or tauri_text is None:
+            return
+        failures = [
+            *missing_tauri_command_surface(tauri_text, ["resolve_runtime_asset_layout", "validate_runtime_asset_layout"]),
+            *missing_required_tokens(
+                backend_text,
+                "backend",
+                [
+                    "RuntimeAssetPathDto",
+                    "RuntimeAssetLayoutDto",
+                    "RuntimeAssetValidationEntryDto",
+                    "RuntimeAssetValidationDto",
+                    "resourceRoots",
+                    "checks",
+                    "exists",
+                    "placeholders",
+                    "status",
+                    "message",
+                    "resolveRuntimeAssetLayout",
+                    "validateRuntimeAssetLayout",
+                    "resolve_runtime_asset_layout",
+                    "validate_runtime_asset_layout",
+                ],
+            ),
+            *missing_required_tokens(
+                panel_text,
+                "EngineSetupPanel",
+                [
+                    "validateRuntimeAssetLayout",
+                    "runtimeAssetValidation",
+                    "runtimeAssetStatus",
+                    "runtimeAssetSummary",
+                    "runtimeAssetMessages",
+                    "handleCheckRuntimeAssets",
+                    "Bundled/runtime assets",
+                    "Refresh runtime assets",
+                    "Large KataGo models are not bundled",
+                    "placeholders",
+                    "warnings",
+                    "placeholderCount",
+                    "Local asset configuration",
+                    "enginePath",
+                    "modelPath",
+                    "configPath",
+                    "checkEngineAssets",
+                ],
+            ),
+        ]
+        if failures:
+            self.fail("runtime_asset_layout_surface", "missing runtime asset layout surface: " + ", ".join(failures))
+            return
+        self.pass_(
+            "runtime_asset_layout_surface",
+            "runtime asset layout backend wrappers and EngineSetupPanel bundled/runtime status surface are wired while local engine/model/config asset fields remain available",
+        )
+
     def check_external_runtime_gates(self) -> None:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_katago_live_smoke_evidence()
@@ -617,6 +694,7 @@ class UserFlowSmoke:
         self.check_native_sgf_save_readback_surface()
         self.check_sgf_existing_move_edit_surface()
         self.check_legacy_config_migration_surface()
+        self.check_runtime_asset_layout_surface()
         self.check_external_runtime_gates()
         return self.results
 

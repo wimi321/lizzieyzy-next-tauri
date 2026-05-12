@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { checkEngineAssets, loadEngineProfilesSettings, saveEngineProfilesSettings } from "../api/backend";
+import { checkEngineAssets, loadEngineProfilesSettings, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
+import type { RuntimeAssetValidationDto } from "../api/backend";
 import type { AssetCheckDto, EngineProfileDto, EngineProfileRecordDto } from "../domain/types";
 
 type Props = {
@@ -23,6 +24,8 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
   const [maxVisits, setMaxVisits] = useState("800");
   const [profileStatus, setProfileStatus] = useState("Loading profile...");
   const [assetChecks, setAssetChecks] = useState<AssetCheckDto[]>([]);
+  const [runtimeAssetValidation, setRuntimeAssetValidation] = useState<RuntimeAssetValidationDto | null>(null);
+  const [runtimeAssetStatus, setRuntimeAssetStatus] = useState("Checking bundled/runtime assets...");
 
   const visits = Number(maxVisits);
   const isAnalysisActive = activeJobId !== null;
@@ -64,6 +67,22 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       })
       .catch((error: unknown) => {
         if (isMounted) setProfileStatus(`Load failed: ${errorMessage(error)}`);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    validateRuntimeAssetLayout()
+      .then((validation) => {
+        if (!isMounted) return;
+        setRuntimeAssetValidation(validation);
+        setRuntimeAssetStatus(runtimeAssetSummary(validation));
+      })
+      .catch((error: unknown) => {
+        if (isMounted) setRuntimeAssetStatus(`Runtime asset check failed: ${errorMessage(error)}`);
       });
     return () => {
       isMounted = false;
@@ -219,6 +238,17 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
     }
   }
 
+  async function handleCheckRuntimeAssets() {
+    setRuntimeAssetStatus("Checking bundled/runtime assets...");
+    try {
+      const validation = await validateRuntimeAssetLayout();
+      setRuntimeAssetValidation(validation);
+      setRuntimeAssetStatus(runtimeAssetSummary(validation));
+    } catch (error) {
+      setRuntimeAssetStatus(`Runtime asset check failed: ${errorMessage(error)}`);
+    }
+  }
+
   return (
     <section className="engine-setup-panel" aria-label="KataGo engine setup">
       <div className="engine-run-row">
@@ -236,6 +266,30 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         </label>
         <button type="button" onClick={() => void handleAddProfile()} disabled={!canSave}>Add profile</button>
         <button type="button" onClick={() => void handleDeleteProfile()} disabled={!canDeleteProfile}>Delete profile</button>
+      </div>
+      <div className="engine-run-row" aria-label="Bundled runtime asset status">
+        <strong>Bundled/runtime assets</strong>
+        <button type="button" onClick={() => void handleCheckRuntimeAssets()} disabled={disabled} title="Refresh runtime assets">Refresh</button>
+        <span className="message">{runtimeAssetStatus}</span>
+      </div>
+      {runtimeAssetValidation && (
+        <p className="message">
+          {runtimeAssetValidation.layout.resourceDir ? `Resource dir: ${runtimeAssetValidation.layout.resourceDir}. ` : "Resource dir unavailable. "}
+          {runtimeAssetValidation.layout.candidates.length > 0
+            ? runtimeAssetValidation.checks.map((check) => `${check.status.toUpperCase()} ${check.source} ${check.label}: ${check.path}`).join(" | ")
+            : "No runtime asset candidates are visible in this environment."}
+        </p>
+      )}
+      {runtimeAssetValidation && runtimeAssetMessages(runtimeAssetValidation).length > 0 && (
+        <p className="message">
+          {runtimeAssetMessages(runtimeAssetValidation).join(" | ")}
+        </p>
+      )}
+      <p className="message">
+        Large KataGo models are not bundled by this repository. Keep using the local asset configuration below unless an installed app package supplies runtime assets.
+      </p>
+      <div className="engine-run-row" aria-label="Local asset configuration">
+        <strong>Local asset configuration</strong>
       </div>
       <div className="engine-grid">
         <label>
@@ -313,6 +367,26 @@ function assetStatus(checks: AssetCheckDto[]): string {
   const missingRequired = checks.filter((check) => check.required && !check.exists);
   if (missingRequired.length === 0) return "Assets ready.";
   return `Missing required: ${missingRequired.map((check) => `${check.label}${check.path ? ` (${check.path})` : ""}`).join(", ")}.`;
+}
+
+function runtimeAssetSummary(validation: RuntimeAssetValidationDto): string {
+  const candidateCount = validation.layout.candidates.length;
+  const missingCount = validation.missing.length;
+  const placeholderCount = validation.placeholders.length;
+  const problemCount = missingCount + placeholderCount;
+  if (candidateCount === 0) {
+    return validation.warnings[0] ?? "Runtime asset layout unavailable.";
+  }
+  if (problemCount === 0) return `Runtime asset layout visible: ${candidateCount} candidates.`;
+  return `Runtime asset layout visible: ${candidateCount} candidates, ${missingCount} missing, ${placeholderCount} placeholder.`;
+}
+
+function runtimeAssetMessages(validation: RuntimeAssetValidationDto): string[] {
+  const messages = [
+    ...validation.warnings,
+    ...validation.placeholders.map((placeholder) => placeholder.message)
+  ];
+  return Array.from(new Set(messages.filter((message) => message.trim().length > 0)));
 }
 
 function isKnownMissing(checks: AssetCheckDto[], label: string): boolean {

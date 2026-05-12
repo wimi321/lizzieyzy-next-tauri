@@ -87,6 +87,36 @@ export type LegacyConfigMigrationApplyDto = {
   warnings: string[];
 };
 
+export type RuntimeAssetPathDto = {
+  label: string;
+  kind: string;
+  source: string;
+  path: string;
+  required: boolean;
+};
+
+export type RuntimeAssetLayoutDto = {
+  resourceDir?: string | null;
+  devRoots: string[];
+  resourceRoots: string[];
+  releaseRoots: string[];
+  candidates: RuntimeAssetPathDto[];
+};
+
+export type RuntimeAssetValidationEntryDto = RuntimeAssetPathDto & {
+  status: "exists" | "missing" | "placeholder" | string;
+  message: string;
+};
+
+export type RuntimeAssetValidationDto = {
+  layout: RuntimeAssetLayoutDto;
+  checks: RuntimeAssetValidationEntryDto[];
+  exists: RuntimeAssetValidationEntryDto[];
+  missing: RuntimeAssetValidationEntryDto[];
+  placeholders: RuntimeAssetValidationEntryDto[];
+  warnings: string[];
+};
+
 export type AnalysisProgressPayload = {
   job_id: string;
   completed: number;
@@ -275,6 +305,26 @@ export async function checkEngineAssets(profile: EngineProfileDto): Promise<Asse
   return await invoke<AssetCheckDto[]>("engine_asset_checks", { profile });
 }
 
+export async function resolveRuntimeAssetLayout(): Promise<RuntimeAssetLayoutDto> {
+  if (!isTauriRuntime()) return browserRuntimeAssetLayout();
+  return await invoke<RuntimeAssetLayoutDto>("resolve_runtime_asset_layout");
+}
+
+export async function validateRuntimeAssetLayout(): Promise<RuntimeAssetValidationDto> {
+  if (!isTauriRuntime()) {
+    const layout = browserRuntimeAssetLayout();
+    return {
+      layout,
+      checks: [],
+      exists: [],
+      missing: [],
+      placeholders: [],
+      warnings: ["Runtime asset layout inspection requires the Tauri desktop backend."]
+    };
+  }
+  return await invoke<RuntimeAssetValidationDto>("validate_runtime_asset_layout");
+}
+
 export async function replaySgfPositions(sgfText: string): Promise<PositionDto[]> {
   if (!isTauriRuntime()) return replayGamePositions(parseSgfLocally(sgfText));
   try {
@@ -372,6 +422,16 @@ export async function classifyProblems(frames: AnalysisFrameDto[]): Promise<Prob
 
 function browserHealth(note: string): AppHealthDto {
   return { app: "LizzieYzy Next", architecture: "React review workspace fallback", rust_backend_ready: false, notes: [note] };
+}
+
+function browserRuntimeAssetLayout(): RuntimeAssetLayoutDto {
+  return {
+    resourceDir: null,
+    devRoots: [],
+    resourceRoots: [],
+    releaseRoots: [],
+    candidates: []
+  };
 }
 
 const browserEngineProfileKey = "lizzieyzy-next-engine-profile";

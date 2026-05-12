@@ -59,6 +59,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
+            self.assertIn("readboard_image_import_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
 
@@ -1075,7 +1076,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             root = Path(tmp)
             create_complete_smoke_fixture(root)
             evidence = valid_readboard_tauri_runtime_evidence()
-            find_evidence_check(evidence, "external_client_not_covered")["details"].pop("ocrCovered")
+            find_evidence_check(evidence, "external_capture_not_covered")["details"].pop("externalClientCaptureCovered")
             write_json(root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE, evidence)
 
             results = smoke_user_flows.UserFlowSmoke(root).run()
@@ -1084,7 +1085,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             pending = {result.name: result.detail for result in results if result.status == "PENDING"}
             self.assertNotIn("readboard_live_smoke", failures)
             self.assertIn("readboard_live_smoke", pending)
-            self.assertIn("external_client_not_covered.ocrCovered must be false", pending["readboard_live_smoke"])
+            self.assertIn("external_capture_not_covered.externalClientCaptureCovered must be false", pending["readboard_live_smoke"])
 
     def test_readboard_tauri_runtime_evidence_requires_snapshot_change_semantics(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1118,6 +1119,139 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("readboard_live_smoke", failures)
             self.assertIn("readboard_live_smoke", pending)
             self.assertIn("scripts/smoke_tauri_readboard_live.py", pending["readboard_live_smoke"])
+
+    def test_valid_readboard_image_import_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_readboard_image_import_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_image_import_smoke", pass_names)
+            self.assertNotIn("readboard_image_import_smoke", pending_names)
+
+    def test_readboard_image_import_rejects_full_ocr_overclaim(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_image_import_evidence()
+            evidence["fullOcrParity"] = True
+            find_evidence_check(evidence, "scope_boundaries")["details"]["fullOcrParity"] = True
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_image_import_smoke", failures)
+            self.assertIn("readboard_image_import_smoke", pending)
+            self.assertIn("fullOcrParity must be false", pending["readboard_image_import_smoke"])
+
+    def test_readboard_image_import_rejects_external_capture_overclaim(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_image_import_evidence()
+            evidence["externalCaptureCovered"] = True
+            find_evidence_check(evidence, "scope_boundaries")["details"]["externalCaptureCovered"] = True
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_image_import_smoke", failures)
+            self.assertIn("readboard_image_import_smoke", pending)
+            self.assertIn("externalCaptureCovered must be false", pending["readboard_image_import_smoke"])
+
+    def test_readboard_image_import_requires_path_and_base64_evidence(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            evidence = valid_readboard_image_import_evidence()
+            evidence["imagePathImportVerified"] = False
+            evidence["imageBase64ImportVerified"] = False
+            find_evidence_check(evidence, "image_path_import")["details"]["imagePathImportVerified"] = False
+            find_evidence_check(evidence, "image_base64_import")["details"]["imageBase64ImportVerified"] = False
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_image_import_smoke", failures)
+            self.assertIn("readboard_image_import_smoke", pending)
+            self.assertIn("imagePathImportVerified must be true", pending["readboard_image_import_smoke"])
+            self.assertIn("imageBase64ImportVerified must be true", pending["readboard_image_import_smoke"])
+
+    def test_readboard_image_import_requires_matching_artifact_hash_and_size(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            evidence = valid_readboard_image_import_evidence()
+            details = find_evidence_check(evidence, "image_path_import")["details"]
+            details["imageSha256"] = "0" * 64
+            details["imageBytes"] = 1
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_image_import_smoke", failures)
+            self.assertIn("readboard_image_import_smoke", pending)
+            self.assertIn("image_path_import.imageBytes must match artifact size", pending["readboard_image_import_smoke"])
+            self.assertIn("image_path_import.imageSha256 must match artifact sha256", pending["readboard_image_import_smoke"])
+
+    def test_readboard_image_import_requires_invalid_and_non_board_rejections(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            evidence = valid_readboard_image_import_evidence()
+            evidence["invalidImageRejected"] = False
+            evidence["nonBoardImageRejected"] = False
+            find_evidence_check(evidence, "invalid_image_rejected")["details"]["invalidImageRejected"] = False
+            find_evidence_check(evidence, "non_board_image_rejected")["details"]["nonBoardImageRejected"] = False
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_image_import_smoke", failures)
+            self.assertIn("readboard_image_import_smoke", pending)
+            self.assertIn("invalidImageRejected must be true", pending["readboard_image_import_smoke"])
+            self.assertIn("nonBoardImageRejected must be true", pending["readboard_image_import_smoke"])
+
+    def test_readboard_image_import_requires_snapshot_fields(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            evidence = valid_readboard_image_import_evidence()
+            snapshot = find_evidence_check(evidence, "snapshot_verified")["details"]
+            snapshot["boardSizeVerified"] = False
+            snapshot["stoneCountVerified"] = False
+            snapshot["toPlay"] = "unknown"
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_image_import_smoke", failures)
+            self.assertIn("readboard_image_import_smoke", pending)
+            self.assertIn("snapshot_verified.boardSizeVerified must be true", pending["readboard_image_import_smoke"])
+            self.assertIn("snapshot_verified.stoneCountVerified must be true", pending["readboard_image_import_smoke"])
+            self.assertIn("snapshot_verified.toPlay must be black or white", pending["readboard_image_import_smoke"])
 
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2171,6 +2305,14 @@ def write_valid_readboard_tauri_runtime_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_image_import_evidence(root: Path) -> None:
+    create_readboard_controlled_board_fixture(root)
+    write_json(
+        root / smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE,
+        valid_readboard_image_import_evidence(),
+    )
+
+
 def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
@@ -2183,6 +2325,13 @@ def write_valid_multiplatform_packaging_evidence(root: Path) -> None:
         root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE,
         valid_multiplatform_packaging_evidence(),
     )
+
+
+def create_readboard_controlled_board_fixture(root: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "docs/qa/fixtures/readboard-controlled-board.png"
+    target = root / "docs/qa/fixtures/readboard-controlled-board.png"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
 
 
 def canonical_legacy_actions() -> list[dict[str, object]]:
@@ -2495,23 +2644,132 @@ def valid_readboard_tauri_runtime_evidence() -> dict[str, object]:
                 },
             },
             {
-                "name": "unsupported_ocr_path",
-                "status": "pass",
-                "details": {
-                    "observed": True,
-                    "unsupported": True,
-                    "messageIncludesBoundary": True,
-                    "message": "image OCR readboard sync is outside this runtime smoke boundary",
-                },
-            },
-            {
-                "name": "external_client_not_covered",
+                "name": "arbitrary_ocr_not_covered",
                 "status": "pass",
                 "details": {
                     "covered": False,
-                    "ocrCovered": False,
+                    "controlledImageImportCoveredBySeparateGate": True,
+                    "fullOcrParity": False,
+                    "message": "Arbitrary screenshot OCR is not covered by this runtime probe/protocol smoke; controlled image import has separate evidence.",
+                },
+            },
+            {
+                "name": "external_capture_not_covered",
+                "status": "pass",
+                "details": {
+                    "covered": False,
+                    "externalWindowCaptureCovered": False,
                     "externalClientCaptureCovered": False,
                     "reason": "controlled protocol probe only; no real external client/window capture",
+                },
+            },
+        ],
+    }
+
+
+def valid_readboard_image_import_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.READBOARD_IMAGE_IMPORT_SMOKE_SCHEMA,
+        "name": "readboard_image_import_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "controlled_fixture_image_import",
+        "imagePathImportVerified": True,
+        "imageBase64ImportVerified": True,
+        "invalidImageRejected": True,
+        "nonBoardImageRejected": True,
+        "snapshotVerified": True,
+        "boardSizeVerified": True,
+        "stoneCountVerified": True,
+        "toPlayVerified": True,
+        "protocolRegressionVerified": True,
+        "fullOcrParity": False,
+        "externalCaptureCovered": False,
+        "checks": [
+            {
+                "name": "image_path_import",
+                "status": "pass",
+                "details": {
+                    "imagePathImportVerified": True,
+                    "source": "path",
+                    "imagePath": "docs/qa/fixtures/readboard-controlled-board.png",
+                    "imageSha256": "70cfecf5b5d5235e66a051c5208c2974fde34f0a28aaef5be33fcd8bc0f63d96",
+                    "imageBytes": 522,
+                    "snapshotId": "readboard-image-smoke-path-001",
+                    "boardSize": 19,
+                    "boardSizeVerified": True,
+                    "stoneCount": 12,
+                    "stoneCountVerified": True,
+                    "toPlay": "black",
+                    "toPlayVerified": True,
+                },
+            },
+            {
+                "name": "image_base64_import",
+                "status": "pass",
+                "details": {
+                    "imageBase64ImportVerified": True,
+                    "source": "base64",
+                    "base64Bytes": 4096,
+                    "snapshotId": "readboard-image-smoke-base64-001",
+                    "boardSize": 19,
+                    "boardSizeVerified": True,
+                    "stoneCount": 12,
+                    "stoneCountVerified": True,
+                    "toPlay": "black",
+                    "toPlayVerified": True,
+                },
+            },
+            {
+                "name": "invalid_image_rejected",
+                "status": "pass",
+                "details": {
+                    "invalidImageRejected": True,
+                    "reportedAsSuccess": False,
+                    "errorKind": "invalid_image",
+                    "message": "invalid image payload rejected",
+                },
+            },
+            {
+                "name": "non_board_image_rejected",
+                "status": "pass",
+                "details": {
+                    "nonBoardImageRejected": True,
+                    "reportedAsSuccess": False,
+                    "errorKind": "no_board_detected",
+                    "message": "controlled non-board image rejected because no board was detected",
+                },
+            },
+            {
+                "name": "snapshot_verified",
+                "status": "pass",
+                "details": {
+                    "snapshotVerified": True,
+                    "snapshotId": "readboard-image-smoke-snapshot-001",
+                    "boardSize": 19,
+                    "boardSizeVerified": True,
+                    "stoneCount": 12,
+                    "stoneCountVerified": True,
+                    "toPlay": "black",
+                    "toPlayVerified": True,
+                },
+            },
+            {
+                "name": "protocol_regression",
+                "status": "pass",
+                "details": {
+                    "protocolRegressionVerified": True,
+                    "protocolLineCompatible": True,
+                    "snapshotMatchesProtocol": True,
+                },
+            },
+            {
+                "name": "scope_boundaries",
+                "status": "pass",
+                "details": {
+                    "fullOcrParity": False,
+                    "externalCaptureCovered": False,
+                    "boundary": "Controlled fixture image import MVP only; no arbitrary OCR or external capture claim.",
                 },
             },
         ],

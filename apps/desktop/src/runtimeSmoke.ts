@@ -56,7 +56,7 @@ type RuntimeSmokeCheckName =
   | "sidecar_probe_unavailable"
   | "protocol_line_sync"
   | "target_state_change_sync"
-  | "unsupported_ocr_path"
+  | "arbitrary_ocr_not_covered"
   | "external_client_not_covered"
   | "yike_controlled_fetch"
   | "fox_controlled_fetch"
@@ -196,7 +196,7 @@ type ReadboardLiveSmokeEvidence = {
   unavailableProbe?: Record<string, unknown>;
   protocolLineSync?: ReadboardProtocolLineEvidence;
   targetStateChangeSync?: ReadboardTargetStateChangeEvidence;
-  unsupportedOcrPath?: Record<string, unknown>;
+  arbitraryOcrNotCovered?: Record<string, unknown>;
   externalClientNotCovered?: Record<string, unknown>;
 };
 type ReadboardProtocolLineEvidence = {
@@ -806,38 +806,24 @@ async function runReadboardLivePhase(report: RuntimeSmokeReport) {
     return evidence.targetStateChangeSync;
   });
 
-  await check(report, "unsupported_ocr_path", async () => {
-    try {
-      await syncReadboardSidecarSnapshot({
-        endpoint,
-        snapshot_id: "runtime-ocr-unsupported",
-        image_path: "/tmp/lizzieyzy-readboard-ocr-smoke.png",
-        metadata: { source: "runtime_smoke", phase: "unsupported_ocr_path" },
-        timeout_ms: 100
-      });
-      throw new Error("Image-only readboard sync unexpectedly succeeded.");
-    } catch (error) {
-      const message = errorMessage(error);
-      if (message.includes("unexpectedly succeeded")) throw error;
-      if (!message.toLowerCase().includes("image") && !message.toLowerCase().includes("ocr")) {
-        throw new Error(`Unsupported OCR path did not name image/OCR boundary: ${message}`);
-      }
-      evidence.unsupportedOcrPath = {
-        observed: true,
-        unsupported: true,
-        boundary: "image OCR runtime unavailable",
-        messageIncludesBoundary: true,
-        message
-      };
-      return evidence.unsupportedOcrPath;
-    }
+  await check(report, "arbitrary_ocr_not_covered", async () => {
+    evidence.arbitraryOcrNotCovered = {
+      covered: false,
+      arbitraryScreenshotOcrCovered: false,
+      externalWindowCaptureCovered: false,
+      externalClientCaptureCovered: false,
+      controlledImageImportCoveredBy: "readboard_image_import_smoke",
+      scope: "readboard-live runtime protocol smoke covers sidecar probe, protocol-line sync, and target state changes; controlled image import is covered by a separate gate",
+      noImagePathRuntimeUnavailableExpectation: true
+    };
+    return evidence.arbitraryOcrNotCovered;
   });
 
   await check(report, "external_client_not_covered", async () => {
     evidence.externalClientNotCovered = {
       covered: false,
-      scope: "Tauri runtime command boundary plus protocol-line DTO sync only",
-      ocrCovered: false,
+      scope: "Tauri runtime command boundary plus protocol-line DTO sync only; controlled image import is covered separately",
+      arbitraryOcrCovered: false,
       externalClientCaptureCovered: false
     };
     return evidence.externalClientNotCovered;

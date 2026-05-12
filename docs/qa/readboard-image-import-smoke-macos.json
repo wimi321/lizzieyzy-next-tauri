@@ -1,0 +1,106 @@
+{
+  "schema": "lizzieyzy.readboard-image-import-smoke.v1",
+  "name": "readboard_image_import_smoke",
+  "status": "pass",
+  "platform": "macos",
+  "collectionMethod": "controlled_fixture_image_import",
+  "imagePathImportVerified": true,
+  "imageBase64ImportVerified": true,
+  "invalidImageRejected": true,
+  "nonBoardImageRejected": true,
+  "snapshotVerified": true,
+  "boardSizeVerified": true,
+  "stoneCountVerified": true,
+  "toPlayVerified": true,
+  "protocolRegressionVerified": true,
+  "fullOcrParity": false,
+  "externalCaptureCovered": false,
+  "checks": [
+    {
+      "name": "image_path_import",
+      "status": "pass",
+      "details": {
+        "imagePathImportVerified": true,
+        "source": "path",
+        "imagePath": "docs/qa/fixtures/readboard-controlled-board.png",
+        "imageSha256": "70cfecf5b5d5235e66a051c5208c2974fde34f0a28aaef5be33fcd8bc0f63d96",
+        "imageBytes": 522,
+        "snapshotId": "readboard-image-smoke-path-001",
+        "boardSize": 19,
+        "boardSizeVerified": true,
+        "stoneCount": 12,
+        "stoneCountVerified": true,
+        "toPlay": "black",
+        "toPlayVerified": true
+      }
+    },
+    {
+      "name": "image_base64_import",
+      "status": "pass",
+      "details": {
+        "imageBase64ImportVerified": true,
+        "source": "base64",
+        "base64Bytes": 4096,
+        "snapshotId": "readboard-image-smoke-base64-001",
+        "boardSize": 19,
+        "boardSizeVerified": true,
+        "stoneCount": 12,
+        "stoneCountVerified": true,
+        "toPlay": "black",
+        "toPlayVerified": true
+      }
+    },
+    {
+      "name": "invalid_image_rejected",
+      "status": "pass",
+      "details": {
+        "invalidImageRejected": true,
+        "reportedAsSuccess": false,
+        "errorKind": "invalid_image",
+        "message": "invalid image payload rejected"
+      }
+    },
+    {
+      "name": "non_board_image_rejected",
+      "status": "pass",
+      "details": {
+        "nonBoardImageRejected": true,
+        "reportedAsSuccess": false,
+        "errorKind": "no_board_detected",
+        "message": "controlled non-board image rejected because no board was detected"
+      }
+    },
+    {
+      "name": "snapshot_verified",
+      "status": "pass",
+      "details": {
+        "snapshotVerified": true,
+        "snapshotId": "readboard-image-smoke-snapshot-001",
+        "boardSize": 19,
+        "boardSizeVerified": true,
+        "stoneCount": 12,
+        "stoneCountVerified": true,
+        "toPlay": "black",
+        "toPlayVerified": true
+      }
+    },
+    {
+      "name": "protocol_regression",
+      "status": "pass",
+      "details": {
+        "protocolRegressionVerified": true,
+        "protocolLineCompatible": true,
+        "snapshotMatchesProtocol": true
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "fullOcrParity": false,
+        "externalCaptureCovered": false,
+        "boundary": "Scoped controlled image import MVP only; external window/client capture, arbitrary screenshot OCR, and full legacy OCR parity remain pending."
+      }
+    }
+  ]
+}

@@ -943,11 +943,9 @@ fn readboard_sidecar_sync_snapshot(
             .map(|outcome| outcome.into_dto())
             .map_err(readboard_error);
     }
-    Err(ProviderError {
-        kind: ProviderErrorKind::RuntimeUnavailable,
-        message: "readboard image OCR runtime is unavailable; recoverable unsupported OCR helper contract; provide sgf_text as an offline snapshot protocol line"
-            .to_string(),
-    })
+    readboard_sidecar::sync_snapshot_image(&request)
+        .map(|outcome| outcome.into_dto())
+        .map_err(readboard_error)
 }
 
 #[tauri::command]
@@ -4080,6 +4078,12 @@ fn readboard_error(error: readboard_sidecar::ReadboardSidecarError) -> ProviderE
         readboard_sidecar::ReadboardSidecarError::MissingLaunchTarget => {
             ProviderErrorKind::RuntimeUnavailable
         }
+        readboard_sidecar::ReadboardSidecarError::ImageRead { .. } => ProviderErrorKind::InvalidRequest,
+        readboard_sidecar::ReadboardSidecarError::ImageBase64(_)
+        | readboard_sidecar::ReadboardSidecarError::ImageDecode(_)
+        | readboard_sidecar::ReadboardSidecarError::ImageLowConfidence(_) => {
+            ProviderErrorKind::InvalidPayload
+        }
         readboard_sidecar::ReadboardSidecarError::EmptyProtocolLine
         | readboard_sidecar::ReadboardSidecarError::MissingField(_)
         | readboard_sidecar::ReadboardSidecarError::InvalidField { .. }
@@ -6111,7 +6115,7 @@ mod tests {
     }
 
     #[test]
-    fn readboard_sidecar_sync_snapshot_reports_image_runtime_unavailable() {
+    fn readboard_sidecar_sync_snapshot_reports_unreadable_image_path() {
         let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
             endpoint: Some("http://127.0.0.1:39081".to_string()),
             snapshot_id: Some("snapshot-1".to_string()),
@@ -6123,15 +6127,14 @@ mod tests {
         })
         .unwrap_err();
 
-        assert_eq!(sync_error.kind, ProviderErrorKind::RuntimeUnavailable);
+        assert_eq!(sync_error.kind, ProviderErrorKind::InvalidRequest);
         assert!(sync_error
             .message
-            .contains("readboard image OCR runtime is unavailable"));
-        assert!(sync_error.message.contains("recoverable unsupported"));
+            .contains("failed to read controlled readboard image"));
     }
 
     #[test]
-    fn readboard_sidecar_sync_snapshot_reports_base64_ocr_runtime_unavailable() {
+    fn readboard_sidecar_sync_snapshot_reports_invalid_image_base64_payload() {
         let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
             endpoint: None,
             snapshot_id: Some("snapshot-base64".to_string()),
@@ -6143,11 +6146,10 @@ mod tests {
         })
         .unwrap_err();
 
-        assert_eq!(sync_error.kind, ProviderErrorKind::RuntimeUnavailable);
+        assert_eq!(sync_error.kind, ProviderErrorKind::InvalidPayload);
         assert!(sync_error
             .message
-            .contains("readboard image OCR runtime is unavailable"));
-        assert!(sync_error.message.contains("recoverable unsupported"));
+            .contains("failed to decode controlled readboard image bytes"));
     }
 
     #[test]

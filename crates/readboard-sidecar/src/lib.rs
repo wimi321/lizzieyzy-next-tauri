@@ -202,6 +202,14 @@ impl ReadboardSyncOutcome {
 pub enum ReadboardSidecarError {
     #[error("readboard launch target is unavailable")]
     MissingLaunchTarget,
+    #[error("failed to read controlled readboard image `{path}`: {message}")]
+    ImageRead { path: String, message: String },
+    #[error("failed to decode controlled readboard image base64: {0}")]
+    ImageBase64(String),
+    #[error("failed to decode controlled readboard image bytes: {0}")]
+    ImageDecode(String),
+    #[error("controlled readboard image confidence is too low: {0}")]
+    ImageLowConfidence(String),
     #[error("readboard protocol line is empty")]
     EmptyProtocolLine,
     #[error("readboard protocol field `{0}` is missing")]
@@ -504,6 +512,52 @@ pub fn sync_snapshot_line(
     })
 }
 
+pub fn sync_snapshot_image(
+    request: &ReadboardSidecarSyncSnapshotRequest,
+) -> Result<ReadboardSyncOutcome, ReadboardSidecarError> {
+    let image_bytes = read_controlled_image_bytes(request)?;
+    sync_snapshot_image_bytes(request, &image_bytes)
+}
+
+pub fn sync_snapshot_image_bytes(
+    request: &ReadboardSidecarSyncSnapshotRequest,
+    image_bytes: &[u8],
+) -> Result<ReadboardSyncOutcome, ReadboardSidecarError> {
+    let snapshot = controlled_image_snapshot(image_bytes)?;
+    let local = ReadBoardLocalContext {
+        board_size: snapshot.board_size,
+        positions: Vec::new(),
+        current_index: 0,
+        main_end_index: 0,
+    };
+    let decision = decide_readboard_sync(&ReadBoardSyncInput {
+        first_sync: true,
+        snapshot: snapshot.clone(),
+        local,
+    })?;
+    let snapshot_id = request
+        .snapshot_id
+        .clone()
+        .unwrap_or_else(|| "controlled-image-snapshot".to_string());
+    let position = snapshot_to_position(&snapshot);
+    Ok(ReadboardSyncOutcome {
+        snapshot_id,
+        snapshot,
+        decision,
+        position,
+        warnings: vec![
+            ReadboardSidecarWarning::new(
+                ReadboardWarningCode::UnsupportedProvider,
+                "scoped controlled image import decoded a synthetic/controlled board image",
+            ),
+            ReadboardSidecarWarning::new(
+                ReadboardWarningCode::UnsupportedProvider,
+                "this is not full OCR and does not support arbitrary client screenshots",
+            ),
+        ],
+    })
+}
+
 pub fn snapshot_to_position(snapshot: &ReadBoardSnapshot) -> PositionDto {
     let move_number = snapshot
         .remote_move_number
@@ -786,6 +840,149 @@ fn ignored_field_warnings(fields: &BTreeMap<String, String>) -> Vec<ReadboardSid
         .collect()
 }
 
+fn read_controlled_image_bytes(
+    request: &ReadboardSidecarSyncSnapshotRequest,
+) -> Result<Vec<u8>, ReadboardSidecarError> {
+    if let Some(path) = request
+        .image_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return fs::read(path).map_err(|err| ReadboardSidecarError::ImageRead {
+            path: path.to_string(),
+            message: err.to_string(),
+        });
+    }
+    if let Some(encoded) = request
+        .image_base64
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        use base64::Engine;
+        return base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|err| ReadboardSidecarError::ImageBase64(err.to_string()));
+    }
+    Err(ReadboardSidecarError::ImageLowConfidence(
+        "image_path or image_base64 is required".to_string(),
+    ))
+}
+
+fn controlled_image_snapshot(image_bytes: &[u8]) -> Result<ReadBoardSnapshot, ReadboardSidecarError> {
+    let image = image::load_from_memory(image_bytes)
+        .map_err(|err| ReadboardSidecarError::ImageDecode(err.to_string()))?
+        .to_rgb8();
+    let (width, height) = image.dimensions();
+    let side = width.min(height);
+    if side < 95 {
+        return Err(ReadboardSidecarError::ImageLowConfidence(format!(
+            "image is too small for controlled 19x19 board sampling: {width}x{height}"
+        )));
+    }
+    let aspect_delta = width.abs_diff(height);
+    if aspect_delta.saturating_mul(100) > side.saturating_mul(8) {
+        return Err(ReadboardSidecarError::ImageLowConfidence(format!(
+            "controlled board image must be approximately square: {width}x{height}"
+        )));
+    }
+
+    const BOARD_SIZE: usize = 19;
+    let origin_x = (width - side) as f32 / 2.0;
+    let origin_y = (height - side) as f32 / 2.0;
+    let margin = (side as f32 * 0.055).max(4.0);
+    let spacing = (side as f32 - margin * 2.0) / (BOARD_SIZE as f32 - 1.0);
+    let sample_radius = (spacing * 0.22).clamp(2.0, 8.0);
+    let background = average_rgb(
+        &image,
+        origin_x + side as f32 * 0.12,
+        origin_y + side as f32 * 0.12,
+        sample_radius,
+    );
+    if !looks_like_controlled_board_background(background) {
+        return Err(ReadboardSidecarError::ImageLowConfidence(format!(
+            "controlled board background was not detected; sampled rgb={background:?}"
+        )));
+    }
+    let mut stones = Vec::with_capacity(BOARD_SIZE * BOARD_SIZE);
+    let mut occupied = 0usize;
+
+    for y in 0..BOARD_SIZE {
+        for x in 0..BOARD_SIZE {
+            let sample_x = origin_x + margin + x as f32 * spacing;
+            let sample_y = origin_y + margin + y as f32 * spacing;
+            let rgb = average_rgb(&image, sample_x, sample_y, sample_radius);
+            let stone = classify_controlled_stone(rgb);
+            if stone.is_some() {
+                occupied += 1;
+            }
+            stones.push(stone);
+        }
+    }
+
+    if occupied == 0 {
+        return Err(ReadboardSidecarError::ImageLowConfidence(
+            "no controlled black/white stones were detected".to_string(),
+        ));
+    }
+
+    Ok(ReadBoardSnapshot {
+        board_size: BOARD_SIZE as u8,
+        stones,
+        last_move: None,
+        remote_move_number: Some(occupied as u32),
+        provider: ReadBoardProvider {
+            kind: ReadBoardProviderKind::Generic,
+            source: Some("controlled_image_import".to_string()),
+        },
+    })
+}
+
+fn average_rgb(image: &image::RgbImage, x: f32, y: f32, radius: f32) -> [u8; 3] {
+    let (width, height) = image.dimensions();
+    let min_x = (x - radius).floor().max(0.0) as u32;
+    let max_x = (x + radius).ceil().min(width.saturating_sub(1) as f32) as u32;
+    let min_y = (y - radius).floor().max(0.0) as u32;
+    let max_y = (y + radius).ceil().min(height.saturating_sub(1) as f32) as u32;
+    let mut total = [0u32; 3];
+    let mut count = 0u32;
+    for py in min_y..=max_y {
+        for px in min_x..=max_x {
+            let pixel = image.get_pixel(px, py).0;
+            total[0] += u32::from(pixel[0]);
+            total[1] += u32::from(pixel[1]);
+            total[2] += u32::from(pixel[2]);
+            count += 1;
+        }
+    }
+    [
+        (total[0] / count.max(1)) as u8,
+        (total[1] / count.max(1)) as u8,
+        (total[2] / count.max(1)) as u8,
+    ]
+}
+
+fn classify_controlled_stone(rgb: [u8; 3]) -> Option<Color> {
+    let [r, g, b] = rgb;
+    let luma = (u16::from(r) * 54 + u16::from(g) * 183 + u16::from(b) * 19) / 256;
+    let spread = r.max(g).max(b) - r.min(g).min(b);
+    if luma < 80 {
+        Some(Color::Black)
+    } else if luma > 220 && spread < 38 {
+        Some(Color::White)
+    } else {
+        None
+    }
+}
+
+fn looks_like_controlled_board_background(rgb: [u8; 3]) -> bool {
+    let [r, g, b] = rgb;
+    let luma = (u16::from(r) * 54 + u16::from(g) * 183 + u16::from(b) * 19) / 256;
+    let spread = r.max(g).max(b) - r.min(g).min(b);
+    (90..=215).contains(&luma) && spread > 35
+}
+
 fn snapshot_black_to_play(snapshot: &ReadBoardSnapshot) -> bool {
     if let Some(marker) = snapshot.last_move {
         return marker.color == Color::White;
@@ -809,6 +1006,8 @@ fn color_to_dto(color: Color) -> PlayerColor {
 mod tests {
     use super::*;
     use go_core::{Point, ReadBoardLocalPosition, ReadBoardMarker};
+    use image::{ImageEncoder, Rgb, RgbImage};
+    use std::io::Cursor;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -938,6 +1137,117 @@ mod tests {
     }
 
     #[test]
+    fn sync_snapshot_image_path_decodes_controlled_board() {
+        let root = temp_root("image-path");
+        fs::create_dir_all(&root).unwrap();
+        let image_path = root.join("controlled-board.png");
+        let image_bytes = controlled_board_png();
+        fs::write(&image_path, image_bytes).unwrap();
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            snapshot_id: Some("path-snapshot".to_string()),
+            image_path: Some(image_path.display().to_string()),
+            ..Default::default()
+        };
+
+        let outcome = sync_snapshot_image(&request).unwrap();
+
+        let _ = fs::remove_dir_all(root);
+        assert_eq!(outcome.snapshot_id, "path-snapshot");
+        assert_eq!(outcome.position.board_size, 19);
+        assert_eq!(outcome.position.move_number, 3);
+        assert_eq!(outcome.position.stones.len(), 3);
+        assert!(outcome
+            .position
+            .stones
+            .iter()
+            .any(|stone| { stone.x == 3 && stone.y == 3 && stone.color == PlayerColor::Black }));
+        assert!(outcome
+            .position
+            .stones
+            .iter()
+            .any(|stone| { stone.x == 15 && stone.y == 15 && stone.color == PlayerColor::White }));
+        assert!(outcome
+            .warnings
+            .iter()
+            .any(|warning| warning.message.contains("controlled image import")));
+        assert!(outcome
+            .warnings
+            .iter()
+            .any(|warning| warning.message.contains("not full OCR")));
+    }
+
+    #[test]
+    fn sync_snapshot_image_base64_decodes_controlled_board() {
+        use base64::Engine;
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            snapshot_id: Some("base64-snapshot".to_string()),
+            image_base64: Some(base64::engine::general_purpose::STANDARD.encode(controlled_board_png())),
+            ..Default::default()
+        };
+
+        let outcome = sync_snapshot_image(&request).unwrap();
+
+        assert_eq!(outcome.snapshot_id, "base64-snapshot");
+        assert_eq!(outcome.position.board_size, 19);
+        assert_eq!(outcome.position.stones.len(), 3);
+    }
+
+    #[test]
+    fn sync_snapshot_image_rejects_bad_base64() {
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            image_base64: Some("not valid base64@@".to_string()),
+            ..Default::default()
+        };
+
+        let error = sync_snapshot_image(&request).unwrap_err();
+
+        assert!(matches!(error, ReadboardSidecarError::ImageBase64(_)));
+    }
+
+    #[test]
+    fn sync_snapshot_image_rejects_invalid_image_bytes() {
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            image_base64: Some("bm90LWEtcG5n".to_string()),
+            ..Default::default()
+        };
+
+        let error = sync_snapshot_image(&request).unwrap_err();
+
+        assert!(matches!(error, ReadboardSidecarError::ImageDecode(_)));
+    }
+
+    #[test]
+    fn sync_snapshot_image_rejects_low_confidence_non_board() {
+        use base64::Engine;
+        let image = RgbImage::from_pixel(180, 180, Rgb([240, 240, 240]));
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            image_base64: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes(image))),
+            ..Default::default()
+        };
+
+        let error = sync_snapshot_image(&request).unwrap_err();
+
+        assert!(matches!(error, ReadboardSidecarError::ImageLowConfidence(_)));
+    }
+
+    #[test]
+    fn sync_snapshot_image_reports_unreadable_path() {
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            image_path: Some(
+                temp_root("missing-image")
+                    .join("missing.png")
+                    .display()
+                    .to_string(),
+            ),
+            ..Default::default()
+        };
+
+        let error = sync_snapshot_image(&request).unwrap_err();
+
+        assert!(matches!(error, ReadboardSidecarError::ImageRead { .. }));
+    }
+
+    #[test]
     fn probe_reports_missing_candidates_with_structured_warnings() {
         let root = temp_root("probe-missing");
         fs::create_dir_all(&root).unwrap();
@@ -1049,6 +1359,59 @@ mod tests {
     fn temp_root(label: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         env::temp_dir().join(format!("readboard-sidecar-{label}-{nanos}"))
+    }
+
+    fn controlled_board_png() -> Vec<u8> {
+        let side = 400u32;
+        let mut image = RgbImage::from_pixel(side, side, Rgb([205, 154, 80]));
+        let margin = 22.0f32;
+        let spacing = (side as f32 - margin * 2.0) / 18.0;
+        for index in 0..19 {
+            let coord = (margin + index as f32 * spacing).round() as u32;
+            for pixel in margin as u32..=(side - margin as u32) {
+                image.put_pixel(coord, pixel, Rgb([45, 35, 20]));
+                image.put_pixel(pixel, coord, Rgb([45, 35, 20]));
+            }
+        }
+        draw_stone(&mut image, 3, 3, Rgb([12, 12, 12]));
+        draw_stone(&mut image, 10, 4, Rgb([12, 12, 12]));
+        draw_stone(&mut image, 15, 15, Rgb([245, 245, 240]));
+        png_bytes(image)
+    }
+
+    fn draw_stone(image: &mut RgbImage, board_x: u32, board_y: u32, color: Rgb<u8>) {
+        let side = image.width();
+        let margin = 22.0f32;
+        let spacing = (side as f32 - margin * 2.0) / 18.0;
+        let center_x = (margin + board_x as f32 * spacing).round() as i32;
+        let center_y = (margin + board_y as f32 * spacing).round() as i32;
+        let radius = 8i32;
+        for y in center_y - radius..=center_y + radius {
+            for x in center_x - radius..=center_x + radius {
+                if x < 0 || y < 0 || x >= side as i32 || y >= image.height() as i32 {
+                    continue;
+                }
+                let dx = x - center_x;
+                let dy = y - center_y;
+                if dx * dx + dy * dy <= radius * radius {
+                    image.put_pixel(x as u32, y as u32, color);
+                }
+            }
+        }
+    }
+
+    fn png_bytes(image: RgbImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut cursor = Cursor::new(&mut bytes);
+        image::codecs::png::PngEncoder::new(&mut cursor)
+            .write_image(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                image::ExtendedColorType::Rgb8,
+            )
+            .unwrap();
+        bytes
     }
 
     fn touch(path: &Path) {

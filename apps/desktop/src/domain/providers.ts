@@ -93,6 +93,39 @@ export type ReadboardSidecarSyncSnapshotResult = {
   warnings: string[];
 };
 
+export type LegacyImportCaptureHelperKind =
+  | "sgf_payload"
+  | "protocol_snapshot"
+  | "image_ocr"
+  | "external_window_capture"
+  | "external_client_capture";
+
+export type LegacyImportCaptureHelperStatus = "available" | "recoverable_unsupported" | "error";
+
+export type LegacyImportCaptureHelperRequest = {
+  kind: LegacyImportCaptureHelperKind;
+  payload?: string | null;
+  image_path?: string | null;
+  image_base64?: string | null;
+  window_title?: string | null;
+  client_name?: string | null;
+  process_id?: number | null;
+  timeout_ms?: number | null;
+  metadata: Record<string, string>;
+};
+
+export type LegacyImportCaptureHelperResult = {
+  kind: LegacyImportCaptureHelperKind;
+  status: LegacyImportCaptureHelperStatus;
+  title: string;
+  message: string;
+  recoverable: boolean;
+  imported: boolean;
+  boardReplacement: "none" | "imported" | "preview_only";
+  warnings: string[];
+  details: Record<string, string>;
+};
+
 export type YikeUrlDescriptor = {
   provider: "yike";
   room_kind: YikeRoomKind;

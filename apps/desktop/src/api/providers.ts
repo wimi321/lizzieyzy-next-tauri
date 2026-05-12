@@ -5,6 +5,8 @@ import type {
   ProviderFetchResult,
   ProviderImportRequest,
   ProviderImportResult,
+  LegacyImportCaptureHelperRequest,
+  LegacyImportCaptureHelperResult,
   ReadboardSidecarProbeRequest,
   ReadboardSidecarProbeResult,
   ReadboardSidecarSyncSnapshotRequest,
@@ -62,6 +64,17 @@ export async function syncReadboardSidecarSnapshot(
   return await invoke<ReadboardSidecarSyncSnapshotResult>("readboard_sidecar_sync_snapshot", { request });
 }
 
+export async function previewLegacyImportCaptureHelper(
+  request: LegacyImportCaptureHelperRequest
+): Promise<LegacyImportCaptureHelperResult> {
+  if (!isTauriRuntime()) return legacyImportCaptureHelperFallback(request);
+  try {
+    return await invoke<LegacyImportCaptureHelperResult>("legacy_import_capture_helper", { request });
+  } catch (error) {
+    return legacyImportCaptureHelperFallback(request, errorMessage(error));
+  }
+}
+
 function importProviderPayloadLocally(request: ProviderImportRequest): ProviderImportResult {
   const sgfText = extractSgfFromPayload(request.payload);
   const metadata = normalizeMetadata({
@@ -104,6 +117,60 @@ function parseYikeUrlLocally(rawUrl: string): YikeUrlDescriptor {
   const descriptor = parseYikeRoute(parsed);
   if (!descriptor) throw new Error(unsupportedYikePreviewMessage());
   return descriptor;
+}
+
+function legacyImportCaptureHelperFallback(
+  request: LegacyImportCaptureHelperRequest,
+  backendMessage?: string
+): LegacyImportCaptureHelperResult {
+  if (request.kind === "sgf_payload") {
+    return {
+      kind: request.kind,
+      status: "available",
+      title: "SGF/payload helper",
+      message: "Paste SGF or provider JSON into Payload / SGF, then use Import pasted payload.",
+      recoverable: true,
+      imported: false,
+      boardReplacement: "none",
+      warnings: ["This helper only describes the visible import path; it does not import until the user presses Import pasted payload."],
+      details: { surface: "provider-payload-textarea", action: "provider-import-payload" }
+    };
+  }
+  if (request.kind === "protocol_snapshot") {
+    return {
+      kind: request.kind,
+      status: "available",
+      title: "Protocol snapshot helper",
+      message: "Paste a readboard protocol line, preview the snapshot, then import only after a valid position is shown.",
+      recoverable: true,
+      imported: false,
+      boardReplacement: "none",
+      warnings: ["Protocol snapshot import is current-position only and does not reconstruct full game history."],
+      details: { surface: "readboard-protocol-textarea", action: "readboard-preview-snapshot" }
+    };
+  }
+
+  const isOcr = request.kind === "image_ocr";
+  return {
+    kind: request.kind,
+    status: "recoverable_unsupported",
+    title: isOcr ? "OCR/image helper unsupported" : "External window/client capture unsupported",
+    message: isOcr
+      ? "Image OCR import is not implemented in this build. No SGF was imported and the board was not replaced."
+      : "External window/client capture is not implemented in this build. No SGF was imported and the board was not replaced.",
+    recoverable: true,
+    imported: false,
+    boardReplacement: "none",
+    warnings: [
+      isOcr ? "OCR/image helper is a recoverable unsupported path." : "External window/client capture helper is a recoverable unsupported path.",
+      "No stale, guessed, or partial board replacement was applied.",
+      ...(backendMessage ? [`Backend helper contract unavailable: ${backendMessage}`] : [])
+    ],
+    details: {
+      boundary: isOcr ? "real_ocr_external_gate" : "real_external_capture_external_gate",
+      no_stale_board_replacement: "true"
+    }
+  };
 }
 
 function parseYikeRoute(parsed: URL): YikeUrlDescriptor | null {

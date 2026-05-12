@@ -864,6 +864,66 @@ textarea {
   border-top: 1px solid #e2e8f0;
 }
 
+.legacy-import-helper {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.legacy-helper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.legacy-helper-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.legacy-helper-card div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.legacy-helper-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legacy-helper-card p {
+  min-height: 44px;
+  margin: 0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.legacy-helper-card button {
+  height: 30px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.legacy-helper-result dd {
+  white-space: normal;
+}
+
 .provider-subheader {
   display: flex;
   justify-content: space-between;

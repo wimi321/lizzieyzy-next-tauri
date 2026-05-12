@@ -296,6 +296,153 @@ class SmokeUserFlowsTests(unittest.TestCase):
                 pending["provider_live_smoke"],
             )
 
+    def test_valid_multiplatform_packaging_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_multiplatform_packaging_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("multiplatform_packaging_smoke", pass_names)
+            self.assertNotIn("multiplatform_packaging_smoke", pending_names)
+
+    def test_missing_multiplatform_packaging_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn("scripts/smoke_multiplatform_packaging.py", pending["multiplatform_packaging_smoke"])
+
+    def test_partial_multiplatform_packaging_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_multiplatform_packaging_evidence()
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            evidence["checks"] = [check for check in checks if isinstance(check, dict) and check.get("name") != "linux_artifacts"]
+            write_json(root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn("missing required checks: linux_artifacts", pending["multiplatform_packaging_smoke"])
+
+    def test_invalid_schema_multiplatform_packaging_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_multiplatform_packaging_evidence()
+            evidence["schema"] = "lizzieyzy.multiplatform-packaging-smoke.v0"
+            write_json(root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn(smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_SCHEMA, pending["multiplatform_packaging_smoke"])
+
+    def test_invalid_checksum_multiplatform_packaging_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_multiplatform_packaging_evidence()
+            find_evidence_check(evidence, "checksums")["details"]["entries"][0]["value"] = "not-sha256"
+            write_json(root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn("checksums.entries[0].value must be a 64-character hex sha256", pending["multiplatform_packaging_smoke"])
+
+    def test_invalid_signing_multiplatform_packaging_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_multiplatform_packaging_evidence()
+            find_evidence_check(evidence, "signing_recorded")["details"]["windows"]["productionSigned"] = True
+            write_json(root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn("signing_recorded.windows.productionSigned must be false", pending["multiplatform_packaging_smoke"])
+
+    def test_invalid_dev_server_absent_multiplatform_packaging_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_multiplatform_packaging_evidence()
+            find_evidence_check(evidence, "dev_server_absent")["details"]["linux"] = False
+            write_json(root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn("dev_server_absent.linux must be true", pending["multiplatform_packaging_smoke"])
+
+    def test_placeholder_multiplatform_packaging_artifact_does_not_pass(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_multiplatform_packaging_evidence()
+            windows_artifacts = find_evidence_check(evidence, "windows_artifacts")["details"]["artifacts"]
+            assert isinstance(windows_artifacts, list)
+            windows_artifacts.clear()
+            windows_artifacts.append(
+                {
+                    "artifactPresent": False,
+                    "path": "workflow-contract/windows-placeholder",
+                    "sizeBytes": 0,
+                    "sha256": "d" * 64,
+                }
+            )
+            checksum_entries = find_evidence_check(evidence, "checksums")["details"]["entries"]
+            assert isinstance(checksum_entries, list)
+            for entry in checksum_entries:
+                assert isinstance(entry, dict)
+                if entry.get("platform") == "windows":
+                    entry["artifactPresent"] = False
+            write_json(root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("multiplatform_packaging_smoke", failures)
+            self.assertIn("multiplatform_packaging_smoke", pending)
+            self.assertIn(
+                "windows_artifacts.artifacts must include at least one artifactPresent true entry",
+                pending["multiplatform_packaging_smoke"],
+            )
+            self.assertIn("checksums.entries[1].artifactPresent must be true", pending["multiplatform_packaging_smoke"])
+            self.assertIn("checksums missing platforms: windows", pending["multiplatform_packaging_smoke"])
+
     def test_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -652,6 +799,13 @@ def write_valid_provider_live_evidence(root: Path) -> None:
     )
 
 
+def write_valid_multiplatform_packaging_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE,
+        valid_multiplatform_packaging_evidence(),
+    )
+
+
 def valid_katago_live_evidence() -> dict[str, object]:
     return {
         "schema": smoke_user_flows.KATAGO_LIVE_SMOKE_SCHEMA,
@@ -911,6 +1065,88 @@ def valid_provider_live_evidence() -> dict[str, object]:
                 },
             },
         ],
+    }
+
+
+def valid_multiplatform_packaging_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_SCHEMA,
+        "name": "multiplatform_packaging_smoke",
+        "status": "pass",
+        "checks": [
+            packaging_artifact_check("macos", "LizzieYzy.app.tar.gz", "ad_hoc", "a" * 64),
+            packaging_artifact_check("windows", "LizzieYzy-setup.exe", "unsigned", "b" * 64),
+            packaging_artifact_check("linux", "LizzieYzy.AppImage", "unsigned", "c" * 64),
+            {
+                "name": "signing_recorded",
+                "status": "pass",
+                "details": {
+                    "macos": {"checked": True, "status": "ad_hoc", "productionSigned": False},
+                    "windows": {"checked": True, "status": "unsigned", "productionSigned": False},
+                    "linux": {"checked": True, "status": "unsigned", "productionSigned": False},
+                    "officialSigningCovered": False,
+                },
+            },
+            {
+                "name": "dev_server_absent",
+                "status": "pass",
+                "details": {
+                    "macos": True,
+                    "windows": True,
+                    "linux": True,
+                    "viteDevServerReferenced": False,
+                },
+            },
+            {
+                "name": "checksums",
+                "status": "pass",
+                "details": {
+                    "entries": [
+                        {
+                            "platform": "macos",
+                            "artifact": "LizzieYzy.app.tar.gz",
+                            "artifactPresent": True,
+                            "algorithm": "sha256",
+                            "value": "a" * 64,
+                        },
+                        {
+                            "platform": "windows",
+                            "artifact": "LizzieYzy-setup.exe",
+                            "artifactPresent": True,
+                            "algorithm": "sha256",
+                            "value": "b" * 64,
+                        },
+                        {
+                            "platform": "linux",
+                            "artifact": "LizzieYzy.AppImage",
+                            "artifactPresent": True,
+                            "algorithm": "sha256",
+                            "value": "c" * 64,
+                        },
+                    ]
+                },
+            },
+        ],
+    }
+
+
+def packaging_artifact_check(platform: str, artifact_name: str, signing_status: str, checksum: str) -> dict[str, object]:
+    return {
+        "name": f"{platform}_artifacts",
+        "status": "pass",
+        "details": {
+            "platform": platform,
+            "artifacts": [
+                {
+                    "artifactPresent": True,
+                    "path": artifact_name,
+                    "kind": "installer",
+                    "sizeBytes": 1024,
+                    "sha256": checksum,
+                }
+            ],
+            "signing": {"checked": True, "status": signing_status, "productionSigned": False},
+        },
     }
 
 

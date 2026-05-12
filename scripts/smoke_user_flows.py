@@ -232,6 +232,28 @@ KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS = [
     "ocrExternalCaptureCovered",
     "windowsLinuxCovered",
 ]
+KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE = "docs/qa/katago-live-desktop-workflow-smoke-macos.json"
+KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_SCHEMA = "lizzieyzy.katago-live-desktop-workflow-smoke.v1"
+KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_CHECKS = [
+    "runtime_started",
+    "engine_assets_verified",
+    "analysis_progress_observed",
+    "cancel_observed",
+    "restart_after_cancel_observed",
+    "analysis_complete_observed",
+    "cache_saved",
+    "cache_hit_restored",
+    "stale_cache_prevented",
+    "engine_failure_observed",
+    "browser_fallback_excluded",
+    "scope_boundaries_recorded",
+]
+KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_FALSE_FIELDS = [
+    "fullLegacyAnalysisParity",
+    "providerReadboardParity",
+    "releaseParity",
+    "arbitraryOcrParity",
+]
 READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE = "docs/qa/readboard-tauri-runtime-smoke-macos.json"
 READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.readboard-tauri-runtime-smoke.v1"
 READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
@@ -996,6 +1018,7 @@ class UserFlowSmoke:
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
+        self.check_katago_live_desktop_workflow_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_readboard_image_import_smoke_evidence()
         self.check_provider_live_smoke_evidence()
@@ -1294,6 +1317,30 @@ class UserFlowSmoke:
         self.pass_(
             "katago_review_workflow_ux_smoke",
             "scoped KataGo review workflow UX resilience evidence passes with progress, cancel/restart, cache restore, failure, stale-guard, and boundary checks",
+        )
+
+    def check_katago_live_desktop_workflow_smoke_evidence(self) -> None:
+        evidence_path = self.path(KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "katago_live_desktop_workflow_smoke",
+                f"TODO gate: record scoped live KataGo desktop workflow evidence at {KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_katago_live_desktop_workflow_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "katago_live_desktop_workflow_smoke",
+                f"{KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE} is present but not valid scoped live KataGo desktop workflow PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "katago_live_desktop_workflow_smoke",
+            "scoped live KataGo desktop workflow evidence passes with progress, cancel/restart, completion, cache, stale-guard, failure, and boundary checks",
         )
 
     def check_readboard_live_smoke_evidence(self) -> None:
@@ -2043,7 +2090,7 @@ def validate_tauri_window_runtime_smoke_evidence(evidence: Any) -> list[str]:
         failures.append("tauriRuntimeObserved must be true")
     if evidence.get("tauriWindowScreenshotObserved") is not True:
         failures.append("tauriWindowScreenshotObserved must be true")
-    if evidence.get("browserFallbackUsed") is not False:
+    if katago_live_browser_fallback_used(evidence) is not False:
         failures.append("browserFallbackUsed must be false")
     if evidence.get("webviewDomClickCovered") is not False:
         failures.append("webviewDomClickCovered must be false")
@@ -3007,6 +3054,273 @@ def validate_katago_review_workflow_ux_boundaries(evidence: dict[str, Any]) -> l
                 failures.append("existing live evidence must not be reused to claim new live review workflow behavior")
         if source_evidence.get("existingLiveEvidenceUsedForNewLiveBehavior") is True:
             failures.append("existing live evidence must not be used for new live behavior claims")
+    return failures
+
+
+def validate_katago_live_desktop_workflow_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_SCHEMA:
+        failures.append(f"schema must be {KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if katago_live_desktop_observed(evidence) is not True:
+        failures.append("liveKataGoObserved must be true")
+    if katago_live_browser_fallback_used(evidence) is not False:
+        failures.append("browserFallbackUsed must be false")
+    for key in KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is True:
+            failures.append(f"{key} must be false")
+
+    check_by_name = katago_live_desktop_workflow_check_by_name(evidence)
+    raw_checks = evidence.get("checks")
+    runtime_checks = evidence.get("runtimeReport", {}).get("checks") if isinstance(evidence.get("runtimeReport"), dict) else None
+    if not isinstance(raw_checks, list) and not isinstance(runtime_checks, list):
+        failures.append("checks must be a list")
+    else:
+        missing = [name for name in KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+        for name in KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_CHECKS:
+            details = check_evidence(check_by_name.get(name))
+            if details is None:
+                failures.append(f"{name} evidence must be an object")
+            elif not details:
+                failures.append(f"{name} evidence must not be empty")
+
+    failures.extend(validate_katago_live_desktop_workflow_check_details(check_by_name))
+    failures.extend(validate_katago_live_desktop_workflow_boundaries(evidence, check_by_name))
+    return failures
+
+
+def katago_live_desktop_workflow_check_by_name(evidence: dict[str, Any]) -> dict[str, Any]:
+    checks: list[Any] = []
+    for candidate in (
+        evidence.get("checks"),
+        evidence.get("runtimeReport", {}).get("checks") if isinstance(evidence.get("runtimeReport"), dict) else None,
+    ):
+        if isinstance(candidate, list):
+            checks.extend(candidate)
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    aliases = {
+        "tauriRuntimeObserved": "runtime_started",
+        "realKataGoAssetsObserved": "engine_assets_verified",
+        "analysisProgressObserved": "analysis_progress_observed",
+        "cancelObserved": "cancel_observed",
+        "restartAfterCancelObserved": "restart_after_cancel_observed",
+        "analysisCompleteObserved": "analysis_complete_observed",
+        "cacheSaved": "cache_saved",
+        "cacheHitRestored": "cache_hit_restored",
+        "staleCachePrevented": "stale_cache_prevented",
+        "engineFailureObserved": "engine_failure_observed",
+    }
+    for alias, canonical in aliases.items():
+        if canonical not in check_by_name and alias in check_by_name:
+            check_by_name[canonical] = check_by_name[alias]
+    return check_by_name
+
+
+def katago_live_browser_fallback_used(evidence: dict[str, Any]) -> Any:
+    for candidate in (evidence, evidence.get("proofs"), evidence.get("boundaries")):
+        if isinstance(candidate, dict) and "browserFallbackUsed" in candidate:
+            return candidate.get("browserFallbackUsed")
+    return None
+
+
+def katago_live_desktop_observed(evidence: dict[str, Any]) -> bool:
+    if evidence.get("liveKataGoObserved") is True:
+        return True
+    if evidence.get("liveKataGoObserved") is False:
+        return False
+    proofs = evidence.get("proofs")
+    if isinstance(proofs, dict):
+        return proofs.get("tauriRuntimeObserved") is True and proofs.get("realKataGoAssetsObserved") is True
+    return False
+
+
+def validate_katago_live_desktop_workflow_check_details(check_by_name: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    failures.extend(validate_katago_runtime_started(check_by_name.get("runtime_started")))
+    failures.extend(validate_katago_live_desktop_assets(check_by_name.get("engine_assets_verified")))
+    progress = check_evidence(check_by_name.get("analysis_progress_observed"))
+    if isinstance(progress, dict):
+        if progress.get("progressObserved") is not True and progress.get("analysisProgressObserved") is not True:
+            failures.append("analysis_progress_observed.progressObserved must be true")
+        if not isinstance(first_present(progress, "jobId", "job_id", "activeJobId"), str):
+            failures.append("analysis_progress_observed must include job id")
+        if not positive_number(first_present(progress, "completed", "current", "framesObserved", "frameCount")):
+            failures.append("analysis_progress_observed must include positive progress/frame count")
+        if not positive_number(first_present(progress, "expected", "total", "totalPositions")):
+            failures.append("analysis_progress_observed must include positive expected/total count")
+
+    cancel = check_evidence(check_by_name.get("cancel_observed"))
+    if isinstance(cancel, dict):
+        if cancel.get("cancelRequested") is not True:
+            failures.append("cancel_observed must confirm cancellation was requested")
+        if cancel.get("cancelObserved") is not True and cancel.get("cancelConfirmed") is not True:
+            failures.append("cancel_observed must confirm cancellation was observed")
+
+    restart = check_evidence(check_by_name.get("restart_after_cancel_observed"))
+    if isinstance(restart, dict):
+        if restart.get("restartAfterCancelObserved") is not True and restart.get("restartObserved") is not True and restart.get("restarted") is not True:
+            failures.append("restart_after_cancel_observed.restartAfterCancelObserved must be true")
+        first_job = first_present(restart, "cancelledJobId", "firstJobId")
+        second_job = first_present(restart, "restartJobId", "secondJobId", "newJobId")
+        if not isinstance(second_job, str) or not second_job:
+            failures.append("restart_after_cancel_observed must include restart job id")
+        if isinstance(first_job, str) and isinstance(second_job, str) and first_job == second_job:
+            failures.append("restart_after_cancel_observed must use a new job id")
+
+    complete = check_evidence(check_by_name.get("analysis_complete_observed"))
+    if isinstance(complete, dict):
+        if (
+            complete.get("analysisCompleteObserved") is not True
+            and complete.get("completeObserved") is not True
+            and validate_katago_live_frame_candidate_winrate(complete, "analysis_complete_observed")
+        ):
+            failures.append("analysis_complete_observed.analysisCompleteObserved must be true")
+        failures.extend(validate_katago_live_frame_candidate_winrate(complete, "analysis_complete_observed"))
+
+    cache_saved = check_evidence(check_by_name.get("cache_saved"))
+    if isinstance(cache_saved, dict):
+        if cache_saved.get("cacheSaved") is not True and cache_saved.get("saved") is not True and not isinstance(cache_saved.get("saved"), dict):
+            failures.append("cache_saved.cacheSaved must be true")
+        if not isinstance(first_present(cache_saved, "cacheKey", "gameHash", "cacheHash", "recordId"), str) and not isinstance(cache_saved.get("key"), dict):
+            failures.append("cache_saved must include cache key/hash")
+
+    cache_hit = check_evidence(check_by_name.get("cache_hit_restored"))
+    if isinstance(cache_hit, dict):
+        if (
+            cache_hit.get("cacheHitRestored") is not True
+            and cache_hit.get("cacheRestored") is not True
+            and cache_hit.get("hitStatus") != "hit"
+        ):
+            failures.append("cache_hit_restored.cacheHitRestored must be true")
+        failures.extend(validate_katago_live_frame_candidate_winrate(cache_hit, "cache_hit_restored"))
+
+    stale = check_evidence(check_by_name.get("stale_cache_prevented"))
+    if isinstance(stale, dict):
+        if stale.get("staleCachePrevented") is not True and stale.get("observed") is not True:
+            failures.append("stale_cache_prevented.staleCachePrevented must be true")
+        if stale.get("observed") is not True and not any(
+            stale.get(key) is True or isinstance(stale.get(key), str)
+            for key in (
+                "jobIdGuard",
+                "generationGuard",
+                "hashGuard",
+                "cacheKeyGuard",
+                "changedSgfGameKey",
+                "changedSgfStatus",
+                "differentProfileStatus",
+            )
+        ):
+            failures.append("stale_cache_prevented must include jobIdGuard, generationGuard, hashGuard, or cacheKeyGuard")
+
+    failure = check_evidence(check_by_name.get("engine_failure_observed"))
+    if isinstance(failure, dict):
+        if failure.get("engineFailureObserved") is not True and failure.get("failureObserved") is not True and failure.get("observed") is not True:
+            failures.append("engine_failure_observed.engineFailureObserved must be true")
+        message = first_present(failure, "message", "error", "stderr", "statusText")
+        missing_required = failure.get("missingRequired")
+        if (not isinstance(message, str) or not message.strip()) and not (isinstance(missing_required, list) and missing_required):
+            failures.append("engine_failure_observed must include failure message")
+
+    fallback = check_evidence(check_by_name.get("browser_fallback_excluded"))
+    if isinstance(fallback, dict) and fallback.get("browserFallbackUsed") is not False:
+        failures.append("browser_fallback_excluded.browserFallbackUsed must be false")
+    return failures
+
+
+def validate_katago_live_desktop_assets(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["engine_assets_verified evidence must be an object"]
+    failures: list[str] = []
+    missing_required = evidence.get("missingRequired")
+    if isinstance(missing_required, list):
+        if missing_required:
+            failures.append("engine_assets_verified must have no missing required assets")
+        return failures
+    if evidence.get("observed") is True:
+        return failures
+    if evidence.get("engineExists") is not True and evidence.get("engineExecutable") is not True:
+        failures.append("engine_assets_verified must confirm engine exists")
+    if not positive_number(first_present(evidence, "modelBytes", "modelSizeBytes")):
+        failures.append("engine_assets_verified must include positive model bytes")
+    if not positive_number(first_present(evidence, "configBytes", "configSizeBytes")):
+        failures.append("engine_assets_verified must include positive config bytes")
+    return failures
+
+
+def validate_katago_live_frame_candidate_winrate(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    frame_count = first_present(evidence, "frameCount", "frames", "framesRestored", "restoredFrames")
+    if not positive_number(frame_count):
+        frames = evidence.get("frames")
+        if not isinstance(frames, list) or not frames:
+            failures.append(f"{label} must include frame evidence")
+    candidate_count = first_present(
+        evidence,
+        "candidateCount",
+        "candidateMoveCount",
+        "moveInfoCount",
+        "candidatesRestored",
+        "restoredCandidates",
+    )
+    if not positive_number(candidate_count):
+        candidates = first_present(evidence, "candidates", "moveInfos", "moveInfo")
+        first_frame = evidence.get("firstFrame")
+        first_frame_candidates = first_frame.get("candidates") if isinstance(first_frame, dict) else None
+        if not isinstance(candidates, list) and not positive_number(first_frame_candidates):
+            failures.append(f"{label} must include candidate evidence")
+    if not any(
+        key in evidence and evidence.get(key) not in (None, False, "")
+        for key in ("winrate", "winrateRestored", "restoredWinrateBlack", "rootWinrate", "hasWinrate", "rootInfo")
+    ):
+        first_frame = evidence.get("firstFrame")
+        if not isinstance(first_frame, dict) or first_present(first_frame, "winrate", "winrateBlack") in (None, False, ""):
+            failures.append(f"{label} must include winrate evidence")
+    return failures
+
+
+def validate_katago_live_desktop_workflow_boundaries(
+    evidence: dict[str, Any], check_by_name: dict[str, Any]
+) -> list[str]:
+    failures: list[str] = []
+    candidates: list[Any] = [evidence.get("boundaries"), check_evidence(check_by_name.get("scope_boundaries_recorded"))]
+    valid_boundary = False
+    for boundaries in candidates:
+        if not isinstance(boundaries, dict):
+            continue
+        boundary_failures: list[str] = []
+        if "browserFallbackUsed" in boundaries and boundaries.get("browserFallbackUsed") is not False:
+            failures.append("boundaries.browserFallbackUsed must be false")
+        for key in KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_FALSE_FIELDS:
+            if boundaries.get(key) is not False:
+                boundary_failures.append(f"boundaries.{key} must be false")
+            if boundaries.get(key) is True:
+                failures.append(f"boundaries.{key} must be false")
+        if not boundary_failures:
+            valid_boundary = True
+    if not valid_boundary:
+        failures.append(
+            "boundaries must include fullLegacyAnalysisParity/providerReadboardParity/releaseParity/arbitraryOcrParity=false"
+        )
     return failures
 
 

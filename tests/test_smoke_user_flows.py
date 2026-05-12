@@ -59,6 +59,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
+            self.assertIn("katago_live_desktop_workflow_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("readboard_image_import_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
@@ -1109,6 +1110,86 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("katago_review_workflow_ux_smoke", failures)
             self.assertIn("KataGo review workflow UX source facts are broken", failures["katago_review_workflow_ux_smoke"])
             self.assertIn("activeJobIdRef.current === jobId", failures["katago_review_workflow_ux_smoke"])
+
+    def test_valid_katago_live_desktop_workflow_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_katago_live_desktop_workflow_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("katago_live_desktop_workflow_smoke", pass_names)
+            self.assertNotIn("katago_live_desktop_workflow_smoke", pending_names)
+
+    def test_katago_live_desktop_workflow_requires_required_check(self) -> None:
+        self.assert_invalid_katago_live_desktop_workflow_pending(
+            lambda evidence: evidence.__setitem__(
+                "checks",
+                [check for check in evidence["checks"] if check["name"] != "cache_hit_restored"],
+            ),
+            "missing required checks: cache_hit_restored",
+        )
+
+    def test_katago_live_desktop_workflow_rejects_browser_fallback(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["browserFallbackUsed"] = True
+            find_evidence_check(evidence, "browser_fallback_excluded")["details"]["browserFallbackUsed"] = True
+
+        self.assert_invalid_katago_live_desktop_workflow_pending(
+            mutate,
+            "browserFallbackUsed must be false",
+        )
+
+    def test_katago_live_desktop_workflow_requires_live_katago_observed(self) -> None:
+        self.assert_invalid_katago_live_desktop_workflow_pending(
+            lambda evidence: evidence.__setitem__("liveKataGoObserved", False),
+            "liveKataGoObserved must be true",
+        )
+
+    def test_katago_live_desktop_workflow_rejects_cache_hit_without_frame_candidate_winrate(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            cache_hit = find_evidence_check(evidence, "cache_hit_restored")["details"]
+            cache_hit.pop("frameCount", None)
+            cache_hit.pop("candidateCount", None)
+            cache_hit.pop("winrateRestored", None)
+
+        self.assert_invalid_katago_live_desktop_workflow_pending(
+            mutate,
+            "cache_hit_restored must include frame evidence",
+        )
+
+    def test_katago_live_desktop_workflow_rejects_overclaim(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullLegacyAnalysisParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["releaseParity"] = True
+
+        self.assert_invalid_katago_live_desktop_workflow_pending(
+            mutate,
+            "fullLegacyAnalysisParity must be false",
+        )
+
+    def assert_invalid_katago_live_desktop_workflow_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_live_desktop_workflow_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_live_desktop_workflow_smoke", failures)
+            self.assertIn("katago_live_desktop_workflow_smoke", pending)
+            self.assertIn(expected_detail, pending["katago_live_desktop_workflow_smoke"])
 
     def test_valid_readboard_tauri_runtime_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2375,6 +2456,13 @@ def write_valid_katago_review_workflow_ux_evidence(root: Path) -> None:
     )
 
 
+def write_valid_katago_live_desktop_workflow_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE,
+        valid_katago_live_desktop_workflow_evidence(),
+    )
+
+
 def write_valid_readboard_tauri_runtime_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE,
@@ -2659,6 +2747,133 @@ def valid_katago_review_workflow_ux_evidence() -> dict[str, object]:
             "referencedEvidence": [],
             "existingLiveEvidenceUsedForNewLiveBehavior": False,
         },
+    }
+
+
+def valid_katago_live_desktop_workflow_evidence() -> dict[str, object]:
+    false_boundaries = {
+        key: False
+        for key in smoke_user_flows.KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_FALSE_FIELDS
+    }
+    return {
+        "schema": smoke_user_flows.KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_SCHEMA,
+        "name": "katago_live_desktop_workflow_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "tauri_live_katago_desktop_workflow",
+        "liveKataGoObserved": True,
+        "browserFallbackUsed": False,
+        **false_boundaries,
+        "runtimeMetadata": {
+            "enginePath": "<katago-engine>",
+            "modelPath": "<katago-model>",
+            "configPath": "<katago-config>",
+            "katagoVersion": "KataGo fake",
+        },
+        "checks": [
+            {
+                "name": "runtime_started",
+                "status": "pass",
+                "details": {"tauriInternals": True, "platform": "MacIntel"},
+            },
+            {
+                "name": "engine_assets_verified",
+                "status": "pass",
+                "details": {"engineExecutable": True, "modelBytes": 12, "configBytes": 10},
+            },
+            {
+                "name": "analysis_progress_observed",
+                "status": "pass",
+                "details": {
+                    "analysisProgressObserved": True,
+                    "jobId": "katago-live-job-1",
+                    "completed": 1,
+                    "expected": 3,
+                    "frameCount": 1,
+                },
+            },
+            {
+                "name": "cancel_observed",
+                "status": "pass",
+                "details": {
+                    "jobId": "katago-live-job-1",
+                    "cancelRequested": True,
+                    "cancelObserved": True,
+                },
+            },
+            {
+                "name": "restart_after_cancel_observed",
+                "status": "pass",
+                "details": {
+                    "restartAfterCancelObserved": True,
+                    "cancelledJobId": "katago-live-job-1",
+                    "restartJobId": "katago-live-job-2",
+                },
+            },
+            {
+                "name": "analysis_complete_observed",
+                "status": "pass",
+                "details": {
+                    "analysisCompleteObserved": True,
+                    "jobId": "katago-live-job-2",
+                    "frameCount": 3,
+                    "candidateCount": 2,
+                    "winrate": 0.51,
+                },
+            },
+            {
+                "name": "cache_saved",
+                "status": "pass",
+                "details": {
+                    "cacheSaved": True,
+                    "cacheKey": "game-cache-key-1",
+                    "frameCount": 3,
+                },
+            },
+            {
+                "name": "cache_hit_restored",
+                "status": "pass",
+                "details": {
+                    "cacheHitRestored": True,
+                    "cacheKey": "game-cache-key-1",
+                    "frameCount": 3,
+                    "candidateCount": 2,
+                    "winrateRestored": 0.51,
+                },
+            },
+            {
+                "name": "stale_cache_prevented",
+                "status": "pass",
+                "details": {
+                    "staleCachePrevented": True,
+                    "jobIdGuard": True,
+                    "hashGuard": True,
+                },
+            },
+            {
+                "name": "engine_failure_observed",
+                "status": "pass",
+                "details": {
+                    "engineFailureObserved": True,
+                    "message": "Live KataGo workflow smoke observed missing model failure",
+                },
+            },
+            {
+                "name": "browser_fallback_excluded",
+                "status": "pass",
+                "details": {"browserFallbackUsed": False},
+            },
+            {
+                "name": "scope_boundaries_recorded",
+                "status": "pass",
+                "details": {
+                    **false_boundaries,
+                    "browserFallbackUsed": False,
+                    "boundary": "Scoped live desktop workflow only; no full analysis/provider/readboard/release/OCR parity claims.",
+                },
+            },
+        ],
+        "boundaries": {**false_boundaries, "browserFallbackUsed": False},
     }
 
 

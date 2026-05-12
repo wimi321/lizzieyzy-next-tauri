@@ -1,4 +1,5 @@
 export type LegacyActionSource = "menu" | "toolbar" | "keyboard" | "native-menu";
+export type LegacyActionGroup = "File" | "Game" | "Analysis" | "View" | "Engine" | "Tools" | "Help";
 
 export type LegacyMenuTarget =
   | "candidates"
@@ -30,29 +31,31 @@ export type LegacyActionId =
 
 export type LegacyActionDefinition = {
   id: LegacyActionId;
-  group: "File" | "Game" | "Analysis" | "View" | "Engine" | "Tools" | "Help";
+  group: LegacyActionGroup;
   label: string;
+  menuPath: readonly [LegacyActionGroup, string];
   target?: LegacyMenuTarget;
+  targetSelector?: string;
   shortcut?: string;
 };
 
 export const legacyActionMatrix: LegacyActionDefinition[] = [
-  { id: "file.open", group: "File", label: "Open", shortcut: "Mod+O" },
-  { id: "file.save", group: "File", label: "Save", shortcut: "Mod+S" },
-  { id: "file.saveAs", group: "File", label: "Save As", shortcut: "Mod+Shift+S" },
-  { id: "file.importSgf", group: "File", label: "Import SGF", shortcut: "Mod+I" },
-  { id: "game.loadSample", group: "Game", label: "Load sample", shortcut: "Mod+Shift+L" },
-  { id: "game.parseSgf", group: "Game", label: "Parse SGF", shortcut: "Mod+Enter" },
-  { id: "analysis.runReview", group: "Analysis", label: "Run review", shortcut: "Mod+R" },
-  { id: "analysis.katagoPanel", group: "Analysis", label: "KataGo panel", target: "profiles", shortcut: "Mod+Shift+K" },
-  { id: "view.candidates", group: "View", label: "Candidates", target: "candidates", shortcut: "Mod+1" },
-  { id: "view.ownership", group: "View", label: "Ownership", target: "ownership", shortcut: "Mod+2" },
-  { id: "view.policy", group: "View", label: "Policy", target: "policy", shortcut: "Mod+3" },
-  { id: "engine.profiles", group: "Engine", label: "Profiles", target: "profiles", shortcut: "Mod+4" },
-  { id: "engine.assets", group: "Engine", label: "Assets", target: "assets", shortcut: "Mod+5" },
-  { id: "tools.providers", group: "Tools", label: "Providers", target: "providers", shortcut: "Mod+6" },
-  { id: "tools.preferences", group: "Tools", label: "Preferences", target: "preferences", shortcut: "Mod+7" },
-  { id: "help.backendStatus", group: "Help", label: "Backend status", target: "backend-status", shortcut: "Mod+/" }
+  { id: "file.open", group: "File", label: "Open", menuPath: ["File", "Open"], targetSelector: "[data-testid='toolbar-open-sgf']", shortcut: "Mod+O" },
+  { id: "file.save", group: "File", label: "Save", menuPath: ["File", "Save"], targetSelector: "[data-testid='toolbar-save-sgf']", shortcut: "Mod+S" },
+  { id: "file.saveAs", group: "File", label: "Save As", menuPath: ["File", "Save As"], targetSelector: "[data-testid='toolbar-save-as-sgf']", shortcut: "Mod+Shift+S" },
+  { id: "file.importSgf", group: "File", label: "Import SGF", menuPath: ["File", "Import SGF"], targetSelector: "[data-testid='toolbar-import-sgf']", shortcut: "Mod+I" },
+  { id: "game.loadSample", group: "Game", label: "Load sample", menuPath: ["Game", "Load sample"], targetSelector: "[data-testid='toolbar-load-sample']", shortcut: "Mod+Shift+L" },
+  { id: "game.parseSgf", group: "Game", label: "Parse SGF", menuPath: ["Game", "Parse SGF"], targetSelector: "[data-testid='toolbar-parse-sgf']", shortcut: "Mod+Enter" },
+  { id: "analysis.runReview", group: "Analysis", label: "Run review", menuPath: ["Analysis", "Run review"], targetSelector: "[data-testid='toolbar-run-review']", shortcut: "Mod+R" },
+  { id: "analysis.katagoPanel", group: "Analysis", label: "KataGo panel", menuPath: ["Analysis", "KataGo panel"], target: "profiles", targetSelector: "[data-testid='engine-setup-panel']", shortcut: "Mod+Shift+K" },
+  { id: "view.candidates", group: "View", label: "Candidates", menuPath: ["View", "Candidates"], target: "candidates", targetSelector: "[data-testid='analysis-panel']", shortcut: "Mod+1" },
+  { id: "view.ownership", group: "View", label: "Ownership", menuPath: ["View", "Ownership"], target: "ownership", targetSelector: "[data-testid='legacy-board-pane']", shortcut: "Mod+2" },
+  { id: "view.policy", group: "View", label: "Policy", menuPath: ["View", "Policy"], target: "policy", targetSelector: "[data-testid='analysis-panel']", shortcut: "Mod+3" },
+  { id: "engine.profiles", group: "Engine", label: "Profiles", menuPath: ["Engine", "Profiles"], target: "profiles", targetSelector: "[data-testid='engine-setup-panel']", shortcut: "Mod+4" },
+  { id: "engine.assets", group: "Engine", label: "Assets", menuPath: ["Engine", "Assets"], target: "assets", targetSelector: "[data-testid='engine-check-assets']", shortcut: "Mod+5" },
+  { id: "tools.providers", group: "Tools", label: "Providers", menuPath: ["Tools", "Providers"], target: "providers", targetSelector: "[data-testid='provider-panel']", shortcut: "Mod+6" },
+  { id: "tools.preferences", group: "Tools", label: "Preferences", menuPath: ["Tools", "Preferences"], target: "preferences", targetSelector: "[data-testid='preferences-panel']", shortcut: "Mod+7" },
+  { id: "help.backendStatus", group: "Help", label: "Backend status", menuPath: ["Help", "Backend status"], target: "backend-status", targetSelector: "[data-testid='legacy-statusbar']", shortcut: "Mod+/" }
 ];
 
 const legacyActionById = new Map<LegacyActionId, LegacyActionDefinition>(
@@ -152,6 +155,21 @@ export function normalizeLegacyActionId(value: unknown): LegacyActionId | null {
 export function legacyActionLabel(id: LegacyActionId): string {
   const action = legacyActionDefinition(id);
   return `${action.group}:${action.label}`;
+}
+
+export function legacyActionMenuPath(action: LegacyActionDefinition): string {
+  return action.menuPath.join(" > ");
+}
+
+export function legacyActionTestId(id: LegacyActionId): string {
+  return `legacy-action-${id.replaceAll(".", "-")}`;
+}
+
+export function legacyShortcutAria(shortcut: string | undefined): string | undefined {
+  if (!shortcut) return undefined;
+  const mac = shortcut.replace("Mod", "Meta");
+  const control = shortcut.replace("Mod", "Control");
+  return mac === control ? mac : `${mac} ${control}`;
 }
 
 export function shouldIgnoreLegacyShortcut(target: EventTarget | null): boolean {

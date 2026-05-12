@@ -56,6 +56,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("tauri_window_runtime_smoke", pending_names)
             self.assertIn("tauri_webview_dom_click_smoke", pending_names)
             self.assertIn("legacy_layout_parity_smoke", pending_names)
+            self.assertIn("legacy_shortcut_layout_evidence", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
@@ -522,6 +523,41 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_layout_parity_smoke", pass_names)
             self.assertNotIn("legacy_layout_parity_smoke", pending_names)
 
+    def test_valid_legacy_shortcut_layout_evidence_passes_optional_runtime_gate(self) -> None:
+        failures = smoke_user_flows.validate_legacy_shortcut_layout_evidence(valid_legacy_shortcut_layout_evidence())
+        self.assertEqual([], failures)
+
+    def test_runner_shaped_legacy_shortcut_layout_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_legacy_layout_parity_evidence(root)
+            write_json(root / smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_EVIDENCE, runner_shaped_legacy_shortcut_layout_evidence())
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("legacy_shortcut_layout_evidence", pass_names)
+            self.assertNotIn("legacy_shortcut_layout_evidence", pending_names)
+
+    def test_legacy_shortcut_layout_current_static_summary_shape_is_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_json(root / smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_EVIDENCE, static_only_legacy_shortcut_layout_evidence())
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("legacy_shortcut_layout_evidence", failures)
+            self.assertIn("legacy_shortcut_layout_evidence", pending)
+            self.assertIn("runtimeObserved must be true", pending["legacy_shortcut_layout_evidence"])
+            self.assertIn("evidence must not be static-source-only", pending["legacy_shortcut_layout_evidence"])
+
     def test_legacy_layout_parity_requires_required_screenshots(self) -> None:
         def mutate(evidence: dict[str, object]) -> None:
             screenshots = evidence["screenshots"]
@@ -531,6 +567,58 @@ class SmokeUserFlowsTests(unittest.TestCase):
         self.assert_invalid_legacy_layout_parity_pending(
             mutate,
             "screenshots missing engine/preferences",
+        )
+
+    def test_legacy_shortcut_layout_requires_runtime_observed(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["runtimeObserved"] = False
+            evidence["sourceStaticOnly"] = True
+            evidence["collectionMethod"] = "source_static_only"
+
+        self.assert_invalid_legacy_shortcut_layout_pending(
+            mutate,
+            "runtimeObserved must be true",
+        )
+
+    def test_legacy_shortcut_layout_requires_action_matrix_shortcuts(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["shortcutObservedCount"] = 3
+            matrix = evidence["actionMatrix"]
+            assert isinstance(matrix, list)
+            first = matrix[0]
+            assert isinstance(first, dict)
+            first.pop("shortcut", None)
+
+        self.assert_invalid_legacy_shortcut_layout_pending(
+            mutate,
+            "shortcutObservedCount must be at least 4",
+        )
+
+    def test_legacy_shortcut_layout_requires_input_editing_safety(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            matrix = evidence["actionMatrix"]
+            assert isinstance(matrix, list)
+            first = matrix[0]
+            assert isinstance(first, dict)
+            first["inputEditingBehavior"] = {"inputEditingSafe": False, "triggeredWhileEditing": True}
+
+        self.assert_invalid_legacy_shortcut_layout_pending(
+            mutate,
+            "actionMatrix[0].inputEditingBehavior must prove input editing safety",
+        )
+
+    def test_legacy_shortcut_layout_requires_screenshot_runtime_fields(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first.pop("capturedAfterActionId", None)
+            first.pop("source", None)
+
+        self.assert_invalid_legacy_shortcut_layout_pending(
+            mutate,
+            "screenshots[0].source must be non-empty",
         )
 
     def test_legacy_layout_parity_rejects_local_absolute_screenshot_path(self) -> None:
@@ -589,6 +677,24 @@ class SmokeUserFlowsTests(unittest.TestCase):
             "fullLegacyUiParity must be false",
         )
 
+    def test_legacy_shortcut_layout_rejects_overclaim_true(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullLegacyParity"] = True
+            evidence["fullShortcutParity"] = True
+            evidence["fullLayoutParity"] = True
+            evidence["pixelPerfectLayoutParity"] = True
+            evidence["osNativeMenuParity"] = True
+            evidence["nativeDialogParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullLayoutParity"] = True
+            boundaries["nativeDialogParity"] = True
+
+        self.assert_invalid_legacy_shortcut_layout_pending(
+            mutate,
+            "fullLegacyParity must be false",
+        )
+
     def assert_invalid_legacy_layout_parity_pending(self, mutate_evidence, expected_detail: str) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -604,6 +710,12 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("legacy_layout_parity_smoke", failures)
             self.assertIn("legacy_layout_parity_smoke", pending)
             self.assertIn(expected_detail, pending["legacy_layout_parity_smoke"])
+
+    def assert_invalid_legacy_shortcut_layout_pending(self, mutate_evidence, expected_detail: str) -> None:
+        evidence = valid_legacy_shortcut_layout_evidence()
+        mutate_evidence(evidence)
+        failures = smoke_user_flows.validate_legacy_shortcut_layout_evidence(evidence)
+        self.assertIn(expected_detail, "; ".join(failures))
 
     def test_valid_installed_macos_app_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -4331,6 +4443,80 @@ def valid_tauri_webview_dom_click_evidence() -> dict[str, object]:
     }
 
 
+def valid_legacy_action_shortcut_matrix() -> list[dict[str, object]]:
+    entries = [
+        ("file.open", "File/Open", "Mod+O", "[data-testid='toolbar-open-sgf']"),
+        ("game.loadSample", "Game/Load sample", "Mod+Shift+L", "[data-testid='toolbar-load-sample']"),
+        ("game.parseSgf", "Game/Parse SGF", "Mod+Enter", "[data-testid='toolbar-parse-sgf']"),
+        ("analysis.runReview", "Analysis/Run review", "Mod+R", "[data-testid='toolbar-run-review']"),
+        ("view.candidates", "View/Candidates", "Mod+1", "[data-testid='legacy-board-pane']"),
+        ("engine.profiles", "Engine/Profiles", "Mod+4", "[data-testid='engine-setup-panel']"),
+        ("tools.providers", "Tools/Providers", "Mod+6", "[data-testid='provider-panel']"),
+        ("tools.preferences", "Tools/Preferences", "Mod+7", "[data-testid='preferences-panel']"),
+        ("help.backendStatus", "Help/Backend status", "Mod+/", "[data-testid='legacy-backend-status']"),
+    ]
+    return [
+        {
+            "actionId": action_id,
+            "menuPath": menu_path,
+            "shortcut": shortcut,
+            "targetSelector": target_selector,
+            "inputEditingBehavior": {
+                "inputEditingSafe": True,
+                "suppressedInTextInput": True,
+                "status": "pass",
+            },
+            "disabledOrAvailability": "available or safely disabled depending current document state",
+            "observedBy": ["runtime-click", "runtime-shortcut", "visible-target"],
+            "visibleTargetAssertion": {
+                "label": menu_path,
+                "selector": target_selector,
+                "visible": True,
+                "status": "pass",
+            },
+        }
+        for action_id, menu_path, shortcut, target_selector in entries
+    ]
+
+
+def valid_legacy_shortcut_layout_evidence() -> dict[str, object]:
+    evidence = valid_legacy_layout_parity_evidence()
+    evidence["schema"] = smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_SCHEMA
+    evidence["name"] = "legacy_shortcut_layout_evidence"
+    return evidence
+
+
+def runner_shaped_legacy_shortcut_layout_evidence() -> dict[str, object]:
+    evidence = runner_shaped_legacy_layout_parity_evidence()
+    evidence["schema"] = smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_SCHEMA
+    evidence["name"] = "legacy_shortcut_layout_evidence"
+    return evidence
+
+
+def static_only_legacy_shortcut_layout_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_SCHEMA,
+        "name": "legacy_shortcut_layout_evidence",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "source_static_plus_browser_rendered_evidence_summary",
+        "runtimeSource": "source_static_summary",
+        "sourceFacts": {"legacyShell": True},
+        "actionMatrix": [],
+        "browserEvidence": {"visibleTargets": ["legacy shell"]},
+        "screenshot": {"path": "docs/qa/screenshots/legacy-shortcut-layout-summary.png", "sha256": "a" * 64},
+        "checks": [{"name": "summary", "status": "pass"}],
+        "boundaries": {
+            "fullLegacyParity": False,
+            "fullShortcutParity": False,
+            "fullLayoutParity": False,
+            "pixelPerfectLayoutParity": False,
+            "osNativeMenuParity": False,
+            "nativeDialogParity": False,
+        },
+    }
+
+
 def valid_legacy_layout_parity_evidence() -> dict[str, object]:
     viewports = [
         {"name": "default", "width": 1280, "height": 840},
@@ -4342,30 +4528,45 @@ def valid_legacy_layout_parity_evidence() -> dict[str, object]:
             "label": "default review 1280x840",
             "path": "docs/qa/screenshots/layout-default-review.png",
             "sha256": "1" * 64,
+            "source": "runtime screenshot",
+            "sizeBytes": 12345,
+            "capturedAfterActionId": "view.candidates",
             "viewport": {"width": 1280, "height": 840},
         },
         {
             "label": "SGF editing narrow desktop",
             "path": "docs/qa/screenshots/layout-sgf-editing.png",
             "sha256": "2" * 64,
+            "source": "runtime screenshot",
+            "sizeBytes": 12345,
+            "capturedAfterActionId": "game.parseSgf",
             "viewport": {"width": 900, "height": 840},
         },
         {
             "label": "KataGo analysis short window",
             "path": "docs/qa/screenshots/layout-katago-analysis.png",
             "sha256": "3" * 64,
+            "source": "runtime screenshot",
+            "sizeBytes": 12345,
+            "capturedAfterActionId": "analysis.runReview",
             "viewport": {"width": 1280, "height": 620},
         },
         {
             "label": "provider/readboard layout",
             "path": "docs/qa/screenshots/layout-provider-readboard.png",
             "sha256": "4" * 64,
+            "source": "runtime screenshot",
+            "sizeBytes": 12345,
+            "capturedAfterActionId": "tools.providers",
             "viewport": {"width": 1280, "height": 840},
         },
         {
             "label": "engine/preferences layout",
             "path": "docs/qa/screenshots/layout-engine-preferences.png",
             "sha256": "5" * 64,
+            "source": "runtime screenshot",
+            "sizeBytes": 12345,
+            "capturedAfterActionId": "tools.preferences",
             "viewport": {"width": 900, "height": 840},
         },
     ]
@@ -4388,12 +4589,22 @@ def valid_legacy_layout_parity_evidence() -> dict[str, object]:
         "releaseParity": False,
         "ocrCaptureParity": False,
         "fullLegacyParity": False,
+        "fullLayoutParity": False,
+        "pixelPerfectLayoutParity": False,
+        "osNativeMenuParity": False,
+        "nativeDialogParity": False,
     }
     return {
         "schema": smoke_user_flows.LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA,
         "name": "legacy_layout_parity_smoke",
         "status": "pass",
         "platform": "macos",
+        "runtimeObserved": True,
+        "sourceStaticOnly": False,
+        "clickedObservedCount": 5,
+        "shortcutObservedCount": 5,
+        "visibleTargetCount": 10,
+        "actionMatrix": valid_legacy_action_shortcut_matrix(),
         "screenshots": screenshots,
         "viewports": viewports,
         "visibleAssertions": visible_assertions,
@@ -4419,6 +4630,10 @@ def runner_shaped_legacy_layout_parity_evidence() -> dict[str, object]:
         "releaseParity": False,
         "ocrCaptureParity": False,
         "fullLegacyParity": False,
+        "fullLayoutParity": False,
+        "pixelPerfectLayoutParity": False,
+        "osNativeMenuParity": False,
+        "nativeDialogParity": False,
     }
     viewport_matrix = [
         {"name": "desktop-1280x840", "width": 1280, "height": 840},
@@ -4441,10 +4656,19 @@ def runner_shaped_legacy_layout_parity_evidence() -> dict[str, object]:
             path = f"docs/qa/screenshots/legacy-layout-{viewport['name']}-{scenario_name.replace('_', '-')}.png"
             screenshot = {
                 "bytes": 12345,
+                "sizeBytes": 12345,
                 "label": f"{scenario_label} {viewport['name']}",
                 "layout": scenario_name,
                 "name": scenario_name,
                 "path": path,
+                "source": "vite-playwright-runtime-screenshot",
+                "capturedAfterActionId": {
+                    "default_review_layout": "view.candidates",
+                    "sgf_editing_layout": "game.parseSgf",
+                    "katago_analysis_layout": "analysis.runReview",
+                    "provider_readboard_layout": "tools.providers",
+                    "engine_preferences_layout": "tools.preferences",
+                }[scenario_name],
                 "sha256": f"{sha_counter:x}" * 64,
                 "viewport": viewport,
             }
@@ -4481,8 +4705,14 @@ def runner_shaped_legacy_layout_parity_evidence() -> dict[str, object]:
         "status": "pass",
         "platform": "macos",
         "collectionMethod": "vite_playwright_layout_screenshots",
+        "runtimeObserved": True,
+        "sourceStaticOnly": False,
         "browserRenderedDomObserved": True,
         "screenshotObserved": True,
+        "clickedObservedCount": 5,
+        "shortcutObservedCount": 5,
+        "visibleTargetCount": len(visible_assertions),
+        "actionMatrix": valid_legacy_action_shortcut_matrix(),
         "criticalOverlap": False,
         "criticalClipping": False,
         "viewportMatrix": viewport_matrix,

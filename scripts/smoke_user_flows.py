@@ -148,6 +148,8 @@ TAURI_WEBVIEW_DOM_CLICK_REQUIRED_FALSE_FIELDS = [
 ]
 LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE = "docs/qa/legacy-layout-parity-smoke-macos.json"
 LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA = "lizzieyzy.legacy-layout-parity-smoke.v1"
+LEGACY_SHORTCUT_LAYOUT_EVIDENCE = "docs/qa/legacy-shortcut-layout-evidence-macos.json"
+LEGACY_SHORTCUT_LAYOUT_SCHEMA = "lizzieyzy.legacy-shortcut-layout-evidence.v1"
 LEGACY_LAYOUT_REQUIRED_SCREENSHOTS = [
     "default review",
     "sgf editing",
@@ -175,6 +177,14 @@ LEGACY_LAYOUT_REQUIRED_FALSE_FIELDS = [
     "ocrCaptureParity",
     "fullLegacyParity",
 ]
+LEGACY_SHORTCUT_LAYOUT_REQUIRED_FALSE_FIELDS = [
+    *LEGACY_LAYOUT_REQUIRED_FALSE_FIELDS,
+    "fullLayoutParity",
+    "pixelPerfectLayoutParity",
+    "osNativeMenuParity",
+    "nativeDialogParity",
+]
+LEGACY_ACTION_LAYOUT_REQUIRED_GROUPS = ["File", "Game", "Analysis", "View", "Engine", "Tools", "Help"]
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
 INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
 NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE = "docs/qa/native-desktop-sgf-workflow-macos.json"
@@ -1104,6 +1114,7 @@ class UserFlowSmoke:
         self.check_tauri_window_runtime_smoke_evidence()
         self.check_tauri_webview_dom_click_smoke_evidence()
         self.check_legacy_layout_parity_smoke_evidence()
+        self.check_legacy_shortcut_layout_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
@@ -1309,6 +1320,30 @@ class UserFlowSmoke:
         self.pass_(
             "legacy_layout_parity_smoke",
             "scoped legacy layout evidence passes with required screenshots, viewports, visible targets, overlap/clipping, and boundary checks",
+        )
+
+    def check_legacy_shortcut_layout_evidence(self) -> None:
+        evidence_path = self.path(LEGACY_SHORTCUT_LAYOUT_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "legacy_shortcut_layout_evidence",
+                f"TODO gate: record scoped legacy action/shortcut/layout runtime evidence at {LEGACY_SHORTCUT_LAYOUT_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(LEGACY_SHORTCUT_LAYOUT_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_legacy_shortcut_layout_evidence(evidence)
+        if failures:
+            self.pending(
+                "legacy_shortcut_layout_evidence",
+                f"{LEGACY_SHORTCUT_LAYOUT_EVIDENCE} is present but not valid scoped legacy action/shortcut/layout runtime evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "legacy_shortcut_layout_evidence",
+            "scoped legacy action/shortcut/layout runtime evidence passes with action matrix, screenshots, input-editing, and boundary checks",
         )
 
     def check_installed_macos_app_smoke_evidence(self) -> None:
@@ -2516,6 +2551,141 @@ def validate_legacy_layout_parity_smoke_evidence(evidence: Any) -> list[str]:
     return failures
 
 
+def validate_legacy_shortcut_layout_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != LEGACY_SHORTCUT_LAYOUT_SCHEMA:
+        failures.append(f"schema must be {LEGACY_SHORTCUT_LAYOUT_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    failures.extend(validate_legacy_layout_runtime_observed(evidence))
+    failures.extend(validate_legacy_action_shortcut_matrix(evidence))
+    failures.extend(validate_legacy_shortcut_layout_screenshots(evidence.get("screenshots")))
+    failures.extend(validate_legacy_layout_viewports(evidence))
+    failures.extend(validate_legacy_layout_visible_assertions(evidence.get("visibleAssertions")))
+    failures.extend(validate_legacy_layout_no_critical_overlap_or_clipping(evidence))
+    failures.extend(validate_legacy_shortcut_layout_boundaries(evidence))
+    return failures
+
+
+def validate_legacy_layout_runtime_observed(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("runtimeObserved") is not True:
+        failures.append("runtimeObserved must be true")
+    collection_method = str(evidence.get("collectionMethod", "")).lower()
+    if evidence.get("sourceStaticOnly") is True or "source_static" in collection_method or "static-only" in collection_method:
+        failures.append("evidence must not be static-source-only")
+    return failures
+
+
+def validate_legacy_action_shortcut_matrix(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    action_matrix = first_present(evidence, "actionMatrix", "legacyActionMatrix", "actions")
+    if not isinstance(action_matrix, list):
+        return ["actionMatrix must be a list"]
+    if not action_matrix:
+        failures.append("actionMatrix must include action entries")
+
+    clicked_count = int_or_none(first_present(evidence, "clickedObservedCount", "clickObservedCount"))
+    shortcut_count = int_or_none(first_present(evidence, "shortcutObservedCount", "keyboardShortcutObservedCount"))
+    visible_target_count = int_or_none(first_present(evidence, "visibleTargetCount", "visibleTargetsCount"))
+    if clicked_count is None or clicked_count < 4:
+        failures.append("clickedObservedCount must be at least 4")
+    if shortcut_count is None or shortcut_count < 4:
+        failures.append("shortcutObservedCount must be at least 4")
+    if visible_target_count is None or visible_target_count < 6:
+        failures.append("visibleTargetCount must be at least 6")
+
+    observed_groups: set[str] = set()
+    for index, entry in enumerate(action_matrix):
+        if not isinstance(entry, dict):
+            failures.append(f"actionMatrix[{index}] must be an object")
+            continue
+        action_id = entry.get("actionId")
+        if not isinstance(action_id, str) or not action_id.strip():
+            failures.append(f"actionMatrix[{index}].actionId must be non-empty")
+        menu_path = entry.get("menuPath")
+        if not isinstance(menu_path, str) or "/" not in menu_path.strip():
+            failures.append(f"actionMatrix[{index}].menuPath must include a group/action path")
+        else:
+            observed_groups.add(menu_path.split("/", 1)[0].strip())
+        shortcut = entry.get("shortcut")
+        if not isinstance(shortcut, str) or not shortcut.strip():
+            failures.append(f"actionMatrix[{index}].shortcut must be non-empty")
+        target_selector = entry.get("targetSelector")
+        if not isinstance(target_selector, str) or not target_selector.strip():
+            failures.append(f"actionMatrix[{index}].targetSelector must be non-empty")
+        disabled_or_availability = entry.get("disabledOrAvailability")
+        if not non_empty_proof(disabled_or_availability):
+            failures.append(f"actionMatrix[{index}].disabledOrAvailability must be present")
+        observed_by = entry.get("observedBy")
+        if not observed_by_mentions_runtime(observed_by):
+            failures.append(f"actionMatrix[{index}].observedBy must include runtime observation")
+        input_editing = entry.get("inputEditingBehavior")
+        if not input_editing_is_safe(input_editing):
+            failures.append(f"actionMatrix[{index}].inputEditingBehavior must prove input editing safety")
+        visible_assertion = entry.get("visibleTargetAssertion")
+        if not visible_target_assertion_passes(visible_assertion):
+            failures.append(f"actionMatrix[{index}].visibleTargetAssertion must prove target visible")
+
+    for group in LEGACY_ACTION_LAYOUT_REQUIRED_GROUPS:
+        if group not in observed_groups:
+            failures.append(f"actionMatrix missing {group} group")
+    return failures
+
+
+def int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return None
+
+
+def observed_by_mentions_runtime(value: Any) -> bool:
+    if isinstance(value, str):
+        haystack = value.lower()
+    elif isinstance(value, list):
+        haystack = " ".join(str(item).lower() for item in value)
+    else:
+        return False
+    return "runtime" in haystack and ("click" in haystack or "shortcut" in haystack or "keyboard" in haystack or "visible" in haystack)
+
+
+def input_editing_is_safe(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("inputEditingSafe") is True or value.get("suppressedInTextInput") is True:
+            return True
+        status = str(value.get("status", "")).lower()
+        return status in {"pass", "passed"} and value.get("triggeredWhileEditing") is False
+    if isinstance(value, str):
+        lowered = value.lower()
+        return ("input" in lowered or "textarea" in lowered or "editing" in lowered) and (
+            "safe" in lowered or "suppressed" in lowered or "not trigger" in lowered
+        )
+    return False
+
+
+def visible_target_assertion_passes(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if not isinstance(value, dict):
+        return False
+    if value.get("visible") is False:
+        return False
+    status = str(value.get("status", "pass")).lower()
+    if status not in {"pass", "passed"}:
+        return False
+    label = first_present(value, "label", "name", "selector", "text", "testId")
+    return isinstance(label, str) and bool(label.strip())
+
+
 def validate_legacy_layout_screenshots(value: Any) -> list[str]:
     failures = validate_desktop_ui_click_screenshots(value)
     if not isinstance(value, list):
@@ -2528,6 +2698,24 @@ def validate_legacy_layout_screenshots(value: Any) -> list[str]:
     for required in LEGACY_LAYOUT_REQUIRED_SCREENSHOTS:
         if not any(required in label or required.replace("/", " ") in label.replace("/", " ") for label in labels):
             failures.append(f"screenshots missing {required}")
+    return failures
+
+
+def validate_legacy_shortcut_layout_screenshots(value: Any) -> list[str]:
+    failures = validate_legacy_layout_screenshots(value)
+    if not isinstance(value, list):
+        return failures
+    for index, screenshot in enumerate(value):
+        if not isinstance(screenshot, dict):
+            continue
+        if not isinstance(screenshot.get("source"), str) or not screenshot.get("source", "").strip():
+            failures.append(f"screenshots[{index}].source must be non-empty")
+        size_bytes = int_or_none(first_present(screenshot, "sizeBytes", "bytes"))
+        if size_bytes is None or size_bytes <= 0:
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        captured_after = screenshot.get("capturedAfterActionId")
+        if not isinstance(captured_after, str) or not captured_after.strip():
+            failures.append(f"screenshots[{index}].capturedAfterActionId must be non-empty")
     return failures
 
 
@@ -2629,6 +2817,22 @@ def validate_legacy_layout_boundaries(evidence: dict[str, Any]) -> list[str]:
         failures.append("boundaries must be an object")
         boundaries = {}
     for key in LEGACY_LAYOUT_REQUIRED_FALSE_FIELDS:
+        top_value = evidence.get(key)
+        boundary_value = boundaries.get(key)
+        if top_value is True:
+            failures.append(f"{key} must be false")
+        if boundary_value is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_legacy_shortcut_layout_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+        boundaries = {}
+    for key in LEGACY_SHORTCUT_LAYOUT_REQUIRED_FALSE_FIELDS:
         top_value = evidence.get(key)
         boundary_value = boundaries.get(key)
         if top_value is True:

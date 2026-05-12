@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { checkEngineAssets, loadEngineProfilesSettings, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
-import type { RuntimeAssetValidationDto } from "../api/backend";
+import { checkEngineAssets, installedAppRuntimeProof, loadEngineProfilesSettings, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
+import type { InstalledAppRuntimeProofDto, RuntimeAssetValidationDto } from "../api/backend";
 import type { AssetCheckDto, EngineProfileDto, EngineProfileRecordDto } from "../domain/types";
 
 type Props = {
@@ -42,6 +42,8 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
   const [assetChecks, setAssetChecks] = useState<AssetCheckDto[]>([]);
   const [runtimeAssetValidation, setRuntimeAssetValidation] = useState<RuntimeAssetValidationDto | null>(null);
   const [runtimeAssetStatus, setRuntimeAssetStatus] = useState("Checking bundled/runtime assets...");
+  const [installedRuntimeProof, setInstalledRuntimeProof] = useState<InstalledAppRuntimeProofDto | null>(null);
+  const [installedRuntimeProofStatus, setInstalledRuntimeProofStatus] = useState("Checking installed app launch proof...");
 
   const visits = Number(maxVisits);
   const isAnalysisActive = activeJobId !== null;
@@ -80,6 +82,9 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       ? "error"
       : "checking";
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
+  const installedRuntimeSummary = installedRuntimeProof ? summarizeInstalledRuntimeProof(installedRuntimeProof) : null;
+  const installedProofStatus = installedRuntimeSummary?.proofStatus
+    ?? (installedRuntimeProofStatus.startsWith("Checking") ? "checking" : classifyInstalledProofMessage(installedRuntimeProofStatus));
 
   useEffect(() => {
     let isMounted = true;
@@ -115,6 +120,14 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       .catch((error: unknown) => {
         if (isMounted) setRuntimeAssetStatus(`Runtime asset check failed: ${errorMessage(error)}`);
       });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    refreshInstalledRuntimeProof(() => isMounted);
     return () => {
       isMounted = false;
     };
@@ -280,6 +293,22 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
     }
   }
 
+  async function refreshInstalledRuntimeProof(shouldApply: () => boolean = () => true) {
+    if (!shouldApply()) return;
+    setInstalledRuntimeProofStatus("Checking installed app launch proof...");
+    try {
+      const proof = await installedAppRuntimeProof();
+      if (!shouldApply()) return;
+      const summary = summarizeInstalledRuntimeProof(proof);
+      setInstalledRuntimeProof(proof);
+      setInstalledRuntimeProofStatus(installedProofSummaryMessage(summary));
+    } catch (error) {
+      if (!shouldApply()) return;
+      setInstalledRuntimeProof(null);
+      setInstalledRuntimeProofStatus(`Installed app proof unavailable: ${errorMessage(error)}`);
+    }
+  }
+
   return (
     <section
       className="engine-setup-panel"
@@ -304,6 +333,13 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         data-selected-profile-id={selectedProfileId}
         data-local-asset-check-status={localAssetCheckStatus}
         data-runtime-asset-check-status={runtimeAssetCheckStatus}
+        data-installed-runtime-proof-status={installedProofStatus}
+        data-installed-runtime-source-kind={installedRuntimeSummary?.sourceKind ?? "unknown"}
+        data-installed-runtime-source={installedRuntimeSummary?.runtimeSource ?? ""}
+        data-installed-runtime-asset-status={installedRuntimeSummary?.assetStatus ?? "unknown"}
+        data-installed-engine-launch-status={installedRuntimeSummary?.launchStatus ?? "unknown"}
+        data-installed-engine-launch-availability={installedRuntimeSummary?.launchAvailability ?? "unknown"}
+        data-local-profile-fallback={String(installedRuntimeSummary?.localProfileFallback ?? true)}
         data-can-run-katago={String(canRun)}
       >
         <strong>Engine runtime</strong>
@@ -351,6 +387,48 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
           {runtimeAssetMessages(runtimeAssetValidation).join(" | ")}
         </p>
       )}
+      <section
+        className="engine-runtime-proof-details"
+        aria-label="Installed app bundled KataGo launch proof"
+        data-testid="engine-installed-app-launch-proof"
+        data-proof-status={installedProofStatus}
+        data-runtime-source-kind={installedRuntimeSummary?.sourceKind ?? "unknown"}
+        data-runtime-source={installedRuntimeSummary?.runtimeSource ?? ""}
+        data-asset-validation-status={installedRuntimeSummary?.assetStatus ?? "unknown"}
+        data-profile-status={installedRuntimeSummary?.profileStatus ?? "unknown"}
+        data-profile-source={installedRuntimeSummary?.profileSource ?? "unknown"}
+        data-launch-status={installedRuntimeSummary?.launchStatus ?? "unknown"}
+        data-launch-availability={installedRuntimeSummary?.launchAvailability ?? "unknown"}
+        data-local-profile-fallback={String(installedRuntimeSummary?.localProfileFallback ?? true)}
+        data-release-parity="false"
+        data-large-model-bundled="false"
+      >
+        <div className="engine-run-row">
+          <strong>Installed app launch proof</strong>
+          <button type="button" data-testid="engine-installed-app-proof-refresh" onClick={() => void refreshInstalledRuntimeProof()} disabled={disabled} title="Refresh installed app proof">Refresh proof</button>
+          <span data-testid="engine-installed-app-runtime-source">
+            Source: {installedRuntimeSummary?.sourceKind ?? installedProofStatus}
+          </span>
+          <span data-testid="engine-installed-app-asset-validation-status">
+            Runtime validation: {installedRuntimeSummary?.assetStatus ?? installedProofStatus}
+          </span>
+          <span data-testid="engine-installed-app-launch-attempt-status">
+            Launch attempt: {installedRuntimeSummary ? `${installedRuntimeSummary.launchAvailability} (${installedRuntimeSummary.launchStatus})` : installedProofStatus}
+          </span>
+        </div>
+        <p className="message" data-testid="engine-installed-app-local-profile-fallback">
+          {installedRuntimeSummary
+            ? installedRuntimeSummary.localProfileFallback
+              ? `Local profile fallback remains available: ${installedRuntimeSummary.launchMessage ?? "bundled launch is not treated as ready."}`
+              : "Bundled/runtime launch proof is available; local profile configuration is still editable below."
+            : installedRuntimeProofStatus}
+        </p>
+        {installedRuntimeSummary && (
+          <p className="message">
+            Profile: {installedRuntimeSummary.profileStatus} via {installedRuntimeSummary.profileSource}. Bundle: {installedRuntimeSummary.bundleStatus}. This is scoped installed-app runtime evidence, not signing, notarization, release, or large-model bundling proof.
+          </p>
+        )}
+      </section>
       <p className="message">
         Large KataGo models are not bundled by this repository. Keep using the local asset configuration below unless an installed app package supplies runtime assets.
       </p>
@@ -498,6 +576,120 @@ function runtimeAssetMessages(validation: RuntimeAssetValidationDto): string[] {
     ...validation.placeholders.map((placeholder) => placeholder.message)
   ];
   return Array.from(new Set(messages.filter((message) => message.trim().length > 0)));
+}
+
+type InstalledRuntimeSummary = {
+  proofStatus: string;
+  sourceKind: string;
+  runtimeSource: string;
+  assetStatus: string;
+  profileStatus: string;
+  profileSource: string;
+  launchStatus: string;
+  launchAvailability: string;
+  launchMessage: string | null;
+  bundleStatus: string;
+  localProfileFallback: boolean;
+};
+
+function summarizeInstalledRuntimeProof(proof: InstalledAppRuntimeProofDto): InstalledRuntimeSummary {
+  const runtimeSource = stringField(proof.runtime, "source") ?? "unknown";
+  const assetStatus = summarizeInstalledAssetStatus(proof.assets);
+  const profileStatus = stringField(proof.profileStatus, "status") ?? stringField(proof.profileStatus, "result") ?? "observed";
+  const profileSource = stringField(proof.profileStatus, "source") ?? stringField(proof.profileStatus, "profileSource") ?? stringField(proof.profileStatus, "kind") ?? "local-profile-fallback";
+  const launchStatus = stringField(proof.engineLaunchAttempt, "status")
+    ?? stringField(proof.engineLaunchAttempt, "result")
+    ?? stringField(proof.engineLaunchAttempt, "outcome")
+    ?? "observed";
+  const launchAvailability = summarizeLaunchAvailability(proof.engineLaunchAttempt, launchStatus);
+  const launchMessage = stringField(proof.engineLaunchAttempt, "message")
+    ?? stringField(proof.engineLaunchAttempt, "error")
+    ?? stringField(proof.engineLaunchAttempt, "reason");
+  const bundleStatus = booleanField(proof.bundle, "appBundleExists") === true
+    ? "bundle-observed"
+    : booleanField(proof.bundle, "resourceDirExists") === true
+      ? "resource-dir-observed"
+      : "bundle-unavailable";
+  return {
+    proofStatus: classifyProofStatus(proof.status),
+    sourceKind: runtimeSourceKind(runtimeSource),
+    runtimeSource,
+    assetStatus,
+    profileStatus,
+    profileSource,
+    launchStatus,
+    launchAvailability,
+    launchMessage,
+    bundleStatus,
+    localProfileFallback: assetStatus !== "ready" || launchAvailability !== "available"
+  };
+}
+
+function installedProofSummaryMessage(summary: InstalledRuntimeSummary): string {
+  return `Installed app proof ${summary.proofStatus}: source ${summary.sourceKind}, runtime assets ${summary.assetStatus}, launch ${summary.launchAvailability}.`;
+}
+
+function summarizeInstalledAssetStatus(assets: InstalledAppRuntimeProofDto["assets"]): string {
+  const validation = assets.validation ?? assets.runtimeAssetValidation ?? null;
+  const missing = validation?.missing.length ?? assets.missing?.length ?? 0;
+  const placeholders = validation?.placeholders.length ?? assets.placeholders?.length ?? 0;
+  const raw = (assets.status ?? "").toLowerCase();
+  if (missing + placeholders > 0) return "problem";
+  if (/unavailable|missing|skipped|not[_ -]?found|not[_ -]?configured/.test(raw)) return "unavailable";
+  if (/error|fail/.test(raw)) return "error";
+  if (/problem|invalid|placeholder/.test(raw)) return "problem";
+  if (/ready|ok|available/.test(raw)) return "ready";
+  if ((validation?.checks.length ?? assets.checks?.length ?? 0) > 0) return "observed";
+  return "unavailable";
+}
+
+function summarizeLaunchAvailability(value: Record<string, unknown>, status: string): string {
+  const available = booleanField(value, "available")
+    ?? booleanField(value, "success")
+    ?? booleanField(value, "launched")
+    ?? booleanField(value, "engineAvailable");
+  if (available === true) return "available";
+  if (available === false) return "unavailable";
+  const normalized = status.toLowerCase();
+  if (/missing|unavailable|not[_ -]?found|not[_ -]?configured|skipped/.test(normalized)) return "unavailable";
+  if (/error|fail/.test(normalized)) return "error";
+  if (/problem|invalid/.test(normalized)) return "problem";
+  if (/success|launched|available|ok/.test(normalized)) return "available";
+  return "observed";
+}
+
+function classifyProofStatus(status: string): string {
+  const normalized = status.toLowerCase();
+  if (/pass|ok|ready|available|observed/.test(normalized)) return "observed";
+  if (/unavailable|missing|skipped|not[_ -]?found/.test(normalized)) return "unavailable";
+  if (/error|fail|problem|invalid/.test(normalized)) return "error";
+  return normalized || "observed";
+}
+
+function classifyInstalledProofMessage(message: string): string {
+  const normalized = message.toLowerCase();
+  if (/checking/.test(normalized)) return "checking";
+  if (/unavailable|browser fallback|requires the tauri/.test(normalized)) return "unavailable";
+  if (/error|failed|fail/.test(normalized)) return "error";
+  return "observed";
+}
+
+function runtimeSourceKind(source: string): string {
+  const normalized = source.toLowerCase();
+  if (normalized.includes("packaged") || normalized.includes("installed")) return "packaged-app";
+  if (normalized.includes("tauri-dev") || normalized.includes("dev")) return "tauri-dev";
+  if (normalized.includes("browser")) return "browser-fallback";
+  return normalized || "unknown";
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function booleanField(record: Record<string, unknown>, key: string): boolean | null {
+  const value = record[key];
+  return typeof value === "boolean" ? value : null;
 }
 
 function isKnownMissing(checks: AssetCheckDto[], label: string): boolean {

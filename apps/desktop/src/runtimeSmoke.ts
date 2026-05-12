@@ -71,6 +71,7 @@ type RuntimeSmokeCheckName =
   | "sgf_workflow_state_observed"
   | "engine_profile_status_observed"
   | "engine_asset_status_observed"
+  | "engine_launch_attempt_observed"
   | "webview_dom_observed"
   | "webview_click_observed"
   | "visible_targets_verified"
@@ -401,6 +402,7 @@ type InstalledAppRuntimeProofEvidence = {
   engineProfile?: ElementSmokeEvidence;
   engineAssets?: ElementSmokeEvidence;
   runtimeAssets?: ElementSmokeEvidence;
+  engineLaunchAttempt?: ElementSmokeEvidence;
   boundaries: {
     browserFallbackDoesNotClaimTauri: true;
     webviewDomClickCovered: false;
@@ -1564,6 +1566,35 @@ async function runInstalledAppRuntimeProofPhase(report: RuntimeSmokeReport) {
     };
   });
 
+  await check(report, "engine_launch_attempt_observed", async () => {
+    const proof = await waitForVisibleElement('[data-testid="engine-installed-app-launch-proof"]', "installed app launch proof");
+    const launch = await waitForVisibleElement('[data-testid="engine-installed-app-launch-attempt-status"]', "installed app launch attempt status");
+    const proofStatus = proof.getAttribute("data-proof-status") ?? "";
+    const sourceKind = proof.getAttribute("data-runtime-source-kind") ?? "";
+    const assetStatus = proof.getAttribute("data-asset-validation-status") ?? "";
+    const launchStatus = proof.getAttribute("data-launch-status") ?? "";
+    const launchAvailability = proof.getAttribute("data-launch-availability") ?? "";
+    if (!proofStatus || proofStatus === "checking") throw new Error(`Installed app launch proof was not stable; observed ${proofStatus || "missing"}.`);
+    if (!sourceKind || !assetStatus || !launchStatus || !launchAvailability) {
+      throw new Error("Installed app launch proof did not expose source, asset validation, and launch attempt status.");
+    }
+    evidence.engineLaunchAttempt = elementSmokeEvidence(launch, '[data-testid="engine-installed-app-launch-attempt-status"]');
+    return {
+      proofStatus,
+      sourceKind,
+      runtimeSource: proof.getAttribute("data-runtime-source") ?? "",
+      assetStatus,
+      profileStatus: proof.getAttribute("data-profile-status") ?? "",
+      profileSource: proof.getAttribute("data-profile-source") ?? "",
+      launchStatus,
+      launchAvailability,
+      localProfileFallback: proof.getAttribute("data-local-profile-fallback") ?? "",
+      largeModelBundled: proof.getAttribute("data-large-model-bundled") ?? "",
+      releaseParity: proof.getAttribute("data-release-parity") ?? "",
+      launchAttempt: evidence.engineLaunchAttempt
+    };
+  });
+
   await check(report, "scope_boundaries_recorded", async () => evidence.boundaries);
 }
 
@@ -1803,6 +1834,13 @@ function summarizeInstalledAppRuntimeProof(proof: InstalledAppRuntimeProofDto): 
   const profileStatus = requiredRecord(proof.profileStatus, "installed_app_runtime_proof.profileStatus");
   const engineLaunchAttempt = requiredRecord(proof.engineLaunchAttempt, "installed_app_runtime_proof.engineLaunchAttempt");
   const boundaries = requiredRecord(proof.boundaries, "installed_app_runtime_proof.boundaries");
+  const bundledKatago = normalizeBundledKatagoProof((proof as InstalledAppRuntimeProofDto & {
+    bundledKatago?: unknown;
+    bundled_katago?: unknown;
+  }).bundledKatago ?? (proof as InstalledAppRuntimeProofDto & {
+    bundledKatago?: unknown;
+    bundled_katago?: unknown;
+  }).bundled_katago);
   const runtimeSource = requiredString(runtime.source, "installed_app_runtime_proof.runtime.source");
   const resourceDir = nullableString(runtime.resourceDir, "installed_app_runtime_proof.runtime.resourceDir");
   const appDataDir = nullableString(runtime.appDataDir, "installed_app_runtime_proof.runtime.appDataDir");
@@ -1833,10 +1871,39 @@ function summarizeInstalledAppRuntimeProof(proof: InstalledAppRuntimeProofDto): 
     resource: { resourceDir },
     appData: { appDataDir },
     assets: summarizeInstalledAppAssets(assets),
+    bundledKatago,
     profileStatus,
     engineLaunchAttempt: summarizeEngineLaunchAttempt(engineLaunchAttempt),
     boundaries
   };
+}
+
+function normalizeBundledKatagoProof(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const rawStatus = stringField(value, "status") ?? stringField(value, "result") ?? stringField(value, "availability");
+  const status = normalizeBundledKatagoStatus(rawStatus, value);
+  return {
+    ...value,
+    status,
+    rawStatus,
+    sourceKind: stringField(value, "sourceKind") ?? stringField(value, "source_kind") ?? stringField(value, "source") ?? null,
+    validationStatus: stringField(value, "validationStatus") ?? stringField(value, "validation_status") ?? rawStatus,
+    launchStatus: stringField(value, "launchStatus") ?? stringField(value, "launch_status") ?? stringField(value, "engineLaunchStatus") ?? null,
+    largeModelBundled: booleanField(value, "largeModelBundled") ?? booleanField(value, "large_model_bundled") ?? false,
+    releaseParity: booleanField(value, "releaseParity") ?? booleanField(value, "release_parity") ?? false
+  };
+}
+
+function normalizeBundledKatagoStatus(rawStatus: string | null, value: Record<string, unknown>): string {
+  const ready = booleanField(value, "ready") ?? booleanField(value, "available") ?? booleanField(value, "launchSucceeded");
+  if (ready === true) return "ready";
+  if (ready === false) return "unavailable";
+  const normalized = rawStatus?.toLowerCase() ?? "";
+  if (/missing|unavailable|not[_ -]?found|not[_ -]?configured|skipped/.test(normalized)) return "unavailable";
+  if (/error|fail/.test(normalized)) return "error";
+  if (/problem|invalid|placeholder/.test(normalized)) return "problem";
+  if (/ready|ok|available|success|launched/.test(normalized)) return "ready";
+  return normalized || "observed";
 }
 
 function summarizeInstalledAppAssets(assets: Record<string, unknown>): Record<string, unknown> {

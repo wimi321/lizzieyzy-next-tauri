@@ -1,0 +1,100 @@
+{
+  "artifact": {
+    "name": "lizzieyzy-next-desktop",
+    "path": "target/release/lizzieyzy-next-desktop",
+    "sha256": "c5f14270483d14906f8b905c53115d7fe5576c561e115c533b7ac1ecaa5bb5fa",
+    "sizeBytes": 23533232
+  },
+  "artifactOnly": false,
+  "boundaries": {
+    "codeSigned": false,
+    "fullLegacyParity": false,
+    "fullParity": false,
+    "fullProductionRelease": false,
+    "fullReleaseParity": false,
+    "linuxInstalledAppParity": false,
+    "notarizationCovered": false,
+    "notarizationParity": false,
+    "notarized": false,
+    "notarizedReleaseParity": false,
+    "officialRelease": false,
+    "officialReleasePublished": false,
+    "productionSigned": false,
+    "publishedRelease": false,
+    "releaseParity": false,
+    "releasePublished": false,
+    "signed": false,
+    "signedReleaseParity": false,
+    "signingCovered": false,
+    "signingParity": false,
+    "updaterCovered": false,
+    "updaterParity": false,
+    "updaterReady": false,
+    "viteDevServerStarted": false,
+    "windowsInstalledAppParity": false,
+    "windowsLinuxInstalledAppParity": false
+  },
+  "browserOnly": false,
+  "collection": {
+    "evidencePath": "release-dry-run/Linux-installed-app-smoke.json",
+    "startedAtUnix": 1778623331.733,
+    "timeoutSeconds": 10.0
+  },
+  "collector": "scripts/smoke_windows_linux_installed_app.py",
+  "devServerAbsent": true,
+  "devServerPreflight": {
+    "checkedPorts": [
+      1420,
+      5173,
+      3000
+    ],
+    "reachableBeforeLaunch": false,
+    "reachablePorts": [],
+    "runnerStartedDevServer": false,
+    "runnerStartedViteDevServer": false
+  },
+  "displayMode": "desktop",
+  "exitOrTerminateSuccess": true,
+  "launchCommand": [
+    "target/release/lizzieyzy-next-desktop"
+  ],
+  "launchWrapper": "",
+  "name": "windows_linux_installed_app_smoke",
+  "platform": "linux",
+  "process": {
+    "observedSeconds": 10.0,
+    "pid": 14159,
+    "started": true,
+    "stillRunningAfterTimeout": true,
+    "terminated": true,
+    "windowPollSeconds": 0.398
+  },
+  "processObserved": true,
+  "runnerStartedDevServer": false,
+  "runnerStartedViteDevServer": false,
+  "schema": "lizzieyzy.windows-linux-installed-app-smoke.v1",
+  "staticOnly": false,
+  "status": "pass",
+  "windowObservation": {
+    "attemptedSearches": [
+      "pid"
+    ],
+    "exitCode": 0,
+    "fallbackFrom": {
+      "exitCode": 1,
+      "method": "wmctrl",
+      "observed": false,
+      "source": "wmctrl -lp",
+      "titleCount": 0
+    },
+    "matchedBy": "pid",
+    "method": "xdotool",
+    "observed": true,
+    "pid": 14159,
+    "source": "xdotool search --pid",
+    "title": "lizzieyzy-next-desktop",
+    "windowId": "4194305",
+    "windowIdCount": 2
+  },
+  "windowObserved": true
+}

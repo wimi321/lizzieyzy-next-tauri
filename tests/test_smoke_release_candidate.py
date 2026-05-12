@@ -174,6 +174,8 @@ def create_user_flow_inputs(root: Path, *, omitted_commands: set[str]) -> None:
             }
         },
     )
+    write_valid_windows_linux_installed_app_evidence(root, smoke_user_flows, "windows")
+    write_valid_windows_linux_installed_app_evidence(root, smoke_user_flows, "linux")
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -219,6 +221,56 @@ def create_user_flow_inputs(root: Path, *, omitted_commands: set[str]) -> None:
     )
     create_legacy_actions_fixture(root, smoke_user_flows)
     create_legacy_shell_fixture(root, smoke_user_flows)
+
+
+def write_valid_windows_linux_installed_app_evidence(root: Path, smoke_user_flows, platform: str) -> None:
+    evidence_path = smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE if platform == "windows" else smoke_user_flows.LINUX_INSTALLED_APP_SMOKE_EVIDENCE
+    binary_name = "LizzieYzy.exe" if platform == "windows" else "lizzieyzy"
+    artifact_path = f"target/release/{platform}/{binary_name}"
+    write_json(
+        root / evidence_path,
+        {
+            "schema": smoke_user_flows.WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA,
+            "name": "windows_linux_installed_app_smoke",
+            "status": "pass",
+            "platform": platform,
+            "artifact": {
+                "path": artifact_path,
+                "name": binary_name,
+                "sha256": "1" * 64,
+                "sizeBytes": 123456,
+            },
+            "launchCommand": ["xvfb-run", "-a", artifact_path] if platform == "linux" else [artifact_path],
+            "processObserved": True,
+            "windowObserved": True,
+            "windowObservation": {
+                "observed": True,
+                "method": "wmctrl" if platform == "linux" else "powershell",
+                "source": "fixture",
+                "windowId": "fixture-window",
+                "title": "LizzieYzy Next",
+            },
+            "devServerAbsent": True,
+            "devServerPreflight": {
+                "checkedPorts": [1420, 5173, 3000],
+                "reachablePorts": [],
+                "reachableBeforeLaunch": False,
+                "runnerStartedDevServer": False,
+                "runnerStartedViteDevServer": False,
+            },
+            "runnerStartedDevServer": False,
+            "runnerStartedViteDevServer": False,
+            "exitOrTerminateSuccess": True,
+            "displayMode": "xvfb" if platform == "linux" else "desktop",
+            "staticOnly": False,
+            "artifactOnly": False,
+            "browserOnly": False,
+            "boundaries": {
+                **{key: False for key in smoke_user_flows.WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS},
+                "viteDevServerStarted": False,
+            },
+        },
+    )
 
 
 def create_legacy_actions_fixture(root: Path, smoke_user_flows) -> None:

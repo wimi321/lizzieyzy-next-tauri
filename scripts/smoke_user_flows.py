@@ -1429,6 +1429,7 @@ class UserFlowSmoke:
         self.check_legacy_shortcut_layout_evidence()
         self.check_legacy_ui_gap_closure_evidence()
         self.check_installed_macos_app_smoke_evidence()
+        self.check_windows_linux_installed_app_smoke_evidence()
         self.check_installed_app_runtime_workflow_evidence()
         self.check_bundled_katago_installed_app_smoke_evidence()
         self.check_installed_app_sgf_workflow_evidence()
@@ -1721,9 +1722,9 @@ class UserFlowSmoke:
         }
         missing = [rel for rel in evidence_by_platform.values() if not self.path(rel).is_file()]
         if missing:
-            self.pending(
+            self.fail(
                 "windows_linux_installed_app_smoke",
-                "TODO gate: run unsigned installed-app smoke on Windows and Linux and record "
+                "unsigned installed-app smoke requires real Windows and Linux PASS evidence; missing "
                 + ", ".join(missing),
             )
             return
@@ -1753,16 +1754,16 @@ class UserFlowSmoke:
         if missing_platforms:
             failures.append("missing platform evidence: " + ", ".join(missing_platforms))
         if failures:
-            self.pending(
+            self.fail(
                 "windows_linux_installed_app_smoke",
                 "Windows/Linux unsigned installed-app smoke evidence is present but not valid scoped PASS evidence: "
                 + "; ".join(failures),
             )
             return
         if pending_reasons:
-            self.pending(
+            self.fail(
                 "windows_linux_installed_app_smoke",
-                "Windows/Linux unsigned installed-app smoke is not fully available yet: " + "; ".join(pending_reasons),
+                "Windows/Linux unsigned installed-app smoke evidence must be PASS, not pending/unavailable/fail: " + "; ".join(pending_reasons),
             )
             return
         self.pass_(

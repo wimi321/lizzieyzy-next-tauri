@@ -70,6 +70,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shortcut_layout_evidence", pending_names)
             self.assertIn("legacy_ui_gap_closure", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
+            self.assertIn("windows_linux_installed_app_smoke", pass_names)
             self.assertIn("installed_app_runtime_workflow", pending_names)
             self.assertIn("bundled_katago_installed_app_smoke", pending_names)
             self.assertIn("installed_app_sgf_workflow", pending_names)
@@ -1030,6 +1031,66 @@ class SmokeUserFlowsTests(unittest.TestCase):
         self.assertEqual([], smoke_user_flows.validate_windows_linux_installed_app_smoke_evidence(valid_windows_linux_installed_app_evidence("windows"), "windows"))
         self.assertEqual([], smoke_user_flows.validate_windows_linux_installed_app_smoke_evidence(valid_windows_linux_installed_app_evidence("linux"), "linux"))
 
+    def test_windows_linux_installed_app_evidence_passes_central_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("windows_linux_installed_app_smoke", failures)
+            self.assertIn("windows_linux_installed_app_smoke", pass_names)
+
+    def test_windows_linux_installed_app_missing_evidence_fails_central_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            (root / smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE).unlink()
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("windows_linux_installed_app_smoke", failures)
+            self.assertIn("missing", failures["windows_linux_installed_app_smoke"])
+
+    def test_windows_linux_installed_app_static_fake_evidence_fails_central_gate(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_central_gate(
+            lambda evidence: evidence.__setitem__("staticOnly", True),
+            "staticOnly must be false",
+        )
+
+    def test_windows_linux_installed_app_process_only_fails_central_gate(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_central_gate(
+            lambda evidence: evidence.__setitem__("windowObserved", False),
+            "windowObserved must be true",
+        )
+
+    def test_windows_linux_installed_app_fake_launch_fails_central_gate(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_central_gate(
+            lambda evidence: evidence.__setitem__("launchCommand", ["echo", "target/release/windows/LizzieYzy.exe"]),
+            "launchCommand must launch the installed app binary",
+        )
+
+    def test_windows_linux_installed_app_dev_server_fails_central_gate(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["devServerAbsent"] = False
+            preflight = evidence["devServerPreflight"]
+            assert isinstance(preflight, dict)
+            preflight["reachableBeforeLaunch"] = True
+
+        self.assert_invalid_windows_linux_installed_app_central_gate(
+            mutate,
+            "devServerAbsent must be true",
+        )
+
+    def test_windows_linux_installed_app_full_release_overclaim_fails_central_gate(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_central_gate(
+            lambda evidence: evidence.__setitem__("fullReleaseParity", True),
+            "fullReleaseParity must be false",
+        )
+
     def test_windows_linux_installed_app_artifact_only_is_pending(self) -> None:
         self.assert_invalid_windows_linux_installed_app_evidence(
             lambda evidence: (evidence.__setitem__("artifactOnly", True), evidence.__setitem__("processObserved", False), evidence.__setitem__("windowObserved", False)),
@@ -1160,6 +1221,20 @@ class SmokeUserFlowsTests(unittest.TestCase):
         mutate_evidence(evidence)
         failures = smoke_user_flows.validate_windows_linux_installed_app_smoke_evidence(evidence, "windows")
         self.assertIn(expected_detail, "; ".join(failures))
+
+    def assert_invalid_windows_linux_installed_app_central_gate(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_windows_linux_installed_app_evidence("windows")
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("windows_linux_installed_app_smoke", failures)
+            self.assertIn(expected_detail, failures["windows_linux_installed_app_smoke"])
 
     def test_valid_installed_app_runtime_workflow_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -3933,6 +4008,8 @@ def create_complete_smoke_fixture(
             }
         },
     )
+    write_valid_windows_linux_installed_app_evidence(root, "windows")
+    write_valid_windows_linux_installed_app_evidence(root, "linux")
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(

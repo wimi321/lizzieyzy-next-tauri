@@ -1,0 +1,86 @@
+{
+  "artifact": {
+    "name": "lizzieyzy-next-desktop.exe",
+    "path": "target/release/lizzieyzy-next-desktop.exe",
+    "sha256": "40ffc136d8a94117779c93ed40aebca7997d18f8be3ecab4aa9d099369c8d6a6",
+    "sizeBytes": 17616384
+  },
+  "artifactOnly": false,
+  "boundaries": {
+    "codeSigned": false,
+    "fullLegacyParity": false,
+    "fullParity": false,
+    "fullProductionRelease": false,
+    "fullReleaseParity": false,
+    "linuxInstalledAppParity": false,
+    "notarizationCovered": false,
+    "notarizationParity": false,
+    "notarized": false,
+    "notarizedReleaseParity": false,
+    "officialRelease": false,
+    "officialReleasePublished": false,
+    "productionSigned": false,
+    "publishedRelease": false,
+    "releaseParity": false,
+    "releasePublished": false,
+    "signed": false,
+    "signedReleaseParity": false,
+    "signingCovered": false,
+    "signingParity": false,
+    "updaterCovered": false,
+    "updaterParity": false,
+    "updaterReady": false,
+    "viteDevServerStarted": false,
+    "windowsInstalledAppParity": false,
+    "windowsLinuxInstalledAppParity": false
+  },
+  "browserOnly": false,
+  "collection": {
+    "evidencePath": "release-dry-run/Windows-installed-app-smoke.json",
+    "startedAtUnix": 1778622858.648,
+    "timeoutSeconds": 10.0
+  },
+  "collector": "scripts/smoke_windows_linux_installed_app.py",
+  "devServerAbsent": true,
+  "devServerPreflight": {
+    "checkedPorts": [
+      1420,
+      5173,
+      3000
+    ],
+    "reachableBeforeLaunch": false,
+    "reachablePorts": [],
+    "runnerStartedDevServer": false,
+    "runnerStartedViteDevServer": false
+  },
+  "displayMode": "desktop",
+  "exitOrTerminateSuccess": true,
+  "launchCommand": [
+    "target/release/lizzieyzy-next-desktop.exe"
+  ],
+  "launchWrapper": "",
+  "name": "windows_linux_installed_app_smoke",
+  "platform": "windows",
+  "process": {
+    "observedSeconds": 10.0,
+    "pid": 8704,
+    "started": true,
+    "stillRunningAfterTimeout": true,
+    "terminated": true,
+    "windowPollSeconds": 0.43
+  },
+  "processObserved": true,
+  "runnerStartedDevServer": false,
+  "runnerStartedViteDevServer": false,
+  "schema": "lizzieyzy.windows-linux-installed-app-smoke.v1",
+  "staticOnly": false,
+  "status": "pass",
+  "windowObservation": {
+    "exitCode": 0,
+    "matchedTitle": "lizzieyzy next",
+    "method": "powershell",
+    "observed": true,
+    "titleCount": 2
+  },
+  "windowObserved": true
+}

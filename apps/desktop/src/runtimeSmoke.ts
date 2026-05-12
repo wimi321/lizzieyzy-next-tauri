@@ -58,6 +58,11 @@ type RuntimeSmokeCheckName =
   | "target_state_change_sync"
   | "arbitrary_ocr_not_covered"
   | "external_client_not_covered"
+  | "webview_dom_observed"
+  | "webview_click_observed"
+  | "visible_targets_verified"
+  | "browser_fallback_excluded"
+  | "scope_boundaries_recorded"
   | "yike_controlled_fetch"
   | "fox_controlled_fetch"
   | "provider_failure_modes"
@@ -93,11 +98,12 @@ type RuntimeSmokeReport = {
   katago?: KataGoLiveSmokeEvidence;
   readboard?: ReadboardLiveSmokeEvidence;
   provider?: ProviderLiveSmokeEvidence;
+  webviewDomClick?: WebviewDomClickEvidence;
   error?: string;
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "readboard-live" | "provider-live";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "readboard-live" | "provider-live" | "webview-dom-click";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -228,6 +234,42 @@ type ProviderLiveSmokeEvidence = {
   offlineNotCountedAsExternalLive?: Record<string, unknown>;
   externalAccountScope?: Record<string, unknown>;
 };
+type WebviewDomClickEvidence = {
+  tauriRuntimeObserved: boolean;
+  browserFallbackUsed: false;
+  domRoot?: ElementSmokeEvidence;
+  clickedControls: WebviewClickEvidence[];
+  visibleTargets: ElementSmokeEvidence[];
+  boundaries: {
+    fullLayoutParity: false;
+    fullShortcutParity: false;
+    fullLegacyParity: false;
+    ocrCaptureParity: false;
+    releaseParity: false;
+  };
+};
+type WebviewClickEvidence = {
+  label: string;
+  selector: string;
+  expectedTarget: string;
+  control: ElementSmokeEvidence;
+  activeTarget: string | null;
+  lastAction: string | null;
+  lastLegacyAction: string | null;
+  actionSource: string | null;
+  actionStatus: string | null;
+  targetElement: ElementSmokeEvidence;
+};
+type ElementSmokeEvidence = {
+  selector: string;
+  tagName: string;
+  text: string;
+  visible: boolean;
+  id: string | null;
+  className: string | null;
+  testId: string | null;
+  attributes: Record<string, string>;
+};
 
 const schema = "lizzieyzy.tauri-runtime-ui-smoke.v1";
 const truthyValues = new Set(["1", "true", "yes", "on"]);
@@ -313,8 +355,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
   };
 
   try {
-    if (!sgfPath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH is required.");
     if (!reportPath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_REPORT_PATH is required.");
+    if (phaseRequiresSgfPath(resolvedConfig.phase) && !sgfPath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH is required.");
     if (resolvedConfig.phase === "reopen-verify" && !expectedReportPath) {
       throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_EXPECTED_REPORT_PATH is required for reopen-verify.");
     }
@@ -331,14 +373,16 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
 
     if (resolvedConfig.phase === "provider-live") {
       await runProviderLivePhase(report);
+    } else if (resolvedConfig.phase === "webview-dom-click") {
+      await runWebviewDomClickPhase(report);
     } else if (resolvedConfig.phase === "readboard-live") {
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
-      await runKataGoLivePhase(report, sgfPath, resolvedConfig.katago);
+      await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "reopen-verify") {
-      await runReopenVerifyPhase(report, sgfPath, expectedReportPath ?? reportPath);
+      await runReopenVerifyPhase(report, requireRuntimeSmokeSgfPath(sgfPath), expectedReportPath ?? reportPath);
     } else {
-      await runEditSavePhase(report, sgfPath, resolvedConfig.phase);
+      await runEditSavePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.phase);
     }
 
     report.status = "pass";
@@ -964,6 +1008,218 @@ async function runProviderLivePhase(report: RuntimeSmokeReport) {
   });
 }
 
+async function runWebviewDomClickPhase(report: RuntimeSmokeReport) {
+  const evidence: WebviewDomClickEvidence = {
+    tauriRuntimeObserved: false,
+    browserFallbackUsed: false,
+    clickedControls: [],
+    visibleTargets: [],
+    boundaries: {
+      fullLayoutParity: false,
+      fullShortcutParity: false,
+      fullLegacyParity: false,
+      ocrCaptureParity: false,
+      releaseParity: false
+    }
+  };
+  report.webviewDomClick = evidence;
+
+  await check(report, "browser_fallback_excluded", async () => {
+    if (!isTauriRuntime()) throw new Error("webview-dom-click phase must run inside the real Tauri WebView runtime.");
+    evidence.tauriRuntimeObserved = true;
+    evidence.browserFallbackUsed = false;
+    return {
+      tauriRuntimeObserved: true,
+      browserFallbackUsed: false,
+      userAgent: typeof navigator === "undefined" ? null : navigator.userAgent,
+      platform: typeof navigator === "undefined" ? null : navigator.platform
+    };
+  });
+
+  await check(report, "webview_dom_observed", async () => {
+    const shell = await waitForVisibleElement('[data-testid="legacy-shell"]', "LegacyShell root");
+    const menubar = await waitForVisibleElement('[data-testid="legacy-menubar"]', "LegacyShell menubar");
+    const board = await waitForVisibleElement('[data-testid="legacy-board-pane"]', "board pane");
+    evidence.domRoot = elementSmokeEvidence(shell, '[data-testid="legacy-shell"]');
+    evidence.visibleTargets = [
+      evidence.domRoot,
+      elementSmokeEvidence(menubar, '[data-testid="legacy-menubar"]'),
+      elementSmokeEvidence(board, '[data-testid="legacy-board-pane"]')
+    ];
+    return {
+      tauriRuntimeObserved: evidence.tauriRuntimeObserved,
+      browserFallbackUsed: evidence.browserFallbackUsed,
+      root: evidence.domRoot,
+      initialTargets: evidence.visibleTargets
+    };
+  });
+
+  await check(report, "webview_click_observed", async () => {
+    const clickTargets = [
+      { label: "LegacyShell View/Candidates", selector: '[data-testid="legacy-menu-view-candidates"]', expectedTarget: "candidates" },
+      { label: "LegacyShell Engine/Profiles", selector: '[data-testid="legacy-menu-engine-profiles"]', expectedTarget: "profiles" },
+      { label: "LegacyShell Tools/Providers", selector: '[data-testid="legacy-menu-tools-providers"]', expectedTarget: "providers" },
+      { label: "LegacyShell Tools/Preferences", selector: '[data-testid="legacy-menu-tools-preferences"]', expectedTarget: "preferences" }
+    ];
+    const clicks: WebviewClickEvidence[] = [];
+    for (const target of clickTargets) {
+      clicks.push(await clickLegacyMenuTarget(target.label, target.selector, target.expectedTarget));
+    }
+    evidence.clickedControls = clicks;
+    return { clickedControls: clicks };
+  });
+
+  await check(report, "visible_targets_verified", async () => {
+    const selectors = [
+      '[data-testid="legacy-board-pane"]',
+      '[data-testid="legacy-analysis-pane"]',
+      '[data-testid="sgf-tree-panel"]',
+      '[data-testid="engine-setup-panel"]',
+      '[data-testid="provider-panel"]',
+      '[data-testid="preferences-panel"]'
+    ];
+    const visibleTargets = selectors.map((selector) => {
+      const element = queryRequiredElement(selector, selector);
+      const item = elementSmokeEvidence(element, selector);
+      if (!item.visible) throw new Error(`${selector} is present but not visible in the WebView DOM.`);
+      return item;
+    });
+    evidence.visibleTargets = mergeElementEvidence(evidence.visibleTargets, visibleTargets);
+    return { visibleTargets: evidence.visibleTargets };
+  });
+
+  await check(report, "scope_boundaries_recorded", async () => {
+    return {
+      ...evidence.boundaries,
+      webviewDomClickCovered: true,
+      nativeDialogCovered: false,
+      osNativeMenuCovered: false,
+      sourceOnlyProof: false
+    };
+  });
+}
+
+async function clickLegacyMenuTarget(label: string, selector: string, expectedTarget: string): Promise<WebviewClickEvidence> {
+  const control = await waitForElement(selector, label);
+  const details = control.closest("details") as HTMLDetailsElement | null;
+  if (details) details.open = true;
+  await delay(30);
+  const controlEvidence = elementSmokeEvidence(control, selector);
+  if (!controlEvidence.visible) throw new Error(`${label} control is not visible after opening its menu.`);
+  control.click();
+  await delay(120);
+
+  const shell = queryRequiredElement('[data-testid="legacy-shell"]', "LegacyShell root after click");
+  const activeTarget = nonEmptyAttribute(shell, "data-active-menu-target");
+  if (activeTarget !== expectedTarget) {
+    throw new Error(`${label} click did not activate ${expectedTarget}; observed ${activeTarget ?? "none"}.`);
+  }
+  const targetElement = await waitForMenuTargetElement(expectedTarget);
+  const targetEvidence = elementSmokeEvidence(targetElement, `#legacy-menu-target-${expectedTarget}`);
+  if (!targetEvidence.visible) throw new Error(`${label} target ${expectedTarget} is not visible after click.`);
+
+  return {
+    label,
+    selector,
+    expectedTarget,
+    control: controlEvidence,
+    activeTarget,
+    lastAction: nonEmptyAttribute(shell, "data-last-menu-action"),
+    lastLegacyAction: nonEmptyAttribute(shell, "data-last-legacy-action"),
+    actionSource: nonEmptyAttribute(shell, "data-last-legacy-action-source"),
+    actionStatus: nonEmptyAttribute(shell, "data-menu-action-status"),
+    targetElement: targetEvidence
+  };
+}
+
+async function waitForMenuTargetElement(target: string): Promise<HTMLElement> {
+  const id = `legacy-menu-target-${target}`;
+  const deadline = Date.now() + 1_500;
+  while (Date.now() < deadline) {
+    const byId = document.getElementById(id);
+    if (byId instanceof HTMLElement) return byId;
+    const byTarget = document.querySelector(`[data-menu-target="${target}"]`);
+    if (byTarget instanceof HTMLElement) return byTarget;
+    await delay(50);
+  }
+  throw new Error(`Missing visible menu target element for ${target}.`);
+}
+
+async function waitForVisibleElement(selector: string, label: string): Promise<HTMLElement> {
+  const element = await waitForElement(selector, label);
+  if (!isElementVisible(element)) throw new Error(`${label} is present but not visible.`);
+  return element;
+}
+
+async function waitForElement(selector: string, label: string): Promise<HTMLElement> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const element = document.querySelector(selector);
+    if (element instanceof HTMLElement) return element;
+    await delay(50);
+  }
+  throw new Error(`Missing DOM target ${label} (${selector}).`);
+}
+
+function queryRequiredElement(selector: string, label: string): HTMLElement {
+  const element = document.querySelector(selector);
+  if (!(element instanceof HTMLElement)) throw new Error(`Missing DOM target ${label} (${selector}).`);
+  return element;
+}
+
+function elementSmokeEvidence(element: HTMLElement, selector: string): ElementSmokeEvidence {
+  return {
+    selector,
+    tagName: element.tagName.toLowerCase(),
+    text: normalizeText(element.textContent ?? ""),
+    visible: isElementVisible(element),
+    id: element.id || null,
+    className: typeof element.className === "string" && element.className.trim() ? element.className : null,
+    testId: element.dataset.testid ?? null,
+    attributes: smokeAttributes(element)
+  };
+}
+
+function smokeAttributes(element: HTMLElement): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  for (const attribute of Array.from(element.attributes)) {
+    if (
+      attribute.name === "id" ||
+      attribute.name === "class" ||
+      attribute.name === "role" ||
+      attribute.name.startsWith("aria-") ||
+      attribute.name.startsWith("data-")
+    ) {
+      attributes[attribute.name] = attribute.value;
+    }
+  }
+  return attributes;
+}
+
+function isElementVisible(element: HTMLElement): boolean {
+  if (!element.isConnected) return false;
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function normalizeText(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+function nonEmptyAttribute(element: HTMLElement, name: string): string | null {
+  const value = element.getAttribute(name);
+  return value && value.trim() ? value : null;
+}
+
+function mergeElementEvidence(current: ElementSmokeEvidence[], next: ElementSmokeEvidence[]): ElementSmokeEvidence[] {
+  const bySelector = new Map<string, ElementSmokeEvidence>();
+  for (const item of [...current, ...next]) bySelector.set(item.selector, item);
+  return [...bySelector.values()];
+}
+
 async function verifySavedBoardState(
   report: RuntimeSmokeReport,
   sgfText: string,
@@ -1108,8 +1364,24 @@ function runtimeSmokeStaticEnv(name: string): string | undefined {
 }
 
 function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSmokePhase {
-  if (value === "edit-save" || value === "reopen-verify" || value === "katago-live" || value === "readboard-live" || value === "provider-live") return value;
+  if (
+    value === "edit-save" ||
+    value === "reopen-verify" ||
+    value === "katago-live" ||
+    value === "readboard-live" ||
+    value === "provider-live" ||
+    value === "webview-dom-click"
+  ) return value;
   return "full";
+}
+
+function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
+  return phase !== "provider-live" && phase !== "readboard-live" && phase !== "webview-dom-click";
+}
+
+function requireRuntimeSmokeSgfPath(sgfPath: string | null): string {
+  if (!sgfPath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_SGF_PATH is required.");
+  return sgfPath;
 }
 
 function readEnvKatagoLiveSmokeConfig(): KataGoLiveSmokeConfig {

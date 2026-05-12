@@ -129,6 +129,23 @@ LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS = [
 ]
 TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE = "docs/qa/tauri-window-runtime-smoke-macos.json"
 TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.tauri-window-runtime-smoke.v1"
+TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE = "docs/qa/tauri-webview-dom-click-smoke-macos.json"
+TAURI_WEBVIEW_DOM_CLICK_SMOKE_SCHEMA = "lizzieyzy.tauri-webview-dom-click-smoke.v1"
+TAURI_WEBVIEW_DOM_CLICK_REQUIRED_CHECKS = [
+    "tauri_runtime_started",
+    "webview_dom_observed",
+    "webview_click_observed",
+    "visible_targets_verified",
+    "browser_fallback_excluded",
+    "scope_boundaries_recorded",
+]
+TAURI_WEBVIEW_DOM_CLICK_REQUIRED_FALSE_FIELDS = [
+    "fullLayoutParity",
+    "fullShortcutParity",
+    "fullLegacyParity",
+    "releaseParity",
+    "ocrCaptureParity",
+]
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
 INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
 NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE = "docs/qa/native-desktop-sgf-workflow-macos.json"
@@ -974,6 +991,7 @@ class UserFlowSmoke:
         self.check_legacy_shell_menu_action_smoke_evidence()
         self.check_native_menu_shortcut_smoke_evidence()
         self.check_tauri_window_runtime_smoke_evidence()
+        self.check_tauri_webview_dom_click_smoke_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
@@ -1128,6 +1146,30 @@ class UserFlowSmoke:
         self.pass_(
             "tauri_window_runtime_smoke",
             "scoped Tauri desktop window/runtime screenshot smoke evidence passes with source runtime save/reopen proof and boundary checks",
+        )
+
+    def check_tauri_webview_dom_click_smoke_evidence(self) -> None:
+        evidence_path = self.path(TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "tauri_webview_dom_click_smoke",
+                f"TODO gate: run Tauri WebView DOM/click smoke and record {TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_tauri_webview_dom_click_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "tauri_webview_dom_click_smoke",
+                f"{TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE} is present but not valid scoped Tauri WebView DOM/click PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "tauri_webview_dom_click_smoke",
+            "scoped Tauri WebView DOM/click evidence passes with runtime, DOM, click, visible-target, and boundary checks",
         )
 
     def check_installed_macos_app_smoke_evidence(self) -> None:
@@ -2086,6 +2128,162 @@ def validate_tauri_window_runtime_save_reopen_proof(evidence: dict[str, Any]) ->
     return [
         "save/reopen semantic proof must include valid firstLaunch, secondLaunch, saveReopenProof, reopen, and afterReopen fields"
     ]
+
+
+def validate_tauri_webview_dom_click_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != TAURI_WEBVIEW_DOM_CLICK_SMOKE_SCHEMA:
+        failures.append(f"schema must be {TAURI_WEBVIEW_DOM_CLICK_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("tauriRuntimeObserved") is not True:
+        failures.append("tauriRuntimeObserved must be true")
+    if evidence.get("webviewDomObserved") is not True:
+        failures.append("webviewDomObserved must be true")
+    if evidence.get("webviewClickObserved") is not True:
+        failures.append("webviewClickObserved must be true")
+    if evidence.get("browserFallbackUsed") is not False:
+        failures.append("browserFallbackUsed must be false")
+    for key in TAURI_WEBVIEW_DOM_CLICK_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is True:
+            failures.append(f"{key} must be false")
+
+    check_by_name = tauri_webview_dom_click_check_by_name(evidence)
+    missing = [name for name in TAURI_WEBVIEW_DOM_CLICK_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in TAURI_WEBVIEW_DOM_CLICK_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    failures.extend(validate_tauri_webview_dom_click_checks(check_by_name))
+    failures.extend(validate_tauri_webview_click_records(evidence.get("clickedControls")))
+    failures.extend(validate_tauri_webview_visible_assertions(evidence.get("visibleAssertions")))
+    boundary_candidates = tauri_webview_dom_click_boundary_candidates(evidence, check_by_name)
+    if not any(not validate_tauri_webview_scope_boundaries(candidate) for candidate in boundary_candidates):
+        failures.append("boundaries must include fullLayoutParity/fullShortcutParity/fullLegacyParity/releaseParity/ocrCaptureParity=false")
+    for candidate in boundary_candidates:
+        if isinstance(candidate, dict):
+            for key in TAURI_WEBVIEW_DOM_CLICK_REQUIRED_FALSE_FIELDS:
+                if candidate.get(key) is True:
+                    failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def tauri_webview_dom_click_check_by_name(evidence: dict[str, Any]) -> dict[str, Any]:
+    checks: list[Any] = []
+    for candidate in (
+        evidence.get("checks"),
+        evidence.get("runtimeReport", {}).get("checks") if isinstance(evidence.get("runtimeReport"), dict) else None,
+    ):
+        if isinstance(candidate, list):
+            checks.extend(candidate)
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    if "tauri_runtime_started" not in check_by_name and "runtime_started" in check_by_name:
+        check_by_name["tauri_runtime_started"] = check_by_name["runtime_started"]
+    return check_by_name
+
+
+def validate_tauri_webview_dom_click_checks(check_by_name: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    runtime = check_evidence(check_by_name.get("tauri_runtime_started"))
+    if runtime is None:
+        failures.append("tauri_runtime_started evidence must be an object")
+    elif runtime.get("tauriRuntimeObserved") is not True and runtime.get("tauriInternals") is not True:
+        failures.append("tauri_runtime_started.tauriRuntimeObserved must be true")
+
+    dom = check_evidence(check_by_name.get("webview_dom_observed"))
+    if dom is None:
+        failures.append("webview_dom_observed evidence must be an object")
+    else:
+        dom_root = first_present(dom, "root", "domRoot")
+        initial_targets = dom.get("initialTargets")
+        if (
+            dom.get("webviewDomObserved") is not True
+            and not isinstance(dom_root, dict)
+            and not isinstance(initial_targets, list)
+        ):
+            failures.append("webview_dom_observed.webviewDomObserved must be true")
+
+    click = check_evidence(check_by_name.get("webview_click_observed"))
+    if click is None:
+        failures.append("webview_click_observed evidence must be an object")
+    else:
+        click_records = first_present(click, "clickedControls", "controls")
+        if click.get("webviewClickObserved") is not True and validate_tauri_webview_click_records(click_records):
+            failures.append("webview_click_observed.webviewClickObserved must be true")
+        failures.extend(validate_tauri_webview_click_records(first_present(click, "clickedControls", "controls")))
+
+    visible = check_evidence(check_by_name.get("visible_targets_verified"))
+    if visible is None:
+        failures.append("visible_targets_verified evidence must be an object")
+    else:
+        failures.extend(
+            validate_tauri_webview_visible_assertions(
+                first_present(visible, "visibleAssertions", "visibleTargets", "targets")
+            )
+        )
+
+    fallback = check_evidence(check_by_name.get("browser_fallback_excluded"))
+    if fallback is None:
+        failures.append("browser_fallback_excluded evidence must be an object")
+    elif fallback.get("browserFallbackUsed") is not False:
+        failures.append("browser_fallback_excluded.browserFallbackUsed must be false")
+    return failures
+
+
+def validate_tauri_webview_click_records(value: Any) -> list[str]:
+    failures = validate_desktop_ui_click_clicked_controls(value)
+    if isinstance(value, list) and len(value) < 4:
+        failures.append("clickedControls must include at least four controls")
+    return failures
+
+
+def validate_tauri_webview_visible_assertions(value: Any) -> list[str]:
+    failures = validate_desktop_ui_click_visible_assertions(value)
+    if isinstance(value, list) and len(value) < 4:
+        failures.append("visibleAssertions must include at least four assertions")
+    return failures
+
+
+def validate_tauri_webview_scope_boundaries(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["boundaries must be an object"]
+    failures: list[str] = []
+    if "browserFallbackUsed" in value and value.get("browserFallbackUsed") is not False:
+        failures.append("boundaries.browserFallbackUsed must be false")
+    for key in TAURI_WEBVIEW_DOM_CLICK_REQUIRED_FALSE_FIELDS:
+        if value.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def tauri_webview_dom_click_boundary_candidates(
+    evidence: dict[str, Any], check_by_name: dict[str, Any]
+) -> list[Any]:
+    candidates: list[Any] = [evidence.get("boundaries")]
+    scope_boundaries = check_evidence(check_by_name.get("scope_boundaries_recorded"))
+    if scope_boundaries is not None:
+        candidates.append(scope_boundaries)
+    runtime_report = evidence.get("runtimeReport")
+    if isinstance(runtime_report, dict):
+        webview_dom_click = runtime_report.get("webviewDomClick")
+        if isinstance(webview_dom_click, dict):
+            candidates.append(webview_dom_click.get("boundaries"))
+    return candidates
 
 
 def validate_installed_macos_app_smoke_evidence(evidence: Any) -> list[str]:

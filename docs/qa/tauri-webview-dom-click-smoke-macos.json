@@ -1,0 +1,1072 @@
+{
+  "boundaries": {
+    "browserFallbackUsed": false,
+    "fullLegacyParityCovered": false,
+    "nativeDialogClickCovered": false,
+    "notarized": false,
+    "ocrCovered": false,
+    "productionSigned": false,
+    "releasePublished": false
+  },
+  "browserFallbackUsed": false,
+  "clickedControls": [
+    {
+      "actionSource": "menu",
+      "actionStatus": "focused",
+      "activeTarget": "candidates",
+      "control": {
+        "attributes": {
+          "aria-controls": "legacy-menu-target-candidates",
+          "data-legacy-action": "view.candidates",
+          "data-menu-target": "candidates",
+          "data-testid": "legacy-menu-view-candidates"
+        },
+        "className": null,
+        "id": null,
+        "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+        "tagName": "button",
+        "testId": "legacy-menu-view-candidates",
+        "text": "Candidates",
+        "visible": true
+      },
+      "expectedTarget": "candidates",
+      "label": "LegacyShell View/Candidates",
+      "lastAction": "View:Candidates",
+      "lastLegacyAction": "view.candidates",
+      "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+      "targetElement": {
+        "attributes": {
+          "class": "legacy-focus-highlight",
+          "data-legacy-menu-target-id": "legacy-menu-target-candidates",
+          "data-menu-target": "candidates",
+          "id": "legacy-menu-target-candidates"
+        },
+        "className": "legacy-focus-highlight",
+        "id": "legacy-menu-target-candidates",
+        "selector": "#legacy-menu-target-candidates",
+        "tagName": "section",
+        "testId": null,
+        "text": "Candidates",
+        "visible": true
+      }
+    },
+    {
+      "actionSource": "menu",
+      "actionStatus": "focused",
+      "activeTarget": "profiles",
+      "control": {
+        "attributes": {
+          "aria-controls": "legacy-menu-target-profiles",
+          "data-legacy-action": "engine.profiles",
+          "data-menu-target": "profiles",
+          "data-testid": "legacy-menu-engine-profiles"
+        },
+        "className": null,
+        "id": null,
+        "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+        "tagName": "button",
+        "testId": "legacy-menu-engine-profiles",
+        "text": "Profiles",
+        "visible": true
+      },
+      "expectedTarget": "profiles",
+      "label": "LegacyShell Engine/Profiles",
+      "lastAction": "Engine:Profiles",
+      "lastLegacyAction": "engine.profiles",
+      "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+      "targetElement": {
+        "attributes": {
+          "class": "legacy-focus-highlight",
+          "data-legacy-menu-target-id": "legacy-menu-target-profiles",
+          "data-menu-target": "profiles",
+          "id": "legacy-menu-target-profiles"
+        },
+        "className": "legacy-focus-highlight",
+        "id": "legacy-menu-target-profiles",
+        "selector": "#legacy-menu-target-profiles",
+        "tagName": "select",
+        "testId": null,
+        "text": "Local KataGo",
+        "visible": true
+      }
+    },
+    {
+      "actionSource": "menu",
+      "actionStatus": "focused",
+      "activeTarget": "providers",
+      "control": {
+        "attributes": {
+          "aria-controls": "legacy-menu-target-providers",
+          "data-legacy-action": "tools.providers",
+          "data-menu-target": "providers",
+          "data-testid": "legacy-menu-tools-providers"
+        },
+        "className": null,
+        "id": null,
+        "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+        "tagName": "button",
+        "testId": "legacy-menu-tools-providers",
+        "text": "Providers",
+        "visible": true
+      },
+      "expectedTarget": "providers",
+      "label": "LegacyShell Tools/Providers",
+      "lastAction": "Tools:Providers",
+      "lastLegacyAction": "tools.providers",
+      "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+      "targetElement": {
+        "attributes": {
+          "aria-label": "Provider import",
+          "class": "provider-panel legacy-focus-highlight",
+          "data-legacy-menu-target-id": "legacy-menu-target-providers",
+          "data-menu-target": "providers",
+          "data-testid": "provider-panel",
+          "id": "legacy-menu-target-providers"
+        },
+        "className": "provider-panel legacy-focus-highlight",
+        "id": "legacy-menu-target-providers",
+        "selector": "#legacy-menu-target-providers",
+        "tagName": "section",
+        "testId": "provider-panel",
+        "text": "ProviderYike URL preview ready.SourceYikeFoxPreviewURLYike URL preview ready.Fetch & importProvider fetch ready.Payload / SGFImport pasted payloadPayload import ready.Readboard ...",
+        "visible": true
+      }
+    },
+    {
+      "actionSource": "menu",
+      "actionStatus": "focused",
+      "activeTarget": "preferences",
+      "control": {
+        "attributes": {
+          "aria-controls": "legacy-menu-target-preferences",
+          "data-legacy-action": "tools.preferences",
+          "data-menu-target": "preferences",
+          "data-testid": "legacy-menu-tools-preferences"
+        },
+        "className": null,
+        "id": null,
+        "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+        "tagName": "button",
+        "testId": "legacy-menu-tools-preferences",
+        "text": "Preferences",
+        "visible": true
+      },
+      "expectedTarget": "preferences",
+      "label": "LegacyShell Tools/Preferences",
+      "lastAction": "Tools:Preferences",
+      "lastLegacyAction": "tools.preferences",
+      "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+      "targetElement": {
+        "attributes": {
+          "aria-label": "Application preferences",
+          "class": "preferences-panel legacy-focus-highlight",
+          "data-legacy-menu-target-id": "legacy-menu-target-preferences",
+          "data-menu-target": "preferences",
+          "data-testid": "preferences-panel",
+          "id": "legacy-menu-target-preferences"
+        },
+        "className": "preferences-panel legacy-focus-highlight",
+        "id": "legacy-menu-target-preferences",
+        "selector": "#legacy-menu-target-preferences",
+        "tagName": "section",
+        "testId": "preferences-panel",
+        "text": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh contrastLegacy c...",
+        "visible": true
+      }
+    }
+  ],
+  "collectionMethod": "tauri-dev-runtime-smoke-webview-dom-click",
+  "failures": [],
+  "finishedAt": "2026-05-12T07:25:24Z",
+  "launch": {
+    "command": "npm --prefix apps/desktop run tauri:dev",
+    "exitCode": -15,
+    "logPath": "<tmp>/tauri-dev.log",
+    "phase": "webview-dom-click",
+    "pid": 90883,
+    "reportPath": "<tmp>/runtime-report.json",
+    "sgfPath": "<tmp>/webview-dom-click.sgf",
+    "startedAt": "2026-05-12T07:25:18Z",
+    "stopped": true,
+    "stoppedAt": "2026-05-12T07:25:24Z"
+  },
+  "name": "tauri_webview_dom_click_smoke",
+  "phase": "webview-dom-click",
+  "platform": "macos",
+  "runtimeReport": {
+    "checks": [
+      {
+        "details": {
+          "platform": "MacIntel",
+          "tauriInternals": true,
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+        },
+        "name": "runtime_started",
+        "status": "pass"
+      },
+      {
+        "details": {
+          "browserFallbackUsed": false,
+          "platform": "MacIntel",
+          "tauriRuntimeObserved": true,
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+        },
+        "name": "browser_fallback_excluded",
+        "status": "pass"
+      },
+      {
+        "details": {
+          "browserFallbackUsed": false,
+          "initialTargets": [
+            {
+              "attributes": {
+                "class": "app-shell legacy-shell",
+                "data-active-menu-target": "",
+                "data-last-legacy-action": "",
+                "data-last-legacy-action-source": "",
+                "data-last-menu-action": "",
+                "data-menu-action-status": "idle",
+                "data-testid": "legacy-shell"
+              },
+              "className": "app-shell legacy-shell",
+              "id": null,
+              "selector": "[data-testid=\"legacy-shell\"]",
+              "tagName": "main",
+              "testId": "legacy-shell",
+              "text": "LizzieYzy NextTauri 2 + React review workspaceFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAsset...",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "aria-label": "Application menu",
+                "class": "legacy-menubar",
+                "data-testid": "legacy-menubar"
+              },
+              "className": "legacy-menubar",
+              "id": null,
+              "selector": "[data-testid=\"legacy-menubar\"]",
+              "tagName": "nav",
+              "testId": "legacy-menubar",
+              "text": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHelpBackend status",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "class": "left-pane legacy-board-pane",
+                "data-testid": "legacy-board-pane"
+              },
+              "className": "left-pane legacy-board-pane",
+              "id": null,
+              "selector": "[data-testid=\"legacy-board-pane\"]",
+              "tagName": "div",
+              "testId": "legacy-board-pane",
+              "text": "CandidatesOwnershipPolicyMove 06",
+              "visible": true
+            }
+          ],
+          "root": {
+            "attributes": {
+              "class": "app-shell legacy-shell",
+              "data-active-menu-target": "",
+              "data-last-legacy-action": "",
+              "data-last-legacy-action-source": "",
+              "data-last-menu-action": "",
+              "data-menu-action-status": "idle",
+              "data-testid": "legacy-shell"
+            },
+            "className": "app-shell legacy-shell",
+            "id": null,
+            "selector": "[data-testid=\"legacy-shell\"]",
+            "tagName": "main",
+            "testId": "legacy-shell",
+            "text": "LizzieYzy NextTauri 2 + React review workspaceFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAsset...",
+            "visible": true
+          },
+          "tauriRuntimeObserved": true
+        },
+        "name": "webview_dom_observed",
+        "status": "pass"
+      },
+      {
+        "details": {
+          "clickedControls": [
+            {
+              "actionSource": "menu",
+              "actionStatus": "focused",
+              "activeTarget": "candidates",
+              "control": {
+                "attributes": {
+                  "aria-controls": "legacy-menu-target-candidates",
+                  "data-legacy-action": "view.candidates",
+                  "data-menu-target": "candidates",
+                  "data-testid": "legacy-menu-view-candidates"
+                },
+                "className": null,
+                "id": null,
+                "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+                "tagName": "button",
+                "testId": "legacy-menu-view-candidates",
+                "text": "Candidates",
+                "visible": true
+              },
+              "expectedTarget": "candidates",
+              "label": "LegacyShell View/Candidates",
+              "lastAction": "View:Candidates",
+              "lastLegacyAction": "view.candidates",
+              "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+              "targetElement": {
+                "attributes": {
+                  "class": "legacy-focus-highlight",
+                  "data-legacy-menu-target-id": "legacy-menu-target-candidates",
+                  "data-menu-target": "candidates",
+                  "id": "legacy-menu-target-candidates"
+                },
+                "className": "legacy-focus-highlight",
+                "id": "legacy-menu-target-candidates",
+                "selector": "#legacy-menu-target-candidates",
+                "tagName": "section",
+                "testId": null,
+                "text": "Candidates",
+                "visible": true
+              }
+            },
+            {
+              "actionSource": "menu",
+              "actionStatus": "focused",
+              "activeTarget": "profiles",
+              "control": {
+                "attributes": {
+                  "aria-controls": "legacy-menu-target-profiles",
+                  "data-legacy-action": "engine.profiles",
+                  "data-menu-target": "profiles",
+                  "data-testid": "legacy-menu-engine-profiles"
+                },
+                "className": null,
+                "id": null,
+                "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+                "tagName": "button",
+                "testId": "legacy-menu-engine-profiles",
+                "text": "Profiles",
+                "visible": true
+              },
+              "expectedTarget": "profiles",
+              "label": "LegacyShell Engine/Profiles",
+              "lastAction": "Engine:Profiles",
+              "lastLegacyAction": "engine.profiles",
+              "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+              "targetElement": {
+                "attributes": {
+                  "class": "legacy-focus-highlight",
+                  "data-legacy-menu-target-id": "legacy-menu-target-profiles",
+                  "data-menu-target": "profiles",
+                  "id": "legacy-menu-target-profiles"
+                },
+                "className": "legacy-focus-highlight",
+                "id": "legacy-menu-target-profiles",
+                "selector": "#legacy-menu-target-profiles",
+                "tagName": "select",
+                "testId": null,
+                "text": "Local KataGo",
+                "visible": true
+              }
+            },
+            {
+              "actionSource": "menu",
+              "actionStatus": "focused",
+              "activeTarget": "providers",
+              "control": {
+                "attributes": {
+                  "aria-controls": "legacy-menu-target-providers",
+                  "data-legacy-action": "tools.providers",
+                  "data-menu-target": "providers",
+                  "data-testid": "legacy-menu-tools-providers"
+                },
+                "className": null,
+                "id": null,
+                "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+                "tagName": "button",
+                "testId": "legacy-menu-tools-providers",
+                "text": "Providers",
+                "visible": true
+              },
+              "expectedTarget": "providers",
+              "label": "LegacyShell Tools/Providers",
+              "lastAction": "Tools:Providers",
+              "lastLegacyAction": "tools.providers",
+              "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+              "targetElement": {
+                "attributes": {
+                  "aria-label": "Provider import",
+                  "class": "provider-panel legacy-focus-highlight",
+                  "data-legacy-menu-target-id": "legacy-menu-target-providers",
+                  "data-menu-target": "providers",
+                  "data-testid": "provider-panel",
+                  "id": "legacy-menu-target-providers"
+                },
+                "className": "provider-panel legacy-focus-highlight",
+                "id": "legacy-menu-target-providers",
+                "selector": "#legacy-menu-target-providers",
+                "tagName": "section",
+                "testId": "provider-panel",
+                "text": "ProviderYike URL preview ready.SourceYikeFoxPreviewURLYike URL preview ready.Fetch & importProvider fetch ready.Payload / SGFImport pasted payloadPayload import ready.Readboard ...",
+                "visible": true
+              }
+            },
+            {
+              "actionSource": "menu",
+              "actionStatus": "focused",
+              "activeTarget": "preferences",
+              "control": {
+                "attributes": {
+                  "aria-controls": "legacy-menu-target-preferences",
+                  "data-legacy-action": "tools.preferences",
+                  "data-menu-target": "preferences",
+                  "data-testid": "legacy-menu-tools-preferences"
+                },
+                "className": null,
+                "id": null,
+                "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+                "tagName": "button",
+                "testId": "legacy-menu-tools-preferences",
+                "text": "Preferences",
+                "visible": true
+              },
+              "expectedTarget": "preferences",
+              "label": "LegacyShell Tools/Preferences",
+              "lastAction": "Tools:Preferences",
+              "lastLegacyAction": "tools.preferences",
+              "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+              "targetElement": {
+                "attributes": {
+                  "aria-label": "Application preferences",
+                  "class": "preferences-panel legacy-focus-highlight",
+                  "data-legacy-menu-target-id": "legacy-menu-target-preferences",
+                  "data-menu-target": "preferences",
+                  "data-testid": "preferences-panel",
+                  "id": "legacy-menu-target-preferences"
+                },
+                "className": "preferences-panel legacy-focus-highlight",
+                "id": "legacy-menu-target-preferences",
+                "selector": "#legacy-menu-target-preferences",
+                "tagName": "section",
+                "testId": "preferences-panel",
+                "text": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh contrastLegacy c...",
+                "visible": true
+              }
+            }
+          ]
+        },
+        "name": "webview_click_observed",
+        "status": "pass"
+      },
+      {
+        "details": {
+          "visibleTargets": [
+            {
+              "attributes": {
+                "class": "app-shell legacy-shell",
+                "data-active-menu-target": "",
+                "data-last-legacy-action": "",
+                "data-last-legacy-action-source": "",
+                "data-last-menu-action": "",
+                "data-menu-action-status": "idle",
+                "data-testid": "legacy-shell"
+              },
+              "className": "app-shell legacy-shell",
+              "id": null,
+              "selector": "[data-testid=\"legacy-shell\"]",
+              "tagName": "main",
+              "testId": "legacy-shell",
+              "text": "LizzieYzy NextTauri 2 + React review workspaceFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAsset...",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "aria-label": "Application menu",
+                "class": "legacy-menubar",
+                "data-testid": "legacy-menubar"
+              },
+              "className": "legacy-menubar",
+              "id": null,
+              "selector": "[data-testid=\"legacy-menubar\"]",
+              "tagName": "nav",
+              "testId": "legacy-menubar",
+              "text": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHelpBackend status",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "class": "left-pane legacy-board-pane",
+                "data-testid": "legacy-board-pane"
+              },
+              "className": "left-pane legacy-board-pane",
+              "id": null,
+              "selector": "[data-testid=\"legacy-board-pane\"]",
+              "tagName": "div",
+              "testId": "legacy-board-pane",
+              "text": "CandidatesOwnershipPolicyMove 06",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "class": "legacy-right-pane",
+                "data-testid": "legacy-analysis-pane"
+              },
+              "className": "legacy-right-pane",
+              "id": null,
+              "selector": "[data-testid=\"legacy-analysis-pane\"]",
+              "tagName": "div",
+              "testId": "legacy-analysis-pane",
+              "text": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.Review MarksNo not...",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "aria-label": "SGF tree and comments",
+                "class": "sgf-tree-panel",
+                "data-testid": "sgf-tree-panel"
+              },
+              "className": "sgf-tree-panel",
+              "id": null,
+              "selector": "[data-testid=\"sgf-tree-panel\"]",
+              "tagName": "aside",
+              "testId": "sgf-tree-panel",
+              "text": "SGF Tree21 nodes6 W R10Root7 propertiesMB1 B Q161 propertiesMW2 W D161 propertiesMB3 B Q41 propertiesMW4 W D41 propertiesMB5 B K31 propertiesMW6 W R101 propertiesMB7 B O171 prop...",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "aria-label": "KataGo engine setup",
+                "class": "engine-setup-panel",
+                "data-testid": "engine-setup-panel"
+              },
+              "className": "engine-setup-panel",
+              "id": null,
+              "selector": "[data-testid=\"engine-setup-panel\"]",
+              "tagName": "section",
+              "testId": "engine-setup-panel",
+              "text": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout visible: 15 candidates, 13 missing, 0 placeholder.Resource dir: <local-path>",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "aria-label": "Provider import",
+                "class": "provider-panel",
+                "data-legacy-menu-target-id": "legacy-menu-target-providers",
+                "data-menu-target": "providers",
+                "data-testid": "provider-panel",
+                "id": "legacy-menu-target-providers"
+              },
+              "className": "provider-panel",
+              "id": "legacy-menu-target-providers",
+              "selector": "[data-testid=\"provider-panel\"]",
+              "tagName": "section",
+              "testId": "provider-panel",
+              "text": "ProviderYike URL preview ready.SourceYikeFoxPreviewURLYike URL preview ready.Fetch & importProvider fetch ready.Payload / SGFImport pasted payloadPayload import ready.Readboard ...",
+              "visible": true
+            },
+            {
+              "attributes": {
+                "aria-label": "Application preferences",
+                "class": "preferences-panel legacy-focus-highlight",
+                "data-legacy-menu-target-id": "legacy-menu-target-preferences",
+                "data-menu-target": "preferences",
+                "data-testid": "preferences-panel",
+                "id": "legacy-menu-target-preferences"
+              },
+              "className": "preferences-panel legacy-focus-highlight",
+              "id": "legacy-menu-target-preferences",
+              "selector": "[data-testid=\"preferences-panel\"]",
+              "tagName": "section",
+              "testId": "preferences-panel",
+              "text": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh contrastLegacy c...",
+              "visible": true
+            }
+          ]
+        },
+        "name": "visible_targets_verified",
+        "status": "pass"
+      },
+      {
+        "details": {
+          "fullLayoutParity": false,
+          "fullLegacyParity": false,
+          "fullShortcutParity": false,
+          "nativeDialogCovered": false,
+          "ocrCaptureParity": false,
+          "osNativeMenuCovered": false,
+          "releaseParity": false,
+          "sourceOnlyProof": false,
+          "webviewDomClickCovered": true
+        },
+        "name": "scope_boundaries_recorded",
+        "status": "pass"
+      }
+    ],
+    "expectedReportPath": null,
+    "finishedAt": "2026-05-12T07:25:23.548Z",
+    "name": "ui_tauri_runtime_smoke",
+    "phase": "webview-dom-click",
+    "platform": "macos",
+    "reportPath": "<tmp>/runtime-report.json",
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "sgfPath": "<tmp>/webview-dom-click.sgf",
+    "startedAt": "2026-05-12T07:25:22.936Z",
+    "status": "pass",
+    "steps": [],
+    "webviewDomClick": {
+      "boundaries": {
+        "fullLayoutParity": false,
+        "fullLegacyParity": false,
+        "fullShortcutParity": false,
+        "ocrCaptureParity": false,
+        "releaseParity": false
+      },
+      "browserFallbackUsed": false,
+      "clickedControls": [
+        {
+          "actionSource": "menu",
+          "actionStatus": "focused",
+          "activeTarget": "candidates",
+          "control": {
+            "attributes": {
+              "aria-controls": "legacy-menu-target-candidates",
+              "data-legacy-action": "view.candidates",
+              "data-menu-target": "candidates",
+              "data-testid": "legacy-menu-view-candidates"
+            },
+            "className": null,
+            "id": null,
+            "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+            "tagName": "button",
+            "testId": "legacy-menu-view-candidates",
+            "text": "Candidates",
+            "visible": true
+          },
+          "expectedTarget": "candidates",
+          "label": "LegacyShell View/Candidates",
+          "lastAction": "View:Candidates",
+          "lastLegacyAction": "view.candidates",
+          "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+          "targetElement": {
+            "attributes": {
+              "class": "legacy-focus-highlight",
+              "data-legacy-menu-target-id": "legacy-menu-target-candidates",
+              "data-menu-target": "candidates",
+              "id": "legacy-menu-target-candidates"
+            },
+            "className": "legacy-focus-highlight",
+            "id": "legacy-menu-target-candidates",
+            "selector": "#legacy-menu-target-candidates",
+            "tagName": "section",
+            "testId": null,
+            "text": "Candidates",
+            "visible": true
+          }
+        },
+        {
+          "actionSource": "menu",
+          "actionStatus": "focused",
+          "activeTarget": "profiles",
+          "control": {
+            "attributes": {
+              "aria-controls": "legacy-menu-target-profiles",
+              "data-legacy-action": "engine.profiles",
+              "data-menu-target": "profiles",
+              "data-testid": "legacy-menu-engine-profiles"
+            },
+            "className": null,
+            "id": null,
+            "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+            "tagName": "button",
+            "testId": "legacy-menu-engine-profiles",
+            "text": "Profiles",
+            "visible": true
+          },
+          "expectedTarget": "profiles",
+          "label": "LegacyShell Engine/Profiles",
+          "lastAction": "Engine:Profiles",
+          "lastLegacyAction": "engine.profiles",
+          "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+          "targetElement": {
+            "attributes": {
+              "class": "legacy-focus-highlight",
+              "data-legacy-menu-target-id": "legacy-menu-target-profiles",
+              "data-menu-target": "profiles",
+              "id": "legacy-menu-target-profiles"
+            },
+            "className": "legacy-focus-highlight",
+            "id": "legacy-menu-target-profiles",
+            "selector": "#legacy-menu-target-profiles",
+            "tagName": "select",
+            "testId": null,
+            "text": "Local KataGo",
+            "visible": true
+          }
+        },
+        {
+          "actionSource": "menu",
+          "actionStatus": "focused",
+          "activeTarget": "providers",
+          "control": {
+            "attributes": {
+              "aria-controls": "legacy-menu-target-providers",
+              "data-legacy-action": "tools.providers",
+              "data-menu-target": "providers",
+              "data-testid": "legacy-menu-tools-providers"
+            },
+            "className": null,
+            "id": null,
+            "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+            "tagName": "button",
+            "testId": "legacy-menu-tools-providers",
+            "text": "Providers",
+            "visible": true
+          },
+          "expectedTarget": "providers",
+          "label": "LegacyShell Tools/Providers",
+          "lastAction": "Tools:Providers",
+          "lastLegacyAction": "tools.providers",
+          "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+          "targetElement": {
+            "attributes": {
+              "aria-label": "Provider import",
+              "class": "provider-panel legacy-focus-highlight",
+              "data-legacy-menu-target-id": "legacy-menu-target-providers",
+              "data-menu-target": "providers",
+              "data-testid": "provider-panel",
+              "id": "legacy-menu-target-providers"
+            },
+            "className": "provider-panel legacy-focus-highlight",
+            "id": "legacy-menu-target-providers",
+            "selector": "#legacy-menu-target-providers",
+            "tagName": "section",
+            "testId": "provider-panel",
+            "text": "ProviderYike URL preview ready.SourceYikeFoxPreviewURLYike URL preview ready.Fetch & importProvider fetch ready.Payload / SGFImport pasted payloadPayload import ready.Readboard ...",
+            "visible": true
+          }
+        },
+        {
+          "actionSource": "menu",
+          "actionStatus": "focused",
+          "activeTarget": "preferences",
+          "control": {
+            "attributes": {
+              "aria-controls": "legacy-menu-target-preferences",
+              "data-legacy-action": "tools.preferences",
+              "data-menu-target": "preferences",
+              "data-testid": "legacy-menu-tools-preferences"
+            },
+            "className": null,
+            "id": null,
+            "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+            "tagName": "button",
+            "testId": "legacy-menu-tools-preferences",
+            "text": "Preferences",
+            "visible": true
+          },
+          "expectedTarget": "preferences",
+          "label": "LegacyShell Tools/Preferences",
+          "lastAction": "Tools:Preferences",
+          "lastLegacyAction": "tools.preferences",
+          "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+          "targetElement": {
+            "attributes": {
+              "aria-label": "Application preferences",
+              "class": "preferences-panel legacy-focus-highlight",
+              "data-legacy-menu-target-id": "legacy-menu-target-preferences",
+              "data-menu-target": "preferences",
+              "data-testid": "preferences-panel",
+              "id": "legacy-menu-target-preferences"
+            },
+            "className": "preferences-panel legacy-focus-highlight",
+            "id": "legacy-menu-target-preferences",
+            "selector": "#legacy-menu-target-preferences",
+            "tagName": "section",
+            "testId": "preferences-panel",
+            "text": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh contrastLegacy c...",
+            "visible": true
+          }
+        }
+      ],
+      "domRoot": {
+        "attributes": {
+          "class": "app-shell legacy-shell",
+          "data-active-menu-target": "",
+          "data-last-legacy-action": "",
+          "data-last-legacy-action-source": "",
+          "data-last-menu-action": "",
+          "data-menu-action-status": "idle",
+          "data-testid": "legacy-shell"
+        },
+        "className": "app-shell legacy-shell",
+        "id": null,
+        "selector": "[data-testid=\"legacy-shell\"]",
+        "tagName": "main",
+        "testId": "legacy-shell",
+        "text": "LizzieYzy NextTauri 2 + React review workspaceFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAsset...",
+        "visible": true
+      },
+      "tauriRuntimeObserved": true,
+      "visibleTargets": [
+        {
+          "attributes": {
+            "class": "app-shell legacy-shell",
+            "data-active-menu-target": "",
+            "data-last-legacy-action": "",
+            "data-last-legacy-action-source": "",
+            "data-last-menu-action": "",
+            "data-menu-action-status": "idle",
+            "data-testid": "legacy-shell"
+          },
+          "className": "app-shell legacy-shell",
+          "id": null,
+          "selector": "[data-testid=\"legacy-shell\"]",
+          "tagName": "main",
+          "testId": "legacy-shell",
+          "text": "LizzieYzy NextTauri 2 + React review workspaceFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAsset...",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "aria-label": "Application menu",
+            "class": "legacy-menubar",
+            "data-testid": "legacy-menubar"
+          },
+          "className": "legacy-menubar",
+          "id": null,
+          "selector": "[data-testid=\"legacy-menubar\"]",
+          "tagName": "nav",
+          "testId": "legacy-menubar",
+          "text": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHelpBackend status",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "class": "left-pane legacy-board-pane",
+            "data-testid": "legacy-board-pane"
+          },
+          "className": "left-pane legacy-board-pane",
+          "id": null,
+          "selector": "[data-testid=\"legacy-board-pane\"]",
+          "tagName": "div",
+          "testId": "legacy-board-pane",
+          "text": "CandidatesOwnershipPolicyMove 06",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "class": "legacy-right-pane",
+            "data-testid": "legacy-analysis-pane"
+          },
+          "className": "legacy-right-pane",
+          "id": null,
+          "selector": "[data-testid=\"legacy-analysis-pane\"]",
+          "tagName": "div",
+          "testId": "legacy-analysis-pane",
+          "text": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.Review MarksNo not...",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "aria-label": "SGF tree and comments",
+            "class": "sgf-tree-panel",
+            "data-testid": "sgf-tree-panel"
+          },
+          "className": "sgf-tree-panel",
+          "id": null,
+          "selector": "[data-testid=\"sgf-tree-panel\"]",
+          "tagName": "aside",
+          "testId": "sgf-tree-panel",
+          "text": "SGF Tree21 nodes6 W R10Root7 propertiesMB1 B Q161 propertiesMW2 W D161 propertiesMB3 B Q41 propertiesMW4 W D41 propertiesMB5 B K31 propertiesMW6 W R101 propertiesMB7 B O171 prop...",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "aria-label": "KataGo engine setup",
+            "class": "engine-setup-panel",
+            "data-testid": "engine-setup-panel"
+          },
+          "className": "engine-setup-panel",
+          "id": null,
+          "selector": "[data-testid=\"engine-setup-panel\"]",
+          "tagName": "section",
+          "testId": "engine-setup-panel",
+          "text": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout visible: 15 candidates, 13 missing, 0 placeholder.Resource dir: <local-path>",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "aria-label": "Provider import",
+            "class": "provider-panel",
+            "data-legacy-menu-target-id": "legacy-menu-target-providers",
+            "data-menu-target": "providers",
+            "data-testid": "provider-panel",
+            "id": "legacy-menu-target-providers"
+          },
+          "className": "provider-panel",
+          "id": "legacy-menu-target-providers",
+          "selector": "[data-testid=\"provider-panel\"]",
+          "tagName": "section",
+          "testId": "provider-panel",
+          "text": "ProviderYike URL preview ready.SourceYikeFoxPreviewURLYike URL preview ready.Fetch & importProvider fetch ready.Payload / SGFImport pasted payloadPayload import ready.Readboard ...",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "aria-label": "Application preferences",
+            "class": "preferences-panel legacy-focus-highlight",
+            "data-legacy-menu-target-id": "legacy-menu-target-preferences",
+            "data-menu-target": "preferences",
+            "data-testid": "preferences-panel",
+            "id": "legacy-menu-target-preferences"
+          },
+          "className": "preferences-panel legacy-focus-highlight",
+          "id": "legacy-menu-target-preferences",
+          "selector": "[data-testid=\"preferences-panel\"]",
+          "tagName": "section",
+          "testId": "preferences-panel",
+          "text": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh contrastLegacy c...",
+          "visible": true
+        }
+      ]
+    }
+  },
+  "schema": "lizzieyzy.tauri-webview-dom-click-smoke.v1",
+  "screenshotObserved": false,
+  "screenshots": [],
+  "sourceRuntimeReport": {
+    "name": "ui_tauri_runtime_smoke",
+    "path": "<tmp>/runtime-report.json",
+    "phase": "webview-dom-click",
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "status": "pass"
+  },
+  "startedAt": "2026-05-12T07:25:18Z",
+  "status": "pass",
+  "tauriRuntimeObserved": true,
+  "visibleAssertions": [
+    {
+      "attributes": {
+        "class": "app-shell legacy-shell",
+        "data-active-menu-target": "",
+        "data-last-legacy-action": "",
+        "data-last-legacy-action-source": "",
+        "data-last-menu-action": "",
+        "data-menu-action-status": "idle",
+        "data-testid": "legacy-shell"
+      },
+      "className": "app-shell legacy-shell",
+      "id": null,
+      "selector": "[data-testid=\"legacy-shell\"]",
+      "tagName": "main",
+      "testId": "legacy-shell",
+      "text": "LizzieYzy NextTauri 2 + React review workspaceFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAsset...",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "aria-label": "Application menu",
+        "class": "legacy-menubar",
+        "data-testid": "legacy-menubar"
+      },
+      "className": "legacy-menubar",
+      "id": null,
+      "selector": "[data-testid=\"legacy-menubar\"]",
+      "tagName": "nav",
+      "testId": "legacy-menubar",
+      "text": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHelpBackend status",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "class": "left-pane legacy-board-pane",
+        "data-testid": "legacy-board-pane"
+      },
+      "className": "left-pane legacy-board-pane",
+      "id": null,
+      "selector": "[data-testid=\"legacy-board-pane\"]",
+      "tagName": "div",
+      "testId": "legacy-board-pane",
+      "text": "CandidatesOwnershipPolicyMove 06",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "class": "legacy-right-pane",
+        "data-testid": "legacy-analysis-pane"
+      },
+      "className": "legacy-right-pane",
+      "id": null,
+      "selector": "[data-testid=\"legacy-analysis-pane\"]",
+      "tagName": "div",
+      "testId": "legacy-analysis-pane",
+      "text": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.Review MarksNo not...",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "aria-label": "SGF tree and comments",
+        "class": "sgf-tree-panel",
+        "data-testid": "sgf-tree-panel"
+      },
+      "className": "sgf-tree-panel",
+      "id": null,
+      "selector": "[data-testid=\"sgf-tree-panel\"]",
+      "tagName": "aside",
+      "testId": "sgf-tree-panel",
+      "text": "SGF Tree21 nodes6 W R10Root7 propertiesMB1 B Q161 propertiesMW2 W D161 propertiesMB3 B Q41 propertiesMW4 W D41 propertiesMB5 B K31 propertiesMW6 W R101 propertiesMB7 B O171 prop...",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "aria-label": "KataGo engine setup",
+        "class": "engine-setup-panel",
+        "data-testid": "engine-setup-panel"
+      },
+      "className": "engine-setup-panel",
+      "id": null,
+      "selector": "[data-testid=\"engine-setup-panel\"]",
+      "tagName": "section",
+      "testId": "engine-setup-panel",
+      "text": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout visible: 15 candidates, 13 missing, 0 placeholder.Resource dir: <local-path>",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "aria-label": "Provider import",
+        "class": "provider-panel",
+        "data-legacy-menu-target-id": "legacy-menu-target-providers",
+        "data-menu-target": "providers",
+        "data-testid": "provider-panel",
+        "id": "legacy-menu-target-providers"
+      },
+      "className": "provider-panel",
+      "id": "legacy-menu-target-providers",
+      "selector": "[data-testid=\"provider-panel\"]",
+      "tagName": "section",
+      "testId": "provider-panel",
+      "text": "ProviderYike URL preview ready.SourceYikeFoxPreviewURLYike URL preview ready.Fetch & importProvider fetch ready.Payload / SGFImport pasted payloadPayload import ready.Readboard ...",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "aria-label": "Application preferences",
+        "class": "preferences-panel legacy-focus-highlight",
+        "data-legacy-menu-target-id": "legacy-menu-target-preferences",
+        "data-menu-target": "preferences",
+        "data-testid": "preferences-panel",
+        "id": "legacy-menu-target-preferences"
+      },
+      "className": "preferences-panel legacy-focus-highlight",
+      "id": "legacy-menu-target-preferences",
+      "selector": "[data-testid=\"preferences-panel\"]",
+      "tagName": "section",
+      "testId": "preferences-panel",
+      "text": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh contrastLegacy c...",
+      "visible": true
+    }
+  ],
+  "webviewClickObserved": true,
+  "webviewDomObserved": true
+}

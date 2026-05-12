@@ -146,6 +146,35 @@ TAURI_WEBVIEW_DOM_CLICK_REQUIRED_FALSE_FIELDS = [
     "releaseParity",
     "ocrCaptureParity",
 ]
+LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE = "docs/qa/legacy-layout-parity-smoke-macos.json"
+LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA = "lizzieyzy.legacy-layout-parity-smoke.v1"
+LEGACY_LAYOUT_REQUIRED_SCREENSHOTS = [
+    "default review",
+    "sgf editing",
+    "katago analysis",
+    "provider/readboard",
+    "engine/preferences",
+]
+LEGACY_LAYOUT_REQUIRED_VISIBLE_TARGETS = [
+    ("board", ["board"]),
+    ("toolbar/menu", ["toolbar", "menu", "menubar"]),
+    ("SGF tree", ["sgf tree", "tree"]),
+    ("annotation/comment/properties", ["annotation", "comment", "properties", "property"]),
+    ("analysis panel", ["analysis panel", "analysis"]),
+    ("winrate", ["winrate"]),
+    ("candidates/PV", ["candidate", "pv", "variation"]),
+    ("cache/status", ["cache", "status"]),
+    ("provider/readboard", ["provider", "readboard"]),
+    ("engine/preferences", ["engine", "preferences", "preference"]),
+]
+LEGACY_LAYOUT_REQUIRED_FALSE_FIELDS = [
+    "pixelPerfectParity",
+    "fullLegacyUiParity",
+    "fullShortcutParity",
+    "releaseParity",
+    "ocrCaptureParity",
+    "fullLegacyParity",
+]
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
 INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
 NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE = "docs/qa/native-desktop-sgf-workflow-macos.json"
@@ -1014,6 +1043,7 @@ class UserFlowSmoke:
         self.check_native_menu_shortcut_smoke_evidence()
         self.check_tauri_window_runtime_smoke_evidence()
         self.check_tauri_webview_dom_click_smoke_evidence()
+        self.check_legacy_layout_parity_smoke_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
@@ -1193,6 +1223,30 @@ class UserFlowSmoke:
         self.pass_(
             "tauri_webview_dom_click_smoke",
             "scoped Tauri WebView DOM/click evidence passes with runtime, DOM, click, visible-target, and boundary checks",
+        )
+
+    def check_legacy_layout_parity_smoke_evidence(self) -> None:
+        evidence_path = self.path(LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "legacy_layout_parity_smoke",
+                f"TODO gate: record scoped legacy layout evidence at {LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_legacy_layout_parity_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "legacy_layout_parity_smoke",
+                f"{LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE} is present but not valid scoped legacy layout PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "legacy_layout_parity_smoke",
+            "scoped legacy layout evidence passes with required screenshots, viewports, visible targets, overlap/clipping, and boundary checks",
         )
 
     def check_installed_macos_app_smoke_evidence(self) -> None:
@@ -2331,6 +2385,147 @@ def tauri_webview_dom_click_boundary_candidates(
         if isinstance(webview_dom_click, dict):
             candidates.append(webview_dom_click.get("boundaries"))
     return candidates
+
+
+def validate_legacy_layout_parity_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA:
+        failures.append(f"schema must be {LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    failures.extend(validate_legacy_layout_screenshots(evidence.get("screenshots")))
+    failures.extend(validate_legacy_layout_viewports(evidence))
+    failures.extend(validate_legacy_layout_visible_assertions(evidence.get("visibleAssertions")))
+    failures.extend(validate_legacy_layout_no_critical_overlap_or_clipping(evidence))
+    failures.extend(validate_legacy_layout_boundaries(evidence))
+    return failures
+
+
+def validate_legacy_layout_screenshots(value: Any) -> list[str]:
+    failures = validate_desktop_ui_click_screenshots(value)
+    if not isinstance(value, list):
+        return failures
+    labels = [
+        str(first_present(screenshot, "label", "name", "step", "scenario")).lower()
+        for screenshot in value
+        if isinstance(screenshot, dict)
+    ]
+    for required in LEGACY_LAYOUT_REQUIRED_SCREENSHOTS:
+        if not any(required in label or required.replace("/", " ") in label.replace("/", " ") for label in labels):
+            failures.append(f"screenshots missing {required}")
+    return failures
+
+
+def validate_legacy_layout_viewports(evidence: dict[str, Any]) -> list[str]:
+    screenshots = evidence.get("screenshots")
+    viewports = first_present(evidence, "viewports", "viewportMatrix")
+    candidates: list[Any] = []
+    if isinstance(viewports, list):
+        candidates.extend(viewports)
+    if isinstance(screenshots, list):
+        for screenshot in screenshots:
+            if isinstance(screenshot, dict):
+                viewport = first_present(screenshot, "viewport", "window", "size")
+                if viewport is not None:
+                    candidates.append(viewport)
+    normalized = [normalize_viewport(candidate) for candidate in candidates]
+    normalized = [viewport for viewport in normalized if viewport is not None]
+    failures: list[str] = []
+    unique = {(width, height) for width, height in normalized}
+    if len(unique) < 3:
+        failures.append("viewports must include at least three sizes")
+    if (1280, 840) not in unique:
+        failures.append("viewports must include 1280x840")
+    if not any(width < 1000 and height >= 700 for width, height in unique):
+        failures.append("viewports must include narrow desktop")
+    if not any(height < 700 and width >= 1000 for width, height in unique):
+        failures.append("viewports must include short window")
+    return failures
+
+
+def normalize_viewport(value: Any) -> tuple[int, int] | None:
+    if isinstance(value, dict):
+        width = first_present(value, "width", "w")
+        height = first_present(value, "height", "h")
+    elif isinstance(value, str):
+        match = re.search(r"(\d{3,5})\s*x\s*(\d{3,5})", value.lower())
+        if not match:
+            return None
+        width, height = int(match.group(1)), int(match.group(2))
+        return (width, height)
+    else:
+        return None
+    if isinstance(width, int) and isinstance(height, int):
+        return (width, height)
+    return None
+
+
+def validate_legacy_layout_visible_assertions(value: Any) -> list[str]:
+    failures = validate_desktop_ui_click_visible_assertions(value)
+    if not isinstance(value, list):
+        return failures
+    assertion_labels: list[str] = []
+    for assertion in value:
+        if isinstance(assertion, str):
+            assertion_labels.append(assertion.lower())
+        elif isinstance(assertion, dict):
+            assertion_labels.append(str(first_present(assertion, "label", "name", "selector", "text", "testId")).lower())
+    haystack = " ".join(assertion_labels)
+    for label, tokens in LEGACY_LAYOUT_REQUIRED_VISIBLE_TARGETS:
+        if not any(token in haystack for token in tokens):
+            failures.append(f"visibleAssertions missing {label}")
+    return failures
+
+
+def validate_legacy_layout_no_critical_overlap_or_clipping(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    forbidden_true_fields = [
+        "criticalOverlap",
+        "criticalOverlapDetected",
+        "hasCriticalOverlap",
+        "criticalClipping",
+        "criticalClippingDetected",
+        "hasCriticalClipping",
+    ]
+    for key in forbidden_true_fields:
+        if evidence.get(key) is True:
+            failures.append(f"{key} must not be true")
+    checks = evidence.get("checks")
+    if isinstance(checks, list):
+        for check in checks:
+            details = check_evidence(check)
+            if isinstance(details, dict):
+                for key in forbidden_true_fields:
+                    if details.get(key) is True:
+                        failures.append(f"{check.get('name', 'check')}.{key} must not be true")
+    assertions = evidence.get("visibleAssertions")
+    if isinstance(assertions, list):
+        for index, assertion in enumerate(assertions):
+            if isinstance(assertion, dict):
+                if assertion.get("overlap") is True or assertion.get("clipped") is True:
+                    failures.append(f"visibleAssertions[{index}] must not be overlapped or clipped")
+    return failures
+
+
+def validate_legacy_layout_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+        boundaries = {}
+    for key in LEGACY_LAYOUT_REQUIRED_FALSE_FIELDS:
+        top_value = evidence.get(key)
+        boundary_value = boundaries.get(key)
+        if top_value is True:
+            failures.append(f"{key} must be false")
+        if boundary_value is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
 
 
 def validate_installed_macos_app_smoke_evidence(evidence: Any) -> list[str]:

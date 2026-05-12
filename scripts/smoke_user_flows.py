@@ -40,6 +40,21 @@ TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS = [
     "save_readback_roundtrip",
     "board_state_verified",
 ]
+DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE = "docs/qa/desktop-sgf-editing-ux-smoke-macos.json"
+DESKTOP_SGF_EDITING_UX_SMOKE_SCHEMA = "lizzieyzy.desktop-sgf-editing-ux-smoke.v1"
+DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS = [
+    "legacy_shell_visible",
+    "toolbar_menu_controls",
+    "tree_panel_visible",
+    "annotation_editor_visible",
+    "selected_node_ux_state",
+    "tree_navigation",
+    "comment_property_annotation_edit",
+    "append_edit_reorder_delete",
+    "dirty_saved_status",
+    "save_readback_reopen",
+    "native_dialog_boundary",
+]
 KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
 KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
 KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -624,6 +639,7 @@ class UserFlowSmoke:
 
     def check_external_runtime_gates(self) -> None:
         self.check_tauri_runtime_ui_smoke_evidence()
+        self.check_desktop_sgf_editing_ux_smoke_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
@@ -651,6 +667,30 @@ class UserFlowSmoke:
         self.pass_(
             "ui_tauri_runtime_smoke",
             f"macOS local Tauri runtime UI smoke evidence passes with {len(TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_desktop_sgf_editing_ux_smoke_evidence(self) -> None:
+        evidence_path = self.path(DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "desktop_sgf_editing_ux_smoke",
+                f"TODO gate: run scripts/smoke_desktop_sgf_editing_ux.py on macOS and record {DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_desktop_sgf_editing_ux_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "desktop_sgf_editing_ux_smoke",
+                f"{DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE} is present but not valid scoped desktop SGF editing UX PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "desktop_sgf_editing_ux_smoke",
+            f"scoped desktop SGF editing UX smoke evidence passes with {len(DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS)} required checks",
         )
 
     def check_katago_live_smoke_evidence(self) -> None:
@@ -826,6 +866,142 @@ def validate_tauri_runtime_ui_smoke_evidence(evidence: Any) -> list[str]:
         failures.append("required checks not pass: " + ", ".join(not_pass))
     failures.extend(validate_tauri_runtime_ui_semantic_checks(checks))
     failures.extend(validate_top_level_save_reopen_proof(evidence))
+    return failures
+
+
+def validate_desktop_sgf_editing_ux_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != DESKTOP_SGF_EDITING_UX_SMOKE_SCHEMA:
+        failures.append(f"schema must be {DESKTOP_SGF_EDITING_UX_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("collectionMethod") != "source_static_plus_tauri_runtime_chain":
+        failures.append("collectionMethod must be source_static_plus_tauri_runtime_chain")
+    if evidence.get("runtimeDomObserved") is not False:
+        failures.append("runtimeDomObserved must be false")
+    if evidence.get("screenshotObserved") is not False:
+        failures.append("screenshotObserved must be false")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_desktop_sgf_editing_ux_surface(evidence))
+    failures.extend(validate_desktop_sgf_editing_ux_coverage(evidence))
+    failures.extend(validate_desktop_sgf_editing_ux_boundaries(evidence))
+    return failures
+
+
+def validate_desktop_sgf_editing_ux_surface(evidence: dict[str, Any]) -> list[str]:
+    surface = evidence.get("uiUxSurface")
+    if not isinstance(surface, dict):
+        return ["uiUxSurface must be an object"]
+    failures: list[str] = []
+    for key in ("legacyShellVisible", "treePanelVisible", "annotationEditorVisible"):
+        if surface.get(key) is not True:
+            failures.append(f"uiUxSurface.{key} must be true")
+    toolbar = surface.get("toolbarMenuControls")
+    if not isinstance(toolbar, dict):
+        failures.append("uiUxSurface.toolbarMenuControls must be an object")
+    else:
+        if toolbar.get("visible") is not True:
+            failures.append("uiUxSurface.toolbarMenuControls.visible must be true")
+        failures.extend(
+            missing_string_members(
+                toolbar.get("toolbarControls"),
+                ["Open", "Save", "Save As", "Import", "Sample", "Parse", "Review"],
+                "uiUxSurface.toolbarMenuControls.toolbarControls",
+            )
+        )
+        failures.extend(
+            missing_string_members(
+                toolbar.get("menuControls"),
+                ["File/Open", "File/Save", "File/Save As", "View/Candidates", "Engine/Profiles", "Tools/Preferences"],
+                "uiUxSurface.toolbarMenuControls.menuControls",
+            )
+        )
+    selected = surface.get("selectedNodeUxState")
+    if not isinstance(selected, dict):
+        failures.append("uiUxSurface.selectedNodeUxState must be an object")
+    else:
+        for key in ("selectedNodeVisible", "commentEditorVisible", "moveEditModeVisible", "deleteControlVisible", "reorderControlsVisible"):
+            if selected.get(key) is not True:
+                failures.append(f"uiUxSurface.selectedNodeUxState.{key} must be true")
+    dirty_saved = surface.get("dirtySavedStatus")
+    if not isinstance(dirty_saved, dict):
+        failures.append("uiUxSurface.dirtySavedStatus must be an object")
+    else:
+        for key in ("dirtyIndicatorVisible", "savedIndicatorVisible", "canSaveReflectsDirty", "dirtySetAfterEdits", "savedAfterReadback"):
+            if dirty_saved.get(key) is not True:
+                failures.append(f"uiUxSurface.dirtySavedStatus.{key} must be true")
+    if surface.get("nativeDialogClickCovered") is not False:
+        failures.append("uiUxSurface.nativeDialogClickCovered must be false")
+    return failures
+
+
+def validate_desktop_sgf_editing_ux_coverage(evidence: dict[str, Any]) -> list[str]:
+    coverage = evidence.get("coverage")
+    if not isinstance(coverage, dict):
+        return ["coverage must be an object"]
+    failures: list[str] = []
+    for key in (
+        "treeNavigation",
+        "commentEdit",
+        "propertyEdit",
+        "annotationEdit",
+        "appendMove",
+        "editMove",
+        "reorderVariation",
+        "deleteNode",
+        "saveReadbackReopen",
+    ):
+        if coverage.get(key) is not True:
+            failures.append(f"coverage.{key} must be true")
+    return failures
+
+
+def validate_desktop_sgf_editing_ux_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    source = evidence.get("sourceRuntimeEvidence")
+    if not isinstance(source, dict):
+        failures.append("sourceRuntimeEvidence must be an object")
+    else:
+        if source.get("valid") is not True:
+            failures.append("sourceRuntimeEvidence.valid must be true")
+        if source.get("schema") != TAURI_RUNTIME_UI_SMOKE_SCHEMA:
+            failures.append(f"sourceRuntimeEvidence.schema must be {TAURI_RUNTIME_UI_SMOKE_SCHEMA}")
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+    else:
+        for key in (
+            "nativeDialogClickCovered",
+            "fullNativeDialogProof",
+            "ocrCaptureCovered",
+            "externalClientWindowCaptureCovered",
+            "fullLegacyParityCovered",
+        ):
+            if boundaries.get(key) is not False:
+                failures.append(f"boundaries.{key} must be false")
     return failures
 
 
@@ -1776,6 +1952,15 @@ def first_present(mapping: dict[str, Any], *keys: str) -> Any:
         if key in mapping:
             return mapping[key]
     return None
+
+
+def missing_string_members(value: Any, required: list[str], label: str) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        return [f"{label} must be a string list"]
+    missing = [item for item in required if item not in value]
+    if missing:
+        return [f"{label} missing: " + ", ".join(missing)]
+    return []
 
 
 def normalize_json_value(value: Any) -> str:

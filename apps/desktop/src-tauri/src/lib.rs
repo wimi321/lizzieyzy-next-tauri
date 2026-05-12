@@ -755,6 +755,7 @@ struct InstalledAppRuntimeProofDto {
     runtime: InstalledAppRuntimeDto,
     bundle: InstalledAppBundleDto,
     assets: RuntimeAssetValidationDto,
+    bundled_katago: InstalledAppBundledKataGoDto,
     profile_status: InstalledAppProfileStatusDto,
     engine_launch_attempt: InstalledAppEngineLaunchAttemptDto,
     boundaries: InstalledAppRuntimeBoundariesDto,
@@ -802,12 +803,41 @@ struct InstalledAppProfileStatusDto {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct InstalledAppBundledKataGoDto {
+    status: String,
+    source: String,
+    root: Option<String>,
+    profile: Option<EngineProfileDto>,
+    engine: InstalledAppAssetProofDto,
+    model: InstalledAppAssetProofDto,
+    config: InstalledAppAssetProofDto,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppAssetProofDto {
+    label: String,
+    kind: String,
+    source: String,
+    status: String,
+    required: bool,
+    sanitized_path: Option<String>,
+    size: Option<u64>,
+    sha256: Option<String>,
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InstalledAppEngineLaunchAttemptDto {
     attempted: bool,
     status: String,
     recoverable: bool,
+    profile_source: String,
     command_spec: Option<CommandSpec>,
     asset_checks: Vec<AssetCheck>,
+    asset_proofs: Vec<InstalledAppAssetProofDto>,
     process_id: Option<u32>,
     exit_code: Option<i32>,
     stderr_preview: Option<String>,
@@ -824,6 +854,9 @@ struct InstalledAppRuntimeBoundariesDto {
     production_signed: bool,
     notarized: bool,
     full_legacy_parity: bool,
+    large_model_bundled: bool,
+    full_katago_parity: bool,
+    full_review_parity: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -997,6 +1030,7 @@ fn installed_app_runtime_proof(
         resource_dir.clone(),
     );
     let assets = validate_runtime_asset_layout_from_layout(asset_layout);
+    let bundled_katago = resolve_installed_app_bundled_katago(&assets);
     let profile_status = installed_app_profile_status(
         &app_handle,
         request.as_ref().and_then(|value| value.engine_profile.clone()),
@@ -1005,8 +1039,17 @@ fn installed_app_runtime_proof(
         .as_ref()
         .and_then(|value| value.attempt_engine_launch)
         .unwrap_or(true);
-    let engine_launch_attempt =
-        installed_app_engine_launch_attempt(profile_status.selected_profile.clone(), attempt_engine_launch);
+    let (launch_profile, profile_source) = installed_app_launch_profile(
+        profile_status.selected_profile.clone(),
+        &profile_status,
+        &bundled_katago,
+    );
+    let engine_launch_attempt = installed_app_engine_launch_attempt(
+        launch_profile,
+        attempt_engine_launch,
+        profile_source.as_str(),
+        resource_dir.clone(),
+    );
 
     InstalledAppRuntimeProofDto {
         schema: "lizzieyzy.installed-app-runtime-proof.v1".to_string(),
@@ -1033,6 +1076,7 @@ fn installed_app_runtime_proof(
             resource_dir_exists: resource_dir.as_deref().is_some_and(Path::exists),
         },
         assets,
+        bundled_katago,
         profile_status,
         engine_launch_attempt,
         boundaries: InstalledAppRuntimeBoundariesDto {
@@ -1042,6 +1086,9 @@ fn installed_app_runtime_proof(
             production_signed: false,
             notarized: false,
             full_legacy_parity: false,
+            large_model_bundled: false,
+            full_katago_parity: false,
+            full_review_parity: false,
         },
     }
 }
@@ -1213,21 +1260,73 @@ fn installed_app_profile_status_from_settings(
     }
 }
 
+fn installed_app_launch_profile(
+    selected_profile: Option<EngineProfileDto>,
+    profile_status: &InstalledAppProfileStatusDto,
+    bundled_katago: &InstalledAppBundledKataGoDto,
+) -> (Option<EngineProfileDto>, String) {
+    if let Some(profile) = selected_profile {
+        let source = if profile_status.status == "requestProfile" {
+            "requestProfile"
+        } else {
+            "userLocalProfile"
+        };
+        if profile_has_launch_assets(&profile) {
+            return (Some(profile), source.to_string());
+        }
+        if let Some(bundled_profile) = bundled_katago.profile.clone() {
+            return (Some(bundled_profile), "bundledAssetFallback".to_string());
+        }
+        return (Some(profile), source.to_string());
+    }
+    if let Some(bundled_profile) = bundled_katago.profile.clone() {
+        return (Some(bundled_profile), "bundledAsset".to_string());
+    }
+    (None, "missing".to_string())
+}
+
+fn profile_has_launch_assets(profile: &EngineProfileDto) -> bool {
+    if profile.engine_path.trim().is_empty() {
+        return false;
+    }
+    if !matches!(profile.backend, EngineBackend::KataGoAnalysis) {
+        return true;
+    }
+    profile
+        .model_path
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        && profile
+            .config_path
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+}
+
 fn installed_app_engine_launch_attempt(
     profile: Option<EngineProfileDto>,
     attempt_engine_launch: bool,
+    profile_source: &str,
+    bundled_root: Option<PathBuf>,
 ) -> InstalledAppEngineLaunchAttemptDto {
     let Some(profile) = profile else {
-        return installed_app_engine_launch_skipped("no selected engine profile is available");
+        return installed_app_engine_launch_skipped(
+            "no selected engine profile or bundled KataGo asset is available",
+        );
     };
-    let asset_checks = engine_asset_checks(profile.clone());
+    let raw_asset_checks = engine_asset_checks(profile.clone());
+    let asset_proofs =
+        installed_app_asset_proofs_from_profile(&profile, profile_source, bundled_root.as_deref());
+    let asset_checks =
+        sanitize_asset_checks_for_proof(raw_asset_checks, bundled_root.as_deref(), profile_source);
     if !attempt_engine_launch {
         return InstalledAppEngineLaunchAttemptDto {
             attempted: false,
             status: "skipped".to_string(),
             recoverable: true,
+            profile_source: profile_source.to_string(),
             command_spec: None,
             asset_checks,
+            asset_proofs,
             process_id: None,
             exit_code: None,
             stderr_preview: None,
@@ -1243,16 +1342,19 @@ fn installed_app_engine_launch_attempt(
                 attempted: true,
                 status: "unavailable".to_string(),
                 recoverable: true,
+                profile_source: profile_source.to_string(),
                 command_spec: None,
                 asset_checks,
+                asset_proofs,
                 process_id: None,
                 exit_code: None,
                 stderr_preview: None,
                 error_kind: Some(engine_error_kind(&err).to_string()),
-                error_message: Some(err.to_string()),
+                error_message: Some(sanitize_runtime_proof_message(&err.to_string())),
             };
         }
     };
+    let proof_spec = sanitize_command_spec_for_proof(&spec, bundled_root.as_deref(), profile_source);
 
     let mut command = Command::new(&spec.program);
     command
@@ -1276,11 +1378,14 @@ fn installed_app_engine_launch_attempt(
                     attempted: true,
                     status: "launched".to_string(),
                     recoverable: false,
-                    command_spec: Some(spec),
+                    profile_source: profile_source.to_string(),
+                    command_spec: Some(proof_spec),
                     asset_checks,
+                    asset_proofs,
                     process_id: Some(process_id),
                     exit_code: output.status.code(),
-                    stderr_preview: stderr_preview(&output.stderr),
+                    stderr_preview: stderr_preview(&output.stderr)
+                        .map(|value| sanitize_runtime_proof_message(&value)),
                     error_kind: None,
                     error_message: None,
                 },
@@ -1288,13 +1393,17 @@ fn installed_app_engine_launch_attempt(
                     attempted: true,
                     status: "error".to_string(),
                     recoverable: true,
-                    command_spec: Some(spec),
+                    profile_source: profile_source.to_string(),
+                    command_spec: Some(proof_spec),
                     asset_checks,
+                    asset_proofs,
                     process_id: Some(process_id),
                     exit_code: None,
                     stderr_preview: None,
                     error_kind: Some("waitFailed".to_string()),
-                    error_message: Some(format!("engine spawned but wait failed: {err}")),
+                    error_message: Some(sanitize_runtime_proof_message(&format!(
+                        "engine spawned but wait failed: {err}"
+                    ))),
                 },
             }
         }
@@ -1302,13 +1411,17 @@ fn installed_app_engine_launch_attempt(
             attempted: true,
             status: "unavailable".to_string(),
             recoverable: true,
-            command_spec: Some(spec),
+            profile_source: profile_source.to_string(),
+            command_spec: Some(proof_spec),
             asset_checks,
+            asset_proofs,
             process_id: None,
             exit_code: None,
             stderr_preview: None,
             error_kind: Some("spawnFailed".to_string()),
-            error_message: Some(format!("failed to spawn engine: {err}")),
+            error_message: Some(sanitize_runtime_proof_message(&format!(
+                "failed to spawn engine: {err}"
+            ))),
         },
     }
 }
@@ -1318,14 +1431,390 @@ fn installed_app_engine_launch_skipped(message: &str) -> InstalledAppEngineLaunc
         attempted: false,
         status: "skipped".to_string(),
         recoverable: true,
+        profile_source: "missing".to_string(),
         command_spec: None,
         asset_checks: Vec::new(),
+        asset_proofs: Vec::new(),
         process_id: None,
         exit_code: None,
         stderr_preview: None,
         error_kind: None,
         error_message: Some(message.to_string()),
     }
+}
+
+fn resolve_installed_app_bundled_katago(assets: &RuntimeAssetValidationDto) -> InstalledAppBundledKataGoDto {
+    let root = assets
+        .layout
+        .resource_roots
+        .first()
+        .or_else(|| assets.layout.release_roots.first())
+        .map(PathBuf::from);
+    let root_ref = root.as_deref();
+    let engine_dir = runtime_asset_candidate_path(assets, "KataGo bin", "resource_dir");
+    let model_dir = runtime_asset_candidate_path(assets, "KataGo models", "resource_dir");
+    let config_dir = runtime_asset_candidate_path(assets, "KataGo configs", "resource_dir");
+
+    let (engine, engine_path) = installed_app_bundled_asset_proof(
+        "engine binary",
+        "file",
+        engine_dir.as_deref(),
+        root_ref,
+        is_katago_engine_asset,
+    );
+    let (model, model_path) = installed_app_bundled_asset_proof(
+        "model",
+        "file",
+        model_dir.as_deref(),
+        root_ref,
+        is_katago_model_asset,
+    );
+    let (config, config_path) = installed_app_bundled_asset_proof(
+        "config",
+        "file",
+        config_dir.as_deref(),
+        root_ref,
+        is_katago_config_asset,
+    );
+
+    let complete = engine_path.is_some() && model_path.is_some() && config_path.is_some();
+    let status = if complete {
+        "available"
+    } else if root.is_some() {
+        "incomplete"
+    } else {
+        "unavailable"
+    };
+    let mut warnings = Vec::new();
+    if !complete {
+        warnings.push(
+            "Bundled KataGo launch proof is unavailable unless runtime/katago/bin, models, and configs all contain real assets.".to_string(),
+        );
+    }
+    warnings.push(
+        "No large model, signed release, or full analysis parity is claimed by this backend proof."
+            .to_string(),
+    );
+
+    let profile = match (engine_path, model_path, config_path) {
+        (Some(engine_path), Some(model_path), Some(config_path)) => Some(EngineProfileDto {
+            name: "Bundled KataGo".to_string(),
+            engine_path: engine_path.display().to_string(),
+            model_path: Some(model_path.display().to_string()),
+            config_path: Some(config_path.display().to_string()),
+            working_dir: root.as_ref().map(|path| path.display().to_string()),
+            backend: EngineBackend::KataGoAnalysis,
+        }),
+        _ => None,
+    };
+
+    InstalledAppBundledKataGoDto {
+        status: status.to_string(),
+        source: "bundledAsset".to_string(),
+        root: root
+            .as_ref()
+            .map(|path| sanitize_runtime_proof_path(path, root_ref, "bundledAsset")),
+        profile,
+        engine,
+        model,
+        config,
+        warnings,
+    }
+}
+
+fn runtime_asset_candidate_path(
+    assets: &RuntimeAssetValidationDto,
+    label: &str,
+    source: &str,
+) -> Option<PathBuf> {
+    assets
+        .layout
+        .candidates
+        .iter()
+        .find(|candidate| candidate.label == label && candidate.source == source)
+        .map(|candidate| PathBuf::from(&candidate.path))
+}
+
+fn installed_app_bundled_asset_proof(
+    label: &str,
+    kind: &str,
+    directory: Option<&Path>,
+    root: Option<&Path>,
+    matches_asset: fn(&str) -> bool,
+) -> (InstalledAppAssetProofDto, Option<PathBuf>) {
+    let source = "bundledAsset";
+    let Some(directory) = directory else {
+        return (
+            installed_app_asset_proof_missing(
+                label,
+                kind,
+                source,
+                "bundled runtime asset directory is not available",
+            ),
+            None,
+        );
+    };
+    let Some(path) = find_runtime_asset_file(directory, 3, matches_asset) else {
+        return (
+            installed_app_asset_proof_missing(
+                label,
+                kind,
+                source,
+                &format!("bundled {label} asset is missing or only a placeholder"),
+            ),
+            None,
+        );
+    };
+    (
+        installed_app_asset_proof_for_path(label, kind, source, &path, root, true),
+        Some(path),
+    )
+}
+
+fn installed_app_asset_proofs_from_profile(
+    profile: &EngineProfileDto,
+    profile_source: &str,
+    bundled_root: Option<&Path>,
+) -> Vec<InstalledAppAssetProofDto> {
+    engine_asset_checks(profile.clone())
+        .into_iter()
+        .map(|check| {
+            let path = PathBuf::from(&check.path);
+            let kind = if path.is_dir() { "directory" } else { "file" };
+            if check.exists {
+                installed_app_asset_proof_for_path(
+                    &check.label,
+                    kind,
+                    profile_source,
+                    &path,
+                    bundled_root,
+                    check.required,
+                )
+            } else {
+                InstalledAppAssetProofDto {
+                    label: check.label,
+                    kind: kind.to_string(),
+                    source: profile_source.to_string(),
+                    status: "missing".to_string(),
+                    required: check.required,
+                    sanitized_path: Some(sanitize_runtime_proof_path(&path, bundled_root, profile_source)),
+                    size: None,
+                    sha256: None,
+                    message: "required engine/profile asset is missing or unavailable".to_string(),
+                }
+            }
+        })
+        .collect()
+}
+
+fn sanitize_asset_checks_for_proof(
+    checks: Vec<AssetCheck>,
+    root: Option<&Path>,
+    source: &str,
+) -> Vec<AssetCheck> {
+    checks
+        .into_iter()
+        .map(|mut check| {
+            check.path = sanitize_runtime_proof_arg(&check.path, root, source);
+            check
+        })
+        .collect()
+}
+
+fn sanitize_command_spec_for_proof(spec: &CommandSpec, root: Option<&Path>, source: &str) -> CommandSpec {
+    CommandSpec {
+        program: sanitize_runtime_proof_arg(&spec.program, root, source),
+        args: spec
+            .args
+            .iter()
+            .map(|arg| sanitize_runtime_proof_arg(arg, root, source))
+            .collect(),
+        working_dir: spec
+            .working_dir
+            .as_ref()
+            .map(|path| sanitize_runtime_proof_arg(path, root, source)),
+        env: spec
+            .env
+            .iter()
+            .map(|(key, value)| (key.clone(), sanitize_runtime_proof_arg(value, root, source)))
+            .collect(),
+    }
+}
+
+fn installed_app_asset_proof_missing(
+    label: &str,
+    kind: &str,
+    source: &str,
+    message: &str,
+) -> InstalledAppAssetProofDto {
+    InstalledAppAssetProofDto {
+        label: label.to_string(),
+        kind: kind.to_string(),
+        source: source.to_string(),
+        status: "missing".to_string(),
+        required: true,
+        sanitized_path: None,
+        size: None,
+        sha256: None,
+        message: message.to_string(),
+    }
+}
+
+fn installed_app_asset_proof_for_path(
+    label: &str,
+    kind: &str,
+    source: &str,
+    path: &Path,
+    root: Option<&Path>,
+    required: bool,
+) -> InstalledAppAssetProofDto {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            let (sha256, message) = match fs::read(path) {
+                Ok(bytes) => (
+                    Some(sha256_hex(&bytes)),
+                    format!("{label} asset exists and was hashed for installed-app proof"),
+                ),
+                Err(err) => (
+                    None,
+                    sanitize_runtime_proof_message(&format!(
+                        "{label} asset exists but could not be hashed: {err}"
+                    )),
+                ),
+            };
+            InstalledAppAssetProofDto {
+                label: label.to_string(),
+                kind: kind.to_string(),
+                source: source.to_string(),
+                status: "exists".to_string(),
+                required,
+                sanitized_path: Some(sanitize_runtime_proof_path(path, root, source)),
+                size: Some(metadata.len()),
+                sha256,
+                message,
+            }
+        }
+        Ok(metadata) if metadata.is_dir() => InstalledAppAssetProofDto {
+            label: label.to_string(),
+            kind: "directory".to_string(),
+            source: source.to_string(),
+            status: "exists".to_string(),
+            required,
+            sanitized_path: Some(sanitize_runtime_proof_path(path, root, source)),
+            size: None,
+            sha256: None,
+            message: format!("{label} directory exists for installed-app proof"),
+        },
+        Ok(_) => InstalledAppAssetProofDto {
+            label: label.to_string(),
+            kind: kind.to_string(),
+            source: source.to_string(),
+            status: "placeholder".to_string(),
+            required,
+            sanitized_path: Some(sanitize_runtime_proof_path(path, root, source)),
+            size: None,
+            sha256: None,
+            message: format!("{label} path exists but is not a usable file or directory"),
+        },
+        Err(_) => InstalledAppAssetProofDto {
+            label: label.to_string(),
+            kind: kind.to_string(),
+            source: source.to_string(),
+            status: "missing".to_string(),
+            required,
+            sanitized_path: Some(sanitize_runtime_proof_path(path, root, source)),
+            size: None,
+            sha256: None,
+            message: format!("{label} asset is missing for installed-app proof"),
+        },
+    }
+}
+
+fn find_runtime_asset_file(
+    path: &Path,
+    max_depth: usize,
+    matches_asset: fn(&str) -> bool,
+) -> Option<PathBuf> {
+    let mut matches = Vec::new();
+    collect_runtime_asset_files(path, max_depth, matches_asset, &mut matches);
+    matches.sort();
+    matches.into_iter().next()
+}
+
+fn collect_runtime_asset_files(
+    path: &Path,
+    max_depth: usize,
+    matches_asset: fn(&str) -> bool,
+    matches: &mut Vec<PathBuf>,
+) {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_placeholder_asset_name(&name) {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.is_file() && matches_asset(&name) {
+            matches.push(entry_path);
+        } else if metadata.is_dir() && max_depth > 0 {
+            collect_runtime_asset_files(&entry_path, max_depth - 1, matches_asset, matches);
+        }
+    }
+}
+
+fn is_katago_engine_asset(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name == "katago" || name == "katago.exe" || name.starts_with("katago-")
+}
+
+fn sanitize_runtime_proof_path(path: &Path, root: Option<&Path>, source: &str) -> String {
+    if let Some(root) = root {
+        if let Ok(relative) = path.strip_prefix(root) {
+            let relative = relative.display().to_string();
+            return if relative.is_empty() {
+                format!("{source}:<root>")
+            } else {
+                format!("{source}:{relative}")
+            };
+        }
+    }
+    if let Some(file_name) = path.file_name().and_then(|value| value.to_str()) {
+        return format!("{source}:{file_name}");
+    }
+    format!("{source}:<path>")
+}
+
+fn sanitize_runtime_proof_arg(value: &str, root: Option<&Path>, source: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.starts_with('/')
+        || trimmed.starts_with('~')
+        || trimmed.starts_with("/private/")
+        || trimmed.starts_with("/var/folders/")
+        || trimmed.starts_with("/tmp/")
+        || trimmed.contains(":\\")
+        || trimmed.contains(":/")
+    {
+        if trimmed.contains(":\\") {
+            return format!(
+                "{source}:{}",
+                trimmed.rsplit(['\\', '/']).next().unwrap_or("<path>")
+            );
+        }
+        sanitize_runtime_proof_path(Path::new(trimmed), root, source)
+    } else {
+        value.to_string()
+    }
+}
+
+fn sanitize_runtime_proof_message(message: &str) -> String {
+    sanitize_capture_message(message)
 }
 
 fn engine_error_kind(err: &EngineManagerError) -> &'static str {
@@ -7018,6 +7507,128 @@ mod tests {
     }
 
     #[test]
+    fn installed_app_bundled_katago_lookup_reports_available_with_hashes() {
+        let dir = native_config_temp_dir("bundled-katago-available");
+        let resource_dir = dir.join("resources");
+        fs::create_dir_all(resource_dir.join("runtime/katago/bin")).unwrap();
+        fs::create_dir_all(resource_dir.join("runtime/katago/models")).unwrap();
+        fs::create_dir_all(resource_dir.join("runtime/katago/configs")).unwrap();
+        fs::write(resource_dir.join("runtime/katago/bin/katago"), "#!/bin/sh\n").unwrap();
+        fs::write(
+            resource_dir.join("runtime/katago/models/tiny.bin.gz"),
+            "tiny model",
+        )
+        .unwrap();
+        fs::write(
+            resource_dir.join("runtime/katago/configs/analysis.cfg"),
+            "maxVisits = 1",
+        )
+        .unwrap();
+        let validation = validate_runtime_asset_layout_from_layout(resolve_runtime_asset_layout_for_paths(
+            dir.join("repo"),
+            Some(resource_dir.clone()),
+        ));
+
+        let bundled = resolve_installed_app_bundled_katago(&validation);
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(bundled.status, "available");
+        assert_eq!(bundled.source, "bundledAsset");
+        assert!(bundled.profile.is_some());
+        assert_eq!(
+            bundled.engine.sanitized_path.as_deref(),
+            Some("bundledAsset:runtime/katago/bin/katago")
+        );
+        assert_eq!(
+            bundled.model.sanitized_path.as_deref(),
+            Some("bundledAsset:runtime/katago/models/tiny.bin.gz")
+        );
+        assert_eq!(
+            bundled.config.sanitized_path.as_deref(),
+            Some("bundledAsset:runtime/katago/configs/analysis.cfg")
+        );
+        assert_eq!(bundled.engine.sha256.as_deref().unwrap().len(), 64);
+        assert_eq!(bundled.model.sha256.as_deref().unwrap().len(), 64);
+        assert_eq!(bundled.config.sha256.as_deref().unwrap().len(), 64);
+        assert!(bundled.engine.size.unwrap() > 0);
+        assert!(bundled
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("No large model")));
+    }
+
+    #[test]
+    fn installed_app_bundled_katago_lookup_reports_unavailable_without_resource_assets() {
+        let dir = native_config_temp_dir("bundled-katago-unavailable");
+        let validation = validate_runtime_asset_layout_from_layout(resolve_runtime_asset_layout_for_paths(
+            dir.join("repo"),
+            None,
+        ));
+
+        let bundled = resolve_installed_app_bundled_katago(&validation);
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(bundled.status, "unavailable");
+        assert!(bundled.profile.is_none());
+        assert_eq!(bundled.engine.status, "missing");
+        assert!(bundled.engine.sha256.is_none());
+    }
+
+    #[test]
+    fn installed_app_launch_profile_falls_back_to_complete_bundled_assets() {
+        let dir = native_config_temp_dir("bundled-katago-launch-profile");
+        let resource_dir = dir.join("resources");
+        fs::create_dir_all(resource_dir.join("runtime/katago/bin")).unwrap();
+        fs::create_dir_all(resource_dir.join("runtime/katago/models")).unwrap();
+        fs::create_dir_all(resource_dir.join("runtime/katago/configs")).unwrap();
+        fs::write(resource_dir.join("runtime/katago/bin/katago"), "fake").unwrap();
+        fs::write(
+            resource_dir.join("runtime/katago/models/tiny.bin.gz"),
+            "tiny model",
+        )
+        .unwrap();
+        fs::write(
+            resource_dir.join("runtime/katago/configs/analysis.cfg"),
+            "maxVisits = 1",
+        )
+        .unwrap();
+        let validation = validate_runtime_asset_layout_from_layout(resolve_runtime_asset_layout_for_paths(
+            dir.join("repo"),
+            Some(resource_dir.clone()),
+        ));
+        let bundled = resolve_installed_app_bundled_katago(&validation);
+        let profile_status = InstalledAppProfileStatusDto {
+            status: "defaultMissingFile".to_string(),
+            path: None,
+            loaded: false,
+            selected_profile_id: Some(DEFAULT_ENGINE_PROFILE_ID.to_string()),
+            profile_count: 1,
+            selected_profile_name: Some("Local KataGo".to_string()),
+            selected_profile: Some(default_engine_profile_record().profile),
+            max_visits: Some(600),
+            error_message: None,
+        };
+
+        let (profile, source) =
+            installed_app_launch_profile(profile_status.selected_profile.clone(), &profile_status, &bundled);
+        let attempt = installed_app_engine_launch_attempt(profile, false, &source, Some(resource_dir));
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(source, "bundledAssetFallback");
+        assert!(!attempt.attempted);
+        assert_eq!(attempt.status, "skipped");
+        assert_eq!(attempt.profile_source, "bundledAssetFallback");
+        assert_eq!(attempt.asset_proofs.len(), 4);
+        assert!(attempt.asset_proofs.iter().any(|proof| {
+            proof.label == "model"
+                && proof.status == "exists"
+                && proof.sha256.as_deref().is_some_and(|value| value.len() == 64)
+                && proof.sanitized_path.as_deref()
+                    == Some("bundledAssetFallback:runtime/katago/models/tiny.bin.gz")
+        }));
+    }
+
+    #[test]
     fn installed_app_runtime_source_detects_macos_app_bundle() {
         let exe = Path::new("/Applications/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop");
         assert_eq!(
@@ -7067,11 +7678,12 @@ mod tests {
 
     #[test]
     fn installed_app_engine_launch_missing_profile_is_skipped() {
-        let attempt = installed_app_engine_launch_attempt(None, true);
+        let attempt = installed_app_engine_launch_attempt(None, true, "missing", None);
 
         assert!(!attempt.attempted);
         assert_eq!(attempt.status, "skipped");
         assert!(attempt.recoverable);
+        assert_eq!(attempt.profile_source, "missing");
         assert!(attempt.command_spec.is_none());
         assert!(attempt.asset_checks.is_empty());
         assert!(attempt
@@ -7092,16 +7704,19 @@ mod tests {
             backend: EngineBackend::GenericGtp,
         };
 
-        let attempt = installed_app_engine_launch_attempt(Some(profile), true);
+        let attempt = installed_app_engine_launch_attempt(Some(profile), true, "userLocalProfile", None);
 
         assert!(attempt.attempted);
         assert_eq!(attempt.status, "unavailable");
         assert!(attempt.recoverable);
+        assert_eq!(attempt.profile_source, "userLocalProfile");
         assert_eq!(attempt.error_kind.as_deref(), Some("missingEnginePath"));
         assert!(attempt.command_spec.is_none());
         assert_eq!(attempt.asset_checks.len(), 1);
         assert_eq!(attempt.asset_checks[0].label, "engine binary");
         assert!(!attempt.asset_checks[0].exists);
+        assert_eq!(attempt.asset_proofs.len(), 1);
+        assert_eq!(attempt.asset_proofs[0].status, "missing");
     }
 
     #[test]
@@ -7115,11 +7730,12 @@ mod tests {
             backend: EngineBackend::GenericGtp,
         };
 
-        let attempt = installed_app_engine_launch_attempt(Some(profile), false);
+        let attempt = installed_app_engine_launch_attempt(Some(profile), false, "userLocalProfile", None);
 
         assert!(!attempt.attempted);
         assert_eq!(attempt.status, "skipped");
         assert!(attempt.recoverable);
+        assert_eq!(attempt.profile_source, "userLocalProfile");
         assert!(attempt.command_spec.is_none());
         assert_eq!(attempt.asset_checks.len(), 1);
         assert_eq!(

@@ -24,7 +24,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use uuid::Uuid;
 
 const ENGINE_PROFILE_FILE: &str = "lizzieyzy-next-engine-profile.json";
@@ -49,6 +49,178 @@ const RUNTIME_SMOKE_KATAGO_CANCEL_MAX_VISITS_ENV: &str = "LIZZIEYZY_RUNTIME_SMOK
 const RUNTIME_SMOKE_KATAGO_CANCEL_DELAY_MS_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_CANCEL_DELAY_MS";
 const RUNTIME_SMOKE_KATAGO_RUN_GAME_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_RUN_GAME";
 const RUNTIME_SMOKE_KATAGO_RUN_CANCEL_ENV: &str = "LIZZIEYZY_RUNTIME_SMOKE_KATAGO_RUN_CANCEL";
+const NATIVE_MENU_EVENT_NAME: &str = "legacy://native-menu-action";
+
+struct NativeMenuActionSpec {
+    menu_id: &'static str,
+    action_id: &'static str,
+    target_id: &'static str,
+    label: &'static str,
+    menu_path: &'static [&'static str],
+    accelerator: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeMenuActionDto {
+    menu_id: String,
+    action_id: String,
+    target_id: String,
+    label: String,
+    menu_path: Vec<String>,
+    accelerator: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeMenuContractDto {
+    schema: String,
+    event_name: String,
+    actions: Vec<NativeMenuActionDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeMenuActionEventDto {
+    menu_id: String,
+    action_id: String,
+    target_id: String,
+    label: String,
+    menu_path: Vec<String>,
+    accelerator: Option<String>,
+    source: String,
+}
+
+const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-file-open",
+        action_id: "file.open",
+        target_id: "open-sgf",
+        label: "Open",
+        menu_path: &["File", "Open"],
+        accelerator: Some("CmdOrCtrl+O"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-file-save",
+        action_id: "file.save",
+        target_id: "save-sgf",
+        label: "Save",
+        menu_path: &["File", "Save"],
+        accelerator: Some("CmdOrCtrl+S"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-file-save-as",
+        action_id: "file.saveAs",
+        target_id: "save-as-sgf",
+        label: "Save As",
+        menu_path: &["File", "Save As"],
+        accelerator: Some("CmdOrCtrl+Shift+S"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-file-import-sgf",
+        action_id: "file.importSgf",
+        target_id: "import-sgf",
+        label: "Import SGF",
+        menu_path: &["File", "Import SGF"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-game-load-sample",
+        action_id: "game.loadSample",
+        target_id: "load-sample",
+        label: "Load sample",
+        menu_path: &["Game", "Load sample"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-game-parse-sgf",
+        action_id: "game.parseSgf",
+        target_id: "parse-sgf",
+        label: "Parse SGF",
+        menu_path: &["Game", "Parse SGF"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-analysis-run-review",
+        action_id: "analysis.runReview",
+        target_id: "run-review",
+        label: "Run review",
+        menu_path: &["Analysis", "Run review"],
+        accelerator: Some("CmdOrCtrl+R"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-analysis-katago-panel",
+        action_id: "analysis.katagoPanel",
+        target_id: "profiles",
+        label: "KataGo panel",
+        menu_path: &["Analysis", "KataGo panel"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-view-candidates",
+        action_id: "view.candidates",
+        target_id: "candidates",
+        label: "Candidates",
+        menu_path: &["View", "Candidates"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-view-ownership",
+        action_id: "view.ownership",
+        target_id: "ownership",
+        label: "Ownership",
+        menu_path: &["View", "Ownership"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-view-policy",
+        action_id: "view.policy",
+        target_id: "policy",
+        label: "Policy",
+        menu_path: &["View", "Policy"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-engine-profiles",
+        action_id: "engine.profiles",
+        target_id: "profiles",
+        label: "Profiles",
+        menu_path: &["Engine", "Profiles"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-engine-assets",
+        action_id: "engine.assets",
+        target_id: "assets",
+        label: "Assets",
+        menu_path: &["Engine", "Assets"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-tools-providers",
+        action_id: "tools.providers",
+        target_id: "providers",
+        label: "Providers",
+        menu_path: &["Tools", "Providers"],
+        accelerator: None,
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-tools-preferences",
+        action_id: "tools.preferences",
+        target_id: "preferences",
+        label: "Preferences",
+        menu_path: &["Tools", "Preferences"],
+        accelerator: Some("CmdOrCtrl+,"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-help-backend-status",
+        action_id: "help.backendStatus",
+        target_id: "backend-status",
+        label: "Backend status",
+        menu_path: &["Help", "Backend status"],
+        accelerator: None,
+    },
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppendSgfMoveResultDto {
@@ -537,6 +709,11 @@ fn health() -> AppHealthDto {
             "KataGo launch plan command is wired".to_string(),
         ],
     }
+}
+
+#[tauri::command]
+fn native_menu_contract() -> NativeMenuContractDto {
+    native_menu_contract_dto()
 }
 
 #[tauri::command]
@@ -3908,13 +4085,106 @@ fn demo_candidates(turn: u32, board_size: u8) -> Vec<CandidateMoveDto> {
         .collect()
 }
 
+fn native_menu_contract_dto() -> NativeMenuContractDto {
+    NativeMenuContractDto {
+        schema: "lizzieyzy.native-menu-contract.v1".to_string(),
+        event_name: NATIVE_MENU_EVENT_NAME.to_string(),
+        actions: NATIVE_MENU_ACTIONS.iter().map(native_menu_action_dto).collect(),
+    }
+}
+
+fn native_menu_action_dto(spec: &NativeMenuActionSpec) -> NativeMenuActionDto {
+    NativeMenuActionDto {
+        menu_id: spec.menu_id.to_string(),
+        action_id: spec.action_id.to_string(),
+        target_id: spec.target_id.to_string(),
+        label: spec.label.to_string(),
+        menu_path: spec
+            .menu_path
+            .iter()
+            .map(|segment| (*segment).to_string())
+            .collect(),
+        accelerator: spec.accelerator.map(str::to_string),
+    }
+}
+
+fn native_menu_event_payload(menu_id: &str) -> Option<NativeMenuActionEventDto> {
+    NATIVE_MENU_ACTIONS
+        .iter()
+        .find(|spec| spec.menu_id == menu_id)
+        .map(|spec| {
+            let action = native_menu_action_dto(spec);
+            NativeMenuActionEventDto {
+                menu_id: action.menu_id,
+                action_id: action.action_id,
+                target_id: action.target_id,
+                label: action.label,
+                menu_path: action.menu_path,
+                accelerator: action.accelerator,
+                source: "native_menu".to_string(),
+            }
+        })
+}
+
+fn build_native_legacy_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<tauri::menu::Menu<R>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+
+    let mut root = MenuBuilder::new(manager);
+    for group in native_menu_groups() {
+        let mut submenu = SubmenuBuilder::with_id(
+            manager,
+            format!("legacy-menu-group-{}", menu_group_id(group)),
+            group,
+        );
+        for spec in NATIVE_MENU_ACTIONS
+            .iter()
+            .filter(|spec| spec.menu_path.first() == Some(&group))
+        {
+            let mut item = MenuItemBuilder::with_id(spec.menu_id, spec.label);
+            if let Some(accelerator) = spec.accelerator {
+                item = item.accelerator(accelerator);
+            }
+            submenu = submenu.item(&item.build(manager)?);
+        }
+        root = root.item(&submenu.build()?);
+    }
+    root.build()
+}
+
+fn native_menu_groups() -> Vec<&'static str> {
+    let mut groups = Vec::new();
+    for spec in NATIVE_MENU_ACTIONS {
+        if let Some(group) = spec.menu_path.first() {
+            if !groups.contains(group) {
+                groups.push(*group);
+            }
+        }
+    }
+    groups
+}
+
+fn menu_group_id(group: &str) -> String {
+    group.to_ascii_lowercase().replace(' ', "-")
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(AnalysisJobRegistry::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let menu = build_native_legacy_menu(app.handle())?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if let Some(payload) = native_menu_event_payload(event.id().as_ref()) {
+                let _ = app.emit(NATIVE_MENU_EVENT_NAME, payload);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             health,
+            native_menu_contract,
             runtime_smoke_config,
             runtime_smoke_report,
             parse_sgf_summary,
@@ -3987,6 +4257,99 @@ mod tests {
             .join(format!("lizzieyzy-runtime-smoke-{name}-{}", Uuid::new_v4()))
             .join("nested")
             .join("report.json")
+    }
+
+    #[test]
+    fn native_menu_contract_has_unique_ids_and_actions() {
+        let contract = native_menu_contract();
+        let mut menu_ids = HashSet::new();
+        let mut action_ids = HashSet::new();
+
+        assert_eq!(contract.schema, "lizzieyzy.native-menu-contract.v1");
+        assert_eq!(contract.event_name, NATIVE_MENU_EVENT_NAME);
+        assert_eq!(contract.actions.len(), NATIVE_MENU_ACTIONS.len());
+        for action in &contract.actions {
+            assert!(
+                menu_ids.insert(action.menu_id.clone()),
+                "duplicate menu id {}",
+                action.menu_id
+            );
+            assert!(
+                action_ids.insert(action.action_id.clone()),
+                "duplicate action id {}",
+                action.action_id
+            );
+            assert!(!action.target_id.trim().is_empty());
+            assert!(action.menu_path.len() >= 2);
+        }
+    }
+
+    #[test]
+    fn native_menu_contract_includes_expected_scoped_actions() {
+        let actions = native_menu_contract()
+            .actions
+            .into_iter()
+            .map(|action| action.action_id)
+            .collect::<HashSet<_>>();
+        let expected = [
+            "file.open",
+            "file.save",
+            "file.saveAs",
+            "file.importSgf",
+            "game.loadSample",
+            "game.parseSgf",
+            "analysis.runReview",
+            "analysis.katagoPanel",
+            "view.candidates",
+            "view.ownership",
+            "view.policy",
+            "engine.profiles",
+            "engine.assets",
+            "tools.providers",
+            "tools.preferences",
+            "help.backendStatus",
+        ];
+
+        for action_id in expected {
+            assert!(
+                actions.contains(action_id),
+                "missing native menu action {action_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_menu_event_mapping_returns_frontend_payload() {
+        let payload = native_menu_event_payload("legacy-menu-view-candidates").unwrap();
+
+        assert_eq!(payload.source, "native_menu");
+        assert_eq!(payload.menu_id, "legacy-menu-view-candidates");
+        assert_eq!(payload.action_id, "view.candidates");
+        assert_eq!(payload.target_id, "candidates");
+        assert_eq!(
+            payload.menu_path,
+            vec!["View".to_string(), "Candidates".to_string()]
+        );
+        assert!(payload.accelerator.is_none());
+        assert!(native_menu_event_payload("unknown-menu-id").is_none());
+    }
+
+    #[test]
+    fn native_menu_contract_keeps_accelerators_nullable() {
+        let contract = native_menu_contract();
+        let open = contract
+            .actions
+            .iter()
+            .find(|action| action.action_id == "file.open")
+            .unwrap();
+        let import = contract
+            .actions
+            .iter()
+            .find(|action| action.action_id == "file.importSgf")
+            .unwrap();
+
+        assert_eq!(open.accelerator.as_deref(), Some("CmdOrCtrl+O"));
+        assert!(import.accelerator.is_none());
     }
 
     #[test]

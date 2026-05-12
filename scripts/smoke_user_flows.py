@@ -599,6 +599,30 @@ KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS = [
     "ocrExternalCaptureCovered",
     "windowsLinuxCovered",
 ]
+KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE = "docs/qa/katago-analysis-stale-guard-smoke-macos.json"
+KATAGO_ANALYSIS_STALE_GUARD_SMOKE_SCHEMA = "lizzieyzy.katago-analysis-stale-guard-smoke.v1"
+KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_CHECKS = [
+    "sgf_edit_version_guard",
+    "active_job_cancel_cleanup",
+    "stale_result_ignore",
+    "source_facts_validated",
+    "scope_boundaries",
+]
+KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_TRUE_FIELDS = [
+    "sgfEditVersionGuardVerified",
+    "activeJobCancelCleanupVerified",
+    "staleResultIgnoreVerified",
+    "sourceFactsValidated",
+]
+KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_FALSE_FIELDS = [
+    "fullLegacyAnalysisParity",
+    "fullKataGoParity",
+    "releaseParity",
+    "signedReleaseParity",
+    "bundledLargeModelParity",
+    "providerReadboardParity",
+    "windowsLinuxParity",
+]
 LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE = "docs/qa/legacy-config-corpus-migration-smoke.json"
 LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_SCHEMA = "lizzieyzy.legacy-config-corpus-migration-smoke.v1"
 LEGACY_CONFIG_CORPUS_REQUIRED_FIXTURE_CLASSES = [
@@ -1589,6 +1613,7 @@ class UserFlowSmoke:
         self.check_packaged_native_dialog_sgf_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
+        self.check_katago_analysis_stale_guard_smoke_evidence()
         self.check_legacy_config_corpus_migration_smoke_evidence()
         self.check_katago_live_desktop_workflow_smoke_evidence()
         self.check_installed_app_katago_live_workflow_evidence()
@@ -2182,6 +2207,44 @@ class UserFlowSmoke:
         self.pass_(
             "katago_review_workflow_ux_smoke",
             "scoped KataGo review workflow UX resilience evidence passes with progress, cancel/restart, cache restore, failure, stale-guard, and boundary checks",
+        )
+
+    def check_katago_analysis_stale_guard_smoke_evidence(self) -> None:
+        source_failures = validate_katago_analysis_stale_guard_source_facts(self.root)
+        if source_failures:
+            if all(failure.startswith("missing source file(s):") for failure in source_failures):
+                self.pending(
+                    "katago_analysis_stale_guard_smoke",
+                    "TODO gate: validate scoped KataGo stale guard source facts before accepting evidence: "
+                    + "; ".join(source_failures),
+                )
+                return
+            self.fail(
+                "katago_analysis_stale_guard_smoke",
+                "KataGo analysis stale guard source facts are broken: " + "; ".join(source_failures),
+            )
+            return
+        evidence_path = self.path(KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "katago_analysis_stale_guard_smoke",
+                f"TODO gate: record scoped KataGo analysis stale guard evidence at {KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_katago_analysis_stale_guard_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "katago_analysis_stale_guard_smoke",
+                f"{KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE} is present but not valid scoped KataGo stale guard PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "katago_analysis_stale_guard_smoke",
+            "scoped KataGo analysis stale guard evidence passes with SGF edit-version/source guard, active job cancel/cleanup, stale result ignore, and boundary checks",
         )
 
     def check_legacy_config_corpus_migration_smoke_evidence(self) -> None:
@@ -6344,6 +6407,151 @@ def validate_katago_review_workflow_ux_boundaries(evidence: dict[str, Any]) -> l
                 failures.append("existing live evidence must not be reused to claim new live review workflow behavior")
         if source_evidence.get("existingLiveEvidenceUsedForNewLiveBehavior") is True:
             failures.append("existing live evidence must not be used for new live behavior claims")
+    return failures
+
+
+def validate_katago_analysis_stale_guard_source_facts(root: Path) -> list[str]:
+    app_path = root / APP_SOURCE
+    if not app_path.is_file():
+        return [f"missing source file(s): {APP_SOURCE}"]
+    text = app_path.read_text(encoding="utf-8")
+    failures: list[str] = []
+    if "sgfTextEditVersionRef" not in text:
+        failures.append("App must maintain sgfTextEditVersionRef for SGF source mutation tracking")
+    if len(re.findall(r"sgfTextEditVersionRef\.current\s*\+=", text)) < 1:
+        failures.append("App must increment sgfTextEditVersionRef.current when SGF source changes")
+    if "activeAnalysisEditVersionRef" not in text:
+        failures.append("App must maintain activeAnalysisEditVersionRef for in-flight analysis edit guards")
+    if "beginAnalysisEditGuard" not in text:
+        failures.append("App must call beginAnalysisEditGuard before starting analysis")
+    if "isAnalysisEditVersionCurrent" not in text:
+        failures.append("App must define isAnalysisEditVersionCurrent(editVersion)")
+    if not re.search(
+        r"function\s+beginAnalysisEditGuard\s*\([^)]*\)(?:\s*:[^{]+)?\s*{[\s\S]{0,260}"
+        r"activeAnalysisEditVersionRef\.current\s*=\s*editVersion[\s\S]{0,180}"
+        r"return\s+editVersion",
+        text,
+    ):
+        failures.append("beginAnalysisEditGuard must capture and activate the current SGF edit version")
+    if not re.search(
+        r"function\s+isAnalysisEditVersionCurrent\s*\([^)]*editVersion[^)]*\)(?:\s*:[^{]+)?\s*{[\s\S]{0,220}"
+        r"sgfTextEditVersionRef\.current\s*===\s*editVersion",
+        text,
+    ):
+        failures.append("isAnalysisEditVersionCurrent must compare sgfTextEditVersionRef.current to editVersion")
+    if "activeJobIdRef.current === jobId" not in text:
+        failures.append("KataGo stale guard must still compare active job id")
+    if not re.search(
+        r"function\s+isCurrentAnalysisJob\s*\([^)]*jobId[^)]*editVersion[^)]*\)(?:\s*:[^{]+)?\s*{[\s\S]{0,220}"
+        r"activeJobIdRef\.current\s*===\s*jobId[\s\S]{0,120}"
+        r"isAnalysisEditVersionCurrent\s*\(\s*editVersion\s*\)",
+        text,
+    ):
+        failures.append("isCurrentAnalysisJob(jobId, editVersion) must compare both active job id and edit-version guard")
+    if len(re.findall(r"isCurrentAnalysisJob\s*\([^,\n)]+,\s*[^)\n]+", text)) < 2:
+        failures.append("KataGo stale event handlers must pass editVersion into isCurrentAnalysisJob")
+    if "cancelKataGoAnalysis(jobId)" not in text:
+        failures.append("KataGo cancel path must invoke cancelKataGoAnalysis(jobId)")
+    if "finishStoppedAnalysis(jobId)" not in text:
+        failures.append("KataGo cancel/terminal paths must call finishStoppedAnalysis(jobId)")
+    if "cleanupAnalysisListeners" not in text and "analysisCleanupRef.current" not in text:
+        failures.append("KataGo analysis cleanup must release active listeners")
+    if "markStaleAnalysisPrevented" not in text:
+        failures.append("KataGo stale result ignore must mark staleAnalysisPrevented")
+    stale_ignores = len(re.findall(r"!\s*isCurrentAnalysisJob\s*\([^)]*\)[\s\S]{0,160}markStaleAnalysisPrevented", text))
+    if stale_ignores < 2:
+        failures.append("KataGo stale result ignore must cover multiple event paths, not only one job-id check")
+    return failures
+
+
+def validate_katago_analysis_stale_guard_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != KATAGO_ANALYSIS_STALE_GUARD_SMOKE_SCHEMA:
+        failures.append(f"schema must be {KATAGO_ANALYSIS_STALE_GUARD_SMOKE_SCHEMA}")
+    if str(evidence.get("name", "")) != "katago_analysis_stale_guard_smoke":
+        failures.append("name must be katago_analysis_stale_guard_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("collectionMethod") != "source_static_stale_guard_audit":
+        failures.append("collectionMethod must be source_static_stale_guard_audit")
+    for key in KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_katago_analysis_stale_guard_check_details(check_by_name))
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+    else:
+        for key in KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_FALSE_FIELDS:
+            if boundaries.get(key) is not False:
+                failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_katago_analysis_stale_guard_check_details(check_by_name: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    edit_version = check_evidence(check_by_name.get("sgf_edit_version_guard"))
+    if isinstance(edit_version, dict):
+        for key in (
+            "sgfTextEditVersionTracked",
+            "sgfTextEditVersionIncremented",
+            "activeAnalysisEditVersionTracked",
+            "beginAnalysisEditGuardObserved",
+            "isAnalysisEditVersionCurrentObserved",
+        ):
+            if edit_version.get(key) is not True:
+                failures.append(f"sgf_edit_version_guard.{key} must be true")
+    cancel = check_evidence(check_by_name.get("active_job_cancel_cleanup"))
+    if isinstance(cancel, dict):
+        for key in ("cancelInvoked", "finishStoppedAnalysisCalled", "cleanupListenersCalled"):
+            if cancel.get(key) is not True:
+                failures.append(f"active_job_cancel_cleanup.{key} must be true")
+    stale = check_evidence(check_by_name.get("stale_result_ignore"))
+    if isinstance(stale, dict):
+        if stale.get("staleResultIgnored") is not True:
+            failures.append("stale_result_ignore.staleResultIgnored must be true")
+        if stale.get("jobIdGuard") is not True:
+            failures.append("stale_result_ignore.jobIdGuard must be true")
+        if stale.get("editVersionGuard") is not True:
+            failures.append("stale_result_ignore.editVersionGuard must be true")
+        if stale.get("sourceHashGuard") is True:
+            failures.append("stale_result_ignore.sourceHashGuard must not be claimed without source-hash proof")
+        if stale.get("jobIdOnly") is True:
+            failures.append("stale_result_ignore.jobIdOnly must not be true")
+    source = check_evidence(check_by_name.get("source_facts_validated"))
+    if isinstance(source, dict):
+        if source.get("sourceFactsValidated") is not True:
+            failures.append("source_facts_validated.sourceFactsValidated must be true")
+        if source.get("appSource") != APP_SOURCE:
+            failures.append(f"source_facts_validated.appSource must be {APP_SOURCE}")
     return failures
 
 

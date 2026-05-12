@@ -80,6 +80,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("packaged_native_dialog_sgf", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
+            self.assertIn("katago_analysis_stale_guard_smoke", pass_names)
             self.assertIn("legacy_config_corpus_migration_smoke", pending_names)
             self.assertIn("katago_live_desktop_workflow_smoke", pending_names)
             self.assertIn("installed_app_katago_live_workflow", pending_names)
@@ -2353,6 +2354,80 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("KataGo review workflow UX source facts are broken", failures["katago_review_workflow_ux_smoke"])
             self.assertIn("activeJobIdRef.current === jobId", failures["katago_review_workflow_ux_smoke"])
 
+    def test_valid_katago_analysis_stale_guard_evidence_passes_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("katago_analysis_stale_guard_smoke", pass_names)
+
+    def test_katago_analysis_stale_guard_source_fact_drift_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            app_path = root / smoke_user_flows.APP_SOURCE
+            app_path.write_text(
+                app_path.read_text(encoding="utf-8").replace("sgfTextEditVersionRef.current += 1", "sgfTextEditVersionRef.current = 1"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("katago_analysis_stale_guard_smoke", failures)
+            self.assertIn("sgfTextEditVersionRef.current", failures["katago_analysis_stale_guard_smoke"])
+
+    def test_katago_analysis_stale_guard_rejects_job_id_only_even_with_session_token(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            app_path = root / smoke_user_flows.APP_SOURCE
+            text = app_path.read_text(encoding="utf-8")
+            text = text.replace(
+                "function isCurrentAnalysisJob(jobId, editVersion = activeAnalysisEditVersionRef.current) {\n"
+                "            return activeJobIdRef.current === jobId && isAnalysisEditVersionCurrent(editVersion);\n"
+                "          }",
+                "function isCurrentAnalysisJob(jobId) {\n"
+                "            const sessionToken = nextAnalysisSessionToken();\n"
+                "            return Boolean(sessionToken) && activeJobIdRef.current === jobId;\n"
+                "          }",
+            )
+            text = text.replace(
+                "return activeJobIdRef.current === jobId && isAnalysisEditVersionCurrent(editVersion);",
+                "const sessionToken = nextAnalysisSessionToken();\n"
+                "            return Boolean(sessionToken) && activeJobIdRef.current === jobId;",
+            )
+            text = text.replace("isCurrentAnalysisJob(payload.job_id, analysisEditVersion)", "isCurrentAnalysisJob(payload.job_id)")
+            app_path.write_text(text, encoding="utf-8")
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("katago_analysis_stale_guard_smoke", failures)
+            self.assertIn("isCurrentAnalysisJob(jobId, editVersion)", failures["katago_analysis_stale_guard_smoke"])
+
+    def test_katago_analysis_stale_guard_rejects_overclaim(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_analysis_stale_guard_evidence()
+            evidence["fullLegacyAnalysisParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullLegacyAnalysisParity"] = True
+            write_json(root / smoke_user_flows.KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("katago_analysis_stale_guard_smoke", pending)
+            self.assertIn("fullLegacyAnalysisParity must be false", pending["katago_analysis_stale_guard_smoke"])
+
     def test_valid_katago_live_desktop_workflow_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4327,6 +4402,7 @@ def create_complete_smoke_fixture(
     write_valid_release_readiness_preflight_evidence(root)
     write_valid_completion_audit_gate_evidence(root)
     write_valid_completion_audit_doc(root)
+    write_valid_katago_analysis_stale_guard_evidence(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -4532,6 +4608,13 @@ def write_valid_katago_review_workflow_ux_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE,
         valid_katago_review_workflow_ux_evidence(),
+    )
+
+
+def write_valid_katago_analysis_stale_guard_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.KATAGO_ANALYSIS_STALE_GUARD_SMOKE_EVIDENCE,
+        valid_katago_analysis_stale_guard_evidence(),
     )
 
 
@@ -4878,6 +4961,72 @@ def valid_katago_review_workflow_ux_evidence() -> dict[str, object]:
             "referencedEvidence": [],
             "existingLiveEvidenceUsedForNewLiveBehavior": False,
         },
+    }
+
+
+def valid_katago_analysis_stale_guard_evidence() -> dict[str, object]:
+    false_boundaries = {
+        key: False
+        for key in smoke_user_flows.KATAGO_ANALYSIS_STALE_GUARD_REQUIRED_FALSE_FIELDS
+    }
+    return {
+        "schema": smoke_user_flows.KATAGO_ANALYSIS_STALE_GUARD_SMOKE_SCHEMA,
+        "name": "katago_analysis_stale_guard_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "source_static_stale_guard_audit",
+        "sgfEditVersionGuardVerified": True,
+        "activeJobCancelCleanupVerified": True,
+        "staleResultIgnoreVerified": True,
+        "sourceFactsValidated": True,
+        **false_boundaries,
+        "checks": [
+            {
+                "name": "sgf_edit_version_guard",
+                "status": "pass",
+                "details": {
+                    "sgfTextEditVersionTracked": True,
+                    "sgfTextEditVersionIncremented": True,
+                    "activeAnalysisEditVersionTracked": True,
+                    "beginAnalysisEditGuardObserved": True,
+                    "isAnalysisEditVersionCurrentObserved": True,
+                    "appSource": smoke_user_flows.APP_SOURCE,
+                },
+            },
+            {
+                "name": "active_job_cancel_cleanup",
+                "status": "pass",
+                "details": {
+                    "cancelInvoked": True,
+                    "finishStoppedAnalysisCalled": True,
+                    "cleanupListenersCalled": True,
+                },
+            },
+            {
+                "name": "stale_result_ignore",
+                "status": "pass",
+                "details": {
+                    "staleResultIgnored": True,
+                    "jobIdGuard": True,
+                    "editVersionGuard": True,
+                    "jobIdOnly": False,
+                },
+            },
+            {
+                "name": "source_facts_validated",
+                "status": "pass",
+                "details": {
+                    "sourceFactsValidated": True,
+                    "appSource": smoke_user_flows.APP_SOURCE,
+                },
+            },
+            {
+                "name": "scope_boundaries",
+                "status": "pass",
+                "details": false_boundaries,
+            },
+        ],
+        "boundaries": false_boundaries,
     }
 
 
@@ -8257,9 +8406,11 @@ def create_app_fixture(
           const isAnnotationSaving = false;
           const ProviderPanel = "ProviderPanel";
           const sgfTextEditVersionRef = {{ current: 0 }};
+          const activeAnalysisEditVersionRef = {{ current: null }};
           const activeJobIdRef = {{ current: null }};
           const pendingAnalysisProgressRef = {{ current: new Map() }};
           const pendingAnalysisTerminalEventsRef = {{ current: new Map() }};
+          const analysisCleanupRef = {{ current: null }};
           const activeJobId = activeJobIdRef.current;
           const analysisProgress = null;
           async function handleProviderImport(result) {{
@@ -8301,12 +8452,17 @@ def create_app_fixture(
             }}
           }}
           async function handleAnalyzeKataGoGame(profile, maxVisits) {{
+            const sessionToken = nextAnalysisSessionToken();
+            const analysisEditVersion = beginAnalysisEditGuard();
             pendingAnalysisProgressRef.current.clear();
             pendingAnalysisTerminalEventsRef.current.clear();
             setAnalysisProgress(null);
             await listenToKataGoAnalysisEvents({{
               onProgress: (payload) => {{
-                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {{
+                  markStaleAnalysisPrevented(payload.job_id);
+                  return;
+                }}
                 setAnalysisProgress({{
                   jobId: payload.job_id,
                   completed: payload.completed,
@@ -8315,44 +8471,78 @@ def create_app_fixture(
                 }});
               }},
               onComplete: (payload) => {{
-                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {{
+                  markStaleAnalysisPrevented(payload.job_id);
+                  return;
+                }}
                 void finishCompletedAnalysis(payload.job_id, payload.frames, {{}}, []);
               }},
               onError: (payload) => {{
-                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {{
+                  markStaleAnalysisPrevented(payload.job_id);
+                  return;
+                }}
                 finishStoppedAnalysis(payload.job_id);
                 setMessage(`Full-game KataGo analysis failed: ${{payload.message}}`);
               }},
               onCancelled: (payload) => {{
-                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {{
+                  markStaleAnalysisPrevented(payload.job_id);
+                  return;
+                }}
                 finishStoppedAnalysis(payload.job_id);
                 setMessage(payload.message || "Full-game KataGo analysis cancelled.");
               }}
             }});
             const jobId = await startKataGoGameAnalysis(profile, sgfText, maxVisits);
+            if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {{
+              markStaleAnalysisPrevented(jobId);
+              return;
+            }}
             activeJobIdRef.current = jobId;
+            activeAnalysisEditVersionRef.current = analysisEditVersion;
             setActiveJobId(jobId);
-            setMessage(`Full-game KataGo analysis started (${{jobId}}).`);
+            setMessage(`Full-game KataGo analysis started (${{jobId}}/${{sessionToken}}).`);
           }}
           async function handleCancelKataGoAnalysis() {{
             const jobId = activeJobIdRef.current;
             if (!jobId) return;
             await cancelKataGoAnalysis(jobId);
+            finishStoppedAnalysis(jobId);
             setMessage("Full-game KataGo analysis cancelled.");
           }}
-          function isCurrentAnalysisJob(jobId) {{
-            const currentHash = computeGameCacheKey(sgfText, currentFilePath);
-            return Boolean(currentHash) && activeJobIdRef.current === jobId;
+          function nextAnalysisSessionToken() {{
+            return `${{Date.now()}}`;
+          }}
+          function beginAnalysisEditGuard() {{
+            const editVersion = sgfTextEditVersionRef.current;
+            activeAnalysisEditVersionRef.current = editVersion;
+            return editVersion;
+          }}
+          function isAnalysisEditVersionCurrent(editVersion) {{
+            return editVersion === null || sgfTextEditVersionRef.current === editVersion;
+          }}
+          function isCurrentAnalysisJob(jobId, editVersion = activeAnalysisEditVersionRef.current) {{
+            return activeJobIdRef.current === jobId && isAnalysisEditVersionCurrent(editVersion);
           }}
           async function finishCompletedAnalysis(jobId, result, parsed, replayed) {{
             finishStoppedAnalysis(jobId);
             await saveAnalysisCacheForGame(sgfText, currentFilePath, parsed, result, replayed, "katago");
           }}
+          function markStaleAnalysisPrevented(jobId) {{
+            setMessage(`Ignored stale analysis event from ${{jobId}}.`);
+          }}
+          function cleanupAnalysisListeners() {{
+            analysisCleanupRef.current?.();
+            analysisCleanupRef.current = null;
+          }}
           function finishStoppedAnalysis(jobId) {{
             if (activeJobIdRef.current !== null && activeJobIdRef.current !== jobId) return;
             activeJobIdRef.current = null;
+            activeAnalysisEditVersionRef.current = null;
             setActiveJobId(null);
             setAnalysisProgress(null);
+            cleanupAnalysisListeners();
           }}
           async function checkAnalysisCacheForGame(text, filePath, parsed, replayed, baseMessage) {{
             const cacheKey = await computeGameCacheKey(text, filePath);

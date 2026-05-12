@@ -1,0 +1,81 @@
+{
+  "schema": "lizzieyzy.katago-analysis-stale-guard-smoke.v1",
+  "name": "katago_analysis_stale_guard_smoke",
+  "status": "pass",
+  "platform": "macos",
+  "collectionMethod": "source_static_stale_guard_audit",
+  "sgfEditVersionGuardVerified": true,
+  "activeJobCancelCleanupVerified": true,
+  "staleResultIgnoreVerified": true,
+  "sourceFactsValidated": true,
+  "fullLegacyAnalysisParity": false,
+  "fullKataGoParity": false,
+  "releaseParity": false,
+  "signedReleaseParity": false,
+  "bundledLargeModelParity": false,
+  "providerReadboardParity": false,
+  "windowsLinuxParity": false,
+  "checks": [
+    {
+      "name": "sgf_edit_version_guard",
+      "status": "pass",
+      "details": {
+        "sgfTextEditVersionTracked": true,
+        "sgfTextEditVersionIncremented": true,
+        "activeAnalysisEditVersionTracked": true,
+        "beginAnalysisEditGuardObserved": true,
+        "isAnalysisEditVersionCurrentObserved": true,
+        "appSource": "apps/desktop/src/App.tsx"
+      }
+    },
+    {
+      "name": "active_job_cancel_cleanup",
+      "status": "pass",
+      "details": {
+        "cancelInvoked": true,
+        "finishStoppedAnalysisCalled": true,
+        "cleanupListenersCalled": true
+      }
+    },
+    {
+      "name": "stale_result_ignore",
+      "status": "pass",
+      "details": {
+        "staleResultIgnored": true,
+        "jobIdGuard": true,
+        "editVersionGuard": true,
+        "jobIdOnly": false
+      }
+    },
+    {
+      "name": "source_facts_validated",
+      "status": "pass",
+      "details": {
+        "sourceFactsValidated": true,
+        "appSource": "apps/desktop/src/App.tsx"
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "fullLegacyAnalysisParity": false,
+        "fullKataGoParity": false,
+        "releaseParity": false,
+        "signedReleaseParity": false,
+        "bundledLargeModelParity": false,
+        "providerReadboardParity": false,
+        "windowsLinuxParity": false
+      }
+    }
+  ],
+  "boundaries": {
+    "fullLegacyAnalysisParity": false,
+    "fullKataGoParity": false,
+    "releaseParity": false,
+    "signedReleaseParity": false,
+    "bundledLargeModelParity": false,
+    "providerReadboardParity": false,
+    "windowsLinuxParity": false
+  }
+}

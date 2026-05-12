@@ -58,7 +58,7 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
 
             failures = {result.name: result.detail for result in results if not result.ok}
             self.assertIn("stale_smoke_counts", failures)
-            self.assertIn("56 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("57 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
             self.assertIn("54 passed", failures["stale_smoke_counts"])
 
     def test_rejects_current_central_smoke_count_55(self) -> None:
@@ -76,7 +76,7 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
 
             failures = {result.name: result.detail for result in results if not result.ok}
             self.assertIn("stale_smoke_counts", failures)
-            self.assertIn("56 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("57 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
             self.assertIn("55 passed", failures["stale_smoke_counts"])
 
     def test_allows_self_excluding_baseline_54_evidence(self) -> None:

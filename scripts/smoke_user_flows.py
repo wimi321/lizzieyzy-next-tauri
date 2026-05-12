@@ -210,6 +210,16 @@ WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE = "docs/qa/windows-unsigned-installed-app-s
 LINUX_INSTALLED_APP_SMOKE_EVIDENCE = "docs/qa/linux-unsigned-installed-app-smoke.json"
 WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA = "lizzieyzy.windows-linux-installed-app-smoke.v1"
 WINDOWS_LINUX_INSTALLED_APP_SMOKE_REQUIRED_PLATFORMS = ["windows", "linux"]
+KATAGO_SETUP_ASSISTANT_URLS = {
+    "releases": "https://github.com/lightvector/KataGo/releases",
+    "networks": "https://katagotraining.org/networks/",
+    "configs": "https://github.com/lightvector/KataGo/tree/master/cpp/configs",
+}
+KATAGO_SETUP_ASSISTANT_BUTTON_TEST_IDS = [
+    "engine-open-katago-releases",
+    "engine-open-katago-networks",
+    "engine-open-katago-configs",
+]
 WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS = [
     "signedReleaseParity",
     "notarizedReleaseParity",
@@ -1355,6 +1365,18 @@ class UserFlowSmoke:
                     "checkEngineAssets",
                 ],
             ),
+            *missing_required_tokens(
+                panel_text,
+                "EngineSetupPanel",
+                [
+                    "engine-katago-setup-assistant",
+                    "engine-open-katago-releases",
+                    "engine-open-katago-networks",
+                    "engine-open-katago-configs",
+                    "openUrl",
+                    "window.open",
+                ],
+            ),
             *missing_any_required_token(
                 panel_text,
                 "EngineSetupPanel",
@@ -1368,6 +1390,7 @@ class UserFlowSmoke:
                 ["Bundled profile unavailable", "Bundled KataGo profile unavailable"],
             ),
             *validate_engine_setup_bundled_profile_adoption(panel_text),
+            *validate_engine_setup_katago_setup_assistant(panel_text),
         ]
         if failures:
             self.fail("runtime_asset_layout_surface", "missing runtime asset layout surface: " + ", ".join(failures))
@@ -2399,6 +2422,23 @@ def validate_engine_setup_bundled_profile_adoption(panel_text: str) -> list[str]
         failures.append("EngineSetupPanel bundled profile max_visits must have a positive fallback")
     if not re.search(r"data-large-model-bundled\s*=\s*(?:[\"']false[\"']|\{\s*[\"']false[\"']\s*\})", panel_text):
         failures.append('EngineSetupPanel must expose data-large-model-bundled="false" boundary')
+    return failures
+
+
+def validate_engine_setup_katago_setup_assistant(panel_text: str) -> list[str]:
+    failures: list[str] = []
+    if not re.search(r"import\s*\{[^}]*\bopenUrl\b[^}]*\}\s*from\s*[\"']@tauri-apps/plugin-opener[\"']", panel_text, re.DOTALL):
+        failures.append("EngineSetupPanel must import openUrl from @tauri-apps/plugin-opener")
+    if not re.search(r"\bopenUrl\s*\(", panel_text):
+        failures.append("EngineSetupPanel setup assistant must call openUrl")
+    if not re.search(r"\bwindow\.open\s*\(", panel_text):
+        failures.append("EngineSetupPanel setup assistant must provide window.open browser fallback")
+    for label, url in KATAGO_SETUP_ASSISTANT_URLS.items():
+        if url not in panel_text:
+            failures.append(f"EngineSetupPanel setup assistant missing {label} URL {url}")
+    for test_id in KATAGO_SETUP_ASSISTANT_BUTTON_TEST_IDS:
+        if test_id not in panel_text:
+            failures.append(f"EngineSetupPanel setup assistant missing {test_id} button")
     return failures
 
 

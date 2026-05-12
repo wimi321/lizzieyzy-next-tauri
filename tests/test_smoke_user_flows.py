@@ -3949,6 +3949,88 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("runtime_asset_layout_surface", failures)
             self.assertIn("EngineSetupPanel must persist and select the bundled profile id", failures["runtime_asset_layout_surface"])
 
+    def test_runtime_asset_layout_surface_missing_setup_assistant_opener_import_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace('import { openUrl } from "@tauri-apps/plugin-opener";', ""),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel must import openUrl from @tauri-apps/plugin-opener", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_setup_assistant_releases_url_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("https://github.com/lightvector/KataGo/releases", "https://example.invalid/katago"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel setup assistant missing releases URL", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_setup_assistant_networks_url_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("https://katagotraining.org/networks/", "https://example.invalid/networks"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel setup assistant missing networks URL", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_setup_assistant_browser_fallback_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("window.open(url, \"_blank\", \"noopener,noreferrer\");", "throw new Error(\"no fallback\");"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel missing window.open", failures["runtime_asset_layout_surface"])
+            self.assertIn("EngineSetupPanel setup assistant must provide window.open browser fallback", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_setup_assistant_button_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("engine-open-katago-networks", "engine-open-katago-network-list"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel missing engine-open-katago-networks", failures["runtime_asset_layout_surface"])
+            self.assertIn("EngineSetupPanel setup assistant missing engine-open-katago-networks button", failures["runtime_asset_layout_surface"])
+
     def test_legacy_import_capture_helper_surface_passes_with_frontend_wiring(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -8405,6 +8487,7 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
     if runtime_asset_ui:
         body = """
         import { checkEngineAssets, installedAppRuntimeProof, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
+        import { openUrl } from "@tauri-apps/plugin-opener";
 
         export function EngineSetupPanel({ analysisProgress = null, activeJobId = null, onCancelAnalysis = null }) {
           const [runtimeAssetValidation, setRuntimeAssetValidation] = useState(null);
@@ -8461,6 +8544,14 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
             await persistProfiles(nextProfiles, record.id, "Bundled KataGo profile saved and selected.");
           }
 
+          async function openKatagoSetupUrl(url) {
+            try {
+              await openUrl(url);
+            } catch {
+              window.open(url, "_blank", "noopener,noreferrer");
+            }
+          }
+
           return (
             <section aria-label="KataGo engine setup">
               <div aria-label="Bundled runtime asset status" data-large-model-bundled="false">
@@ -8479,6 +8570,11 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
                 <button data-testid="engine-use-bundled-profile" disabled={!canUseBundledProfile} onClick={handleUseBundledProfile}>Use bundled profile</button>
               </div>
               <p>Large KataGo models are not bundled by this repository.</p>
+              <div data-testid="engine-katago-setup-assistant" aria-label="KataGo setup assistant">
+                <button data-testid="engine-open-katago-releases" onClick={() => openKatagoSetupUrl("https://github.com/lightvector/KataGo/releases")}>KataGo releases</button>
+                <button data-testid="engine-open-katago-networks" onClick={() => openKatagoSetupUrl("https://katagotraining.org/networks/")}>KataGo networks</button>
+                <button data-testid="engine-open-katago-configs" onClick={() => openKatagoSetupUrl("https://github.com/lightvector/KataGo/tree/master/cpp/configs")}>Config examples</button>
+              </div>
               <div aria-label="Local asset configuration">
                 <strong>Local asset configuration</strong>
                 <input value={enginePath} />

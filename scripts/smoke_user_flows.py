@@ -1333,6 +1333,18 @@ class UserFlowSmoke:
                     "Bundled/runtime assets",
                     "Refresh runtime assets",
                     "Large KataGo models are not bundled",
+                    "installedAppRuntimeProof",
+                    "bundledKatago",
+                    "bundledKataGo",
+                    "bundled_katago",
+                    "validBundledProfile",
+                    "engine-use-bundled-profile",
+                    "Use bundled profile",
+                    "canUseBundledProfile",
+                    "bundled-katago",
+                    "max_visits",
+                    "800",
+                    "data-large-model-bundled",
                     "placeholders",
                     "warnings",
                     "placeholderCount",
@@ -1343,13 +1355,26 @@ class UserFlowSmoke:
                     "checkEngineAssets",
                 ],
             ),
+            *missing_any_required_token(
+                panel_text,
+                "EngineSetupPanel",
+                "bundled profile available status copy",
+                ["Bundled profile available", "Bundled KataGo profile available"],
+            ),
+            *missing_any_required_token(
+                panel_text,
+                "EngineSetupPanel",
+                "bundled profile unavailable status copy",
+                ["Bundled profile unavailable", "Bundled KataGo profile unavailable"],
+            ),
+            *validate_engine_setup_bundled_profile_adoption(panel_text),
         ]
         if failures:
             self.fail("runtime_asset_layout_surface", "missing runtime asset layout surface: " + ", ".join(failures))
             return
         self.pass_(
             "runtime_asset_layout_surface",
-            "runtime asset layout backend wrappers and EngineSetupPanel bundled/runtime status surface are wired while local engine/model/config asset fields remain available",
+            "runtime asset layout backend wrappers and EngineSetupPanel bundled/runtime status plus bundled profile adoption surface are wired while local engine/model/config asset fields remain available",
         )
 
     def check_legacy_import_capture_helper_surface(self) -> None:
@@ -2352,6 +2377,29 @@ class UserFlowSmoke:
         self.check_legacy_import_capture_helper_surface()
         self.check_external_runtime_gates()
         return self.results
+
+
+def validate_engine_setup_bundled_profile_adoption(panel_text: str) -> list[str]:
+    failures: list[str] = []
+    if not re.search(r"proof\.bundledKatago\s*\?\?\s*proof\.bundledKataGo\s*\?\?\s*proof\.bundled_katago", panel_text):
+        failures.append("EngineSetupPanel must extract bundled profile from bundledKatago/bundledKataGo/bundled_katago aliases")
+    if not re.search(r"id\s*:\s*[\"']bundled-katago[\"']", panel_text):
+        failures.append("EngineSetupPanel must create bundled-katago profile id")
+    if "saveEngineProfilesSettings" not in panel_text:
+        failures.append("EngineSetupPanel must persist profiles with saveEngineProfilesSettings")
+    if not re.search(r"persistProfiles\s*\(\s*nextProfiles\s*,\s*record\.id", panel_text):
+        failures.append("EngineSetupPanel must persist and select the bundled profile id")
+    if not re.search(r"const\s+canUseBundledProfile\b[^=]*=\s*[^;]*bundledProfile\s*!==\s*null", panel_text, re.DOTALL):
+        failures.append("EngineSetupPanel canUseBundledProfile must depend on bundled profile presence")
+    if not re.search(r"disabled\s*=\s*\{\s*!\s*canUseBundledProfile\s*\}", panel_text):
+        failures.append("EngineSetupPanel bundled profile button must be disabled when canUseBundledProfile is false")
+    if not re.search(r"max_visits\s*:\s*[A-Za-z0-9_]+", panel_text):
+        failures.append("EngineSetupPanel bundled profile must write max_visits")
+    if not re.search(r"\b800\b", panel_text):
+        failures.append("EngineSetupPanel bundled profile max_visits must have a positive fallback")
+    if not re.search(r"data-large-model-bundled\s*=\s*(?:[\"']false[\"']|\{\s*[\"']false[\"']\s*\})", panel_text):
+        failures.append('EngineSetupPanel must expose data-large-model-bundled="false" boundary')
+    return failures
 
 
 def missing_tauri_command_surface(text: str, commands: list[str]) -> list[str]:

@@ -3846,6 +3846,109 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("runtime_asset_layout_surface", failures)
             self.assertIn("EngineSetupPanel missing runtimeAssetValidation", failures["runtime_asset_layout_surface"])
 
+    def test_runtime_asset_layout_surface_missing_bundled_profile_button_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("engine-use-bundled-profile", "engine-use-local-profile"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel missing engine-use-bundled-profile", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_bundled_profile_status_copy_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8")
+                .replace("Bundled profile available", "Bundled profile ready")
+                .replace("Bundled profile unavailable", "Bundled profile missing"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel missing bundled profile available status copy", failures["runtime_asset_layout_surface"])
+            self.assertIn("EngineSetupPanel missing bundled profile unavailable status copy", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_bundled_profile_aliases_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("proof.bundledKatago ?? proof.bundledKataGo ?? proof.bundled_katago ?? null", "proof.bundledKatago ?? null"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel must extract bundled profile from bundledKatago/bundledKataGo/bundled_katago aliases", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_bundled_profile_id_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace('"bundled-katago"', '"local-katago"'),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel missing bundled-katago", failures["runtime_asset_layout_surface"])
+            self.assertIn("EngineSetupPanel must create bundled-katago profile id", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_bundled_profile_disabled_condition_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace("disabled={!canUseBundledProfile}", "disabled={false}"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel bundled profile button must be disabled when canUseBundledProfile is false", failures["runtime_asset_layout_surface"])
+
+    def test_runtime_asset_layout_surface_missing_bundled_profile_persist_call_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            engine_panel_path = root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE
+            engine_panel_path.write_text(
+                engine_panel_path.read_text(encoding="utf-8").replace(
+                    'await persistProfiles(nextProfiles, record.id, "Bundled KataGo profile saved and selected.");',
+                    'await saveEngineProfilesSettings({ selected_profile_id: "default", profiles: nextProfiles });',
+                ),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("runtime_asset_layout_surface", failures)
+            self.assertIn("EngineSetupPanel must persist and select the bundled profile id", failures["runtime_asset_layout_surface"])
+
     def test_legacy_import_capture_helper_surface_passes_with_frontend_wiring(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -8301,15 +8404,20 @@ def create_provider_panel_fixture(root: Path, *, legacy_helper_ui: bool = True) 
 def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = True) -> None:
     if runtime_asset_ui:
         body = """
-        import { checkEngineAssets, validateRuntimeAssetLayout } from "../api/backend";
+        import { checkEngineAssets, installedAppRuntimeProof, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
 
         export function EngineSetupPanel({ analysisProgress = null, activeJobId = null, onCancelAnalysis = null }) {
           const [runtimeAssetValidation, setRuntimeAssetValidation] = useState(null);
+          const [installedRuntimeProof, setInstalledRuntimeProof] = useState(null);
           const [runtimeAssetStatus, setRuntimeAssetStatus] = useState("Checking bundled/runtime assets...");
           const enginePath = "";
           const modelPath = "";
           const configPath = "";
+          const visits = 0;
           const placeholderCount = runtimeAssetValidation?.placeholders.length ?? 0;
+          const bundledProfileProof = installedRuntimeProof ? extractBundledKataGoProof(installedRuntimeProof) : null;
+          const bundledProfile = bundledProfileProof ? validBundledProfile(bundledProfileProof.profile) : null;
+          const canUseBundledProfile = bundledProfile !== null;
           const progressLabel = analysisProgress
             ? `${analysisProgress.completed}/${analysisProgress.expected} positions, move ${analysisProgress.turn}`
             : "No active analysis";
@@ -8319,6 +8427,8 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
 
           async function handleCheckRuntimeAssets() {
             const validation = await validateRuntimeAssetLayout();
+            const proof = await installedAppRuntimeProof();
+            setInstalledRuntimeProof(proof);
             setRuntimeAssetValidation(validation);
             setRuntimeAssetStatus(runtimeAssetSummary(validation));
           }
@@ -8335,9 +8445,25 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
             await checkEngineAssets({ engine_path: enginePath, model_path: modelPath, config_path: configPath });
           }
 
+          async function persistProfiles(nextProfiles, selectedId, successMessage) {
+            await saveEngineProfilesSettings({ selected_profile_id: selectedId, profiles: nextProfiles });
+          }
+
+          async function handleUseBundledProfile() {
+            if (!bundledProfile) return;
+            const adoptedVisits = Number.isFinite(visits) && visits > 0 ? Math.floor(visits) : 800;
+            const record = {
+              id: "bundled-katago",
+              profile: bundledProfile,
+              max_visits: adoptedVisits
+            };
+            const nextProfiles = [record];
+            await persistProfiles(nextProfiles, record.id, "Bundled KataGo profile saved and selected.");
+          }
+
           return (
             <section aria-label="KataGo engine setup">
-              <div aria-label="Bundled runtime asset status">
+              <div aria-label="Bundled runtime asset status" data-large-model-bundled="false">
                 <strong>Bundled/runtime assets</strong>
                 <button onClick={handleCheckRuntimeAssets}>Refresh runtime assets</button>
                 <span>{runtimeAssetStatus}</span>
@@ -8345,6 +8471,12 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
                 <span>{placeholderCount}</span>
                 <span>{runtimeAssetValidation?.checks.map((check) => check.status).join(",")}</span>
                 <span>{runtimeAssetValidation ? runtimeAssetMessages(runtimeAssetValidation).join("|") : ""}</span>
+              </div>
+              <div aria-label="Bundled profile adoption">
+                <strong>Bundled profile</strong>
+                <span>Bundled profile available</span>
+                <span>Bundled profile unavailable</span>
+                <button data-testid="engine-use-bundled-profile" disabled={!canUseBundledProfile} onClick={handleUseBundledProfile}>Use bundled profile</button>
               </div>
               <p>Large KataGo models are not bundled by this repository.</p>
               <div aria-label="Local asset configuration">
@@ -8363,6 +8495,14 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
               {activeJobId ? <button onClick={() => onCancelAnalysis?.()}>Cancel</button> : null}
             </section>
           );
+        }
+
+        function extractBundledKataGoProof(proof) {
+          return proof.bundledKatago ?? proof.bundledKataGo ?? proof.bundled_katago ?? null;
+        }
+
+        function validBundledProfile(profile) {
+          return profile ?? null;
         }
         """
     else:

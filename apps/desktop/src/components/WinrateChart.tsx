@@ -1,8 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { AnalysisFrameDto } from "../domain/types";
 
-type Props = { frames: AnalysisFrameDto[]; currentMove: number };
-export function WinrateChart({ frames, currentMove }: Props) {
+type Props = {
+  frames: AnalysisFrameDto[];
+  currentMove: number;
+  reviewSource?: string;
+  reviewPhase?: string;
+  cacheRestoreVerified?: boolean;
+};
+export function WinrateChart({ frames, currentMove, reviewSource = "none", reviewPhase = "idle", cacheRestoreVerified = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const canvas = canvasRef.current; const ctx = canvas?.getContext("2d"); if (!canvas || !ctx) return;
@@ -16,5 +22,15 @@ export function WinrateChart({ frames, currentMove }: Props) {
     if (sortedFrames.length > 1) { ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 2; ctx.beginPath(); sortedFrames.forEach((frame, index) => { const x = turnToX(frame.turn); const y = height - frame.winrate_black * height; if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }); ctx.stroke(); }
     const markerX = turnToX(currentMove); ctx.strokeStyle = "rgba(15,23,42,.72)"; ctx.beginPath(); ctx.moveTo(markerX, 0); ctx.lineTo(markerX, height); ctx.stroke();
   }, [frames, currentMove]);
-  return <canvas ref={canvasRef} className="winrate-chart" aria-label="Winrate chart" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className="winrate-chart"
+      aria-label="Winrate chart"
+      data-testid="winrate-chart"
+      data-review-source={reviewSource}
+      data-review-phase={reviewPhase}
+      data-cache-restore-verified={String(cacheRestoreVerified)}
+    />
+  );
 }

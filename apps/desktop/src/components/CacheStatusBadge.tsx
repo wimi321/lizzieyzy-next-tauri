@@ -4,6 +4,7 @@ type Props = {
   status: CacheStatus;
   record?: AnalysisCacheRecord | null;
   error?: string | null;
+  cacheRestoreVerified?: boolean;
 };
 
 const statusLabels: Record<CacheStatus, string> = {
@@ -26,7 +27,7 @@ const statusColors: Record<CacheStatus, { background: string; border: string; co
   error: { background: "#fef2f2", border: "#fecaca", color: "#b91c1c" }
 };
 
-export function CacheStatusBadge({ status, record = null, error = null }: Props) {
+export function CacheStatusBadge({ status, record = null, error = null, cacheRestoreVerified = false }: Props) {
   const colors = statusColors[status];
   const metadata = record ? cacheRecordMetadata(record) : null;
   const detail = status === "error" ? error : metadata;
@@ -34,6 +35,9 @@ export function CacheStatusBadge({ status, record = null, error = null }: Props)
   return (
     <div
       className="status-pill"
+      data-testid="cache-status-badge"
+      data-cache-status={status}
+      data-cache-restore-verified={String(cacheRestoreVerified)}
       title={detail ?? statusLabels[status]}
       aria-live="polite"
       style={{

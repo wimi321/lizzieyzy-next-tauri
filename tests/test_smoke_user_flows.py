@@ -59,6 +59,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shortcut_layout_evidence", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("installed_app_runtime_workflow", pending_names)
+            self.assertIn("bundled_katago_installed_app_smoke", pending_names)
             self.assertIn("installed_app_sgf_workflow", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
@@ -1054,6 +1055,101 @@ class SmokeUserFlowsTests(unittest.TestCase):
             mutate,
             "browserFallbackUsed must be false",
         )
+
+    def test_valid_bundled_katago_installed_app_smoke_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_json(
+                root / smoke_user_flows.BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE,
+                valid_bundled_katago_installed_app_smoke_evidence(),
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("bundled_katago_installed_app_smoke", pass_names)
+            self.assertNotIn("bundled_katago_installed_app_smoke", pending_names)
+
+    def test_bundled_katago_installed_app_smoke_rejects_unavailable_counted_success(self) -> None:
+        self.assert_invalid_bundled_katago_installed_app_pending(
+            lambda evidence: evidence["engineLaunchAttempt"].__setitem__("launchSucceeded", True),
+            "engineLaunchAttempt unavailable/problem status must not be counted as success",
+        )
+
+    def test_bundled_katago_installed_app_smoke_rejects_overclaim(self) -> None:
+        self.assert_invalid_bundled_katago_installed_app_pending(
+            lambda evidence: evidence["boundaries"].__setitem__("fullBundledKataGoParity", True),
+            "boundaries.fullBundledKataGoParity must be false",
+        )
+
+    def test_bundled_katago_installed_app_smoke_rejects_dev_server_source(self) -> None:
+        self.assert_invalid_bundled_katago_installed_app_pending(
+            lambda evidence: evidence["runtimeSource"].__setitem__("sourceKind", "tauri-dev"),
+            "runtimeSource.sourceKind must be packaged-macos-app",
+        )
+
+    def test_bundled_katago_installed_app_smoke_rejects_ready_with_missing_assets(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            layout = evidence["bundledAssetLayout"]
+            assert isinstance(layout, dict)
+            layout["status"] = "ready"
+            layout["missing"] = [{"label": "KataGo model"}]
+
+        self.assert_invalid_bundled_katago_installed_app_pending(
+            mutate,
+            "bundledAssetLayout must not be ready when missing/placeholders are present",
+        )
+
+    def test_bundled_katago_installed_app_smoke_rejects_missing_bundled_katago_backend_proof(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("bundledKataGo")
+            proof = evidence["backendRuntimeProof"]
+            assert isinstance(proof, dict)
+            proof.pop("bundledKataGo")
+            proof.pop("bundledKatago", None)
+            proof.pop("bundled_katago", None)
+
+        self.assert_invalid_bundled_katago_installed_app_pending(
+            mutate,
+            "backendRuntimeProof.bundledKatago must be recorded",
+        )
+
+    def test_bundled_katago_installed_app_smoke_accepts_rust_bundled_katago_key(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_bundled_katago_installed_app_smoke_evidence()
+            proof = evidence["backendRuntimeProof"]
+            assert isinstance(proof, dict)
+            proof["bundledKatago"] = proof.pop("bundledKataGo")
+            write_json(root / smoke_user_flows.BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("bundled_katago_installed_app_smoke", pass_names)
+
+    def assert_invalid_bundled_katago_installed_app_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_bundled_katago_installed_app_smoke_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("bundled_katago_installed_app_smoke", failures)
+            self.assertIn("bundled_katago_installed_app_smoke", pending)
+            self.assertIn(expected_detail, pending["bundled_katago_installed_app_smoke"])
 
     def test_valid_installed_app_sgf_workflow_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -5989,6 +6085,149 @@ def valid_installed_app_runtime_workflow_evidence() -> dict[str, object]:
             {"name": "quit_or_terminate_observed", "status": "pass", "details": termination},
             {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
         ],
+    }
+
+
+def valid_bundled_katago_installed_app_smoke_evidence() -> dict[str, object]:
+    proof = valid_installed_app_backend_runtime_proof()
+    proof["bundledKataGo"] = valid_bundled_katago_backend_proof()
+    proof["raw"] = {"bundledKatago": proof["bundledKataGo"]}
+    assets = proof["assets"]
+    assert isinstance(assets, dict)
+    assets["status"] = "problem"
+    assets["checks"] = 3
+    assets["exists"] = [{"label": "resource root", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources"}]
+    assets["missing"] = [{"label": "KataGo model", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models"}]
+    assets["placeholders"] = []
+    app_bundle = {
+        "exists": True,
+        "path": "target/release/bundle/macos/LizzieYzy Next.app",
+        "sizeBytes": 17399164,
+        "sha256": "2530d458dd7b676911e5e36088d7a902887e9a9e9edffa1bbecada7b12bc9de6",
+    }
+    runtime_source = {
+        "sourceKind": "packaged-macos-app",
+        "tauriRuntimeObserved": True,
+        "devServerRequired": False,
+        "resourceDir": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources",
+        "appDataDir": "<home>/Library/Application Support/org.lizzieyzy.next",
+    }
+    asset_layout = {
+        "sourceKind": "packaged-macos-app",
+        "status": "problem",
+        "validationStatus": "problem",
+        "checks": 3,
+        "exists": [{"label": "resource root", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources"}],
+        "missing": [{"label": "KataGo model", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models"}],
+        "placeholders": [],
+        "paths": [
+            "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources",
+            "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+        ],
+    }
+    engine_launch = proof["engineLaunchAttempt"]
+    assert isinstance(engine_launch, dict)
+    engine_launch["status"] = "unavailable"
+    engine_launch["success"] = False
+    engine_launch["launchSucceeded"] = False
+    engine_launch["errorKind"] = "missingEnginePath"
+    screenshot = {
+        "label": "bundled-katago-installed-app-window",
+        "source": "bundled_katago_installed_app",
+        "path": "docs/qa/screenshots/installed-macos-app-window.png",
+        "sizeBytes": 186268,
+        "sha256": "f0731971b0dd93513a5d103e18c96aa275495d814e2ac5940c5af59481cab3ba",
+    }
+    boundaries = {
+        "sourceStaticOnly": False,
+        "artifactOnly": False,
+        "browserFallbackUsed": False,
+        "runnerStartedDevServer": False,
+        "runnerStartedViteDevServer": False,
+        "fullBundledKataGoParity": False,
+        "fullKataGoParity": False,
+        "bundledLargeModelParity": False,
+        "releaseParity": False,
+        "signedReleaseParity": False,
+        "productionSigned": False,
+        "notarized": False,
+        "updaterReady": False,
+        "windowsLinuxParity": False,
+        "windowsInstalledAppCovered": False,
+        "linuxInstalledAppCovered": False,
+        "fullLegacyParity": False,
+        "providerParity": False,
+        "readboardParity": False,
+        "ocrParity": False,
+    }
+    return {
+        "schema": smoke_user_flows.BUNDLED_KATAGO_INSTALLED_APP_SMOKE_SCHEMA,
+        "name": "bundled_katago_installed_app_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "installed_app_runtime_bundled_katago_layout_probe",
+        "runtimeObserved": True,
+        "installedAppLaunched": True,
+        "backendCommandInvoked": True,
+        "backendCommand": "installed_app_runtime_proof",
+        "screenshotObserved": True,
+        **boundaries,
+        "appBundle": app_bundle,
+        "runtimeSource": runtime_source,
+        "backendRuntimeProof": proof,
+        "bundledKataGo": proof["bundledKataGo"],
+        "bundledAssetLayout": asset_layout,
+        "profileStatus": proof["profileStatus"],
+        "engineLaunchAttempt": engine_launch,
+        "screenshots": [screenshot],
+        "boundaries": boundaries,
+        "checks": [
+            {"name": "app_bundle_verified", "status": "pass", "details": {"appBundle": app_bundle}},
+            {"name": "runtime_started", "status": "pass", "details": {"runtimeSource": runtime_source}},
+            {"name": "backend_runtime_proof_observed", "status": "pass", "details": {"backendRuntimeProof": proof}},
+            {"name": "bundled_asset_layout_validated", "status": "pass", "details": {"bundledAssetLayout": asset_layout}},
+            {"name": "bundled_engine_launch_attempted", "status": "pass", "details": {"engineLaunchAttempt": engine_launch}},
+            {"name": "screenshot_recorded", "status": "pass", "details": {"screenshots": [screenshot]}},
+            {
+                "name": "dev_server_excluded",
+                "status": "pass",
+                "details": {"devServerExcluded": True, "devServerAbsent": True, "runnerStartedDevServer": False},
+            },
+            {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
+        ],
+    }
+
+
+def valid_bundled_katago_backend_proof() -> dict[str, object]:
+    return {
+        "sourceKind": "packaged-macos-app",
+        "status": "incomplete",
+        "validationStatus": "incomplete",
+        "complete": False,
+        "checks": 4,
+        "exists": [{"label": "runtime root", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources"}],
+        "missing": [
+            {"label": "KataGo bin", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin"},
+            {"label": "KataGo models", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models"},
+            {"label": "KataGo configs", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs"},
+        ],
+        "placeholders": [],
+        "details": {
+            "checks": [
+                {"label": "runtime root", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources", "status": "exists"},
+                {"label": "KataGo bin", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin", "status": "missing"},
+                {"label": "KataGo models", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models", "status": "missing"},
+                {"label": "KataGo configs", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs", "status": "missing"},
+            ],
+            "exists": [{"label": "runtime root", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources"}],
+            "missing": [
+                {"label": "KataGo bin", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin"},
+                {"label": "KataGo models", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models"},
+                {"label": "KataGo configs", "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs"},
+            ],
+            "placeholders": [],
+            "layout": {"source": "resource_dir"},
+        },
     }
 
 

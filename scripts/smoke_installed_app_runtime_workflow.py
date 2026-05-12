@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -52,11 +53,11 @@ def sanitize(value: Any) -> Any:
 
 def extract_backend_runtime_proof(runtime_input: dict[str, Any]) -> dict[str, Any]:
     if runtime_input.get("schema") == BACKEND_PROOF_SCHEMA:
-        return runtime_input
+        return normalize_backend_runtime_proof(runtime_input)
     for key in ("backendRuntimeProof", "runtimeProof", "proof"):
         value = runtime_input.get(key)
         if isinstance(value, dict) and value.get("schema") == BACKEND_PROOF_SCHEMA:
-            return value
+            return normalize_backend_runtime_proof(value)
     checks = runtime_input.get("checks")
     if isinstance(checks, list):
         for check in checks:
@@ -66,12 +67,135 @@ def extract_backend_runtime_proof(runtime_input: dict[str, Any]) -> dict[str, An
             if not isinstance(details, dict):
                 continue
             if details.get("schema") == BACKEND_PROOF_SCHEMA:
-                return details
+                return normalize_backend_runtime_proof(details)
             for key in ("backendRuntimeProof", "runtimeProof", "proof"):
                 value = details.get(key)
                 if isinstance(value, dict) and value.get("schema") == BACKEND_PROOF_SCHEMA:
-                    return value
+                    raw = details.get("raw") if isinstance(details.get("raw"), dict) else None
+                    return normalize_backend_runtime_proof(value, raw)
     raise ValueError(f"runtime input must contain backend proof schema {BACKEND_PROOF_SCHEMA}")
+
+
+def normalize_backend_runtime_proof(proof: dict[str, Any], raw_override: dict[str, Any] | None = None) -> dict[str, Any]:
+    normalized = copy.deepcopy(proof)
+    raw = copy.deepcopy(raw_override) if isinstance(raw_override, dict) else normalized.get("raw")
+    if not isinstance(raw, dict):
+        raw = {}
+    raw_bundled = bundled_katago_alias(raw)
+    if raw_bundled is None:
+        raw_bundled = derive_bundled_katago_from_asset_checks(raw.get("assets"))
+    summary_bundled = bundled_katago_alias(normalized)
+    if raw_bundled is not None:
+        normalized["bundledKatago"] = normalize_bundled_katago(raw_bundled)
+        raw["bundledKatago"] = raw_bundled
+    elif summary_bundled is not None:
+        normalized["bundledKatago"] = normalize_bundled_katago(summary_bundled)
+        raw["bundledKatago"] = summary_bundled
+    normalized["raw"] = raw
+    return normalized
+
+
+def bundled_katago_alias(value: dict[str, Any]) -> dict[str, Any] | None:
+    for key in ("bundledKatago", "bundledKataGo", "bundled_katago"):
+        bundled = value.get(key)
+        if isinstance(bundled, dict):
+            return bundled
+    return None
+
+
+def normalize_bundled_katago(value: dict[str, Any]) -> dict[str, Any]:
+    normalized = copy.deepcopy(value)
+    records = bundled_katago_asset_records(value)
+    if records:
+        exists = [record for record in records if bundled_katago_record_exists(record)]
+        missing = [record for record in records if bundled_katago_record_missing(record)]
+        placeholders = [record for record in records if str(record.get("status", "")).lower() == "placeholder"]
+        incomplete = bool(missing or placeholders)
+        normalized.setdefault("sourceKind", value.get("source") or value.get("sourceKind") or "packaged-macos-app")
+        normalized["status"] = value.get("status") or ("incomplete" if incomplete else "ready")
+        normalized["validationStatus"] = value.get("validationStatus") or normalized["status"]
+        normalized["complete"] = False if incomplete else bool(value.get("complete", True))
+        normalized["checks"] = len(records)
+        normalized["exists"] = exists
+        normalized["missing"] = missing
+        normalized["placeholders"] = placeholders
+        details = normalized.get("details") if isinstance(normalized.get("details"), dict) else {}
+        details.setdefault("checks", records)
+        details.setdefault("exists", exists)
+        details.setdefault("missing", missing)
+        details.setdefault("placeholders", placeholders)
+        normalized["details"] = details
+    return normalized
+
+
+def bundled_katago_asset_records(value: dict[str, Any]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for key in ("engine", "model", "config"):
+        record = value.get(key)
+        if isinstance(record, dict):
+            item = copy.deepcopy(record)
+            item.setdefault("label", key)
+            records.append(item)
+    return records
+
+
+def bundled_katago_record_exists(record: dict[str, Any]) -> bool:
+    status = str(record.get("status", "")).lower()
+    return record.get("exists") is True or status in {"exists", "ready", "available", "ok", "present"}
+
+
+def bundled_katago_record_missing(record: dict[str, Any]) -> bool:
+    status = str(record.get("status", "")).lower()
+    return record.get("exists") is False or status in {"missing", "not_found", "unavailable", "incomplete", "problem"}
+
+
+def derive_bundled_katago_from_asset_checks(assets: Any) -> dict[str, Any] | None:
+    if not isinstance(assets, dict):
+        return None
+    details = assets.get("details") if isinstance(assets.get("details"), dict) else {}
+    records = details.get("checks")
+    if not isinstance(records, list):
+        records = assets.get("checks")
+    if not isinstance(records, list):
+        return None
+    resource_records: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        path = record.get("path")
+        label = str(record.get("label", ""))
+        if not isinstance(path, str):
+            continue
+        if "Contents/Resources" not in path:
+            continue
+        if path.endswith("Contents/Resources/") or path.endswith("Contents/Resources"):
+            resource_records.append(record)
+        elif "/runtime/katago/" in path and "KataGo" in label:
+            resource_records.append(record)
+    if not resource_records:
+        return None
+    exists = [record for record in resource_records if record.get("status") == "exists"]
+    missing = [record for record in resource_records if record.get("status") == "missing"]
+    placeholders = [record for record in resource_records if record.get("status") == "placeholder"]
+    incomplete = bool(missing or placeholders)
+    return {
+        "sourceKind": "packaged-macos-app",
+        "status": "incomplete" if incomplete else "ready",
+        "validationStatus": "incomplete" if incomplete else "ready",
+        "complete": not incomplete,
+        "checks": len(resource_records),
+        "exists": exists,
+        "missing": missing,
+        "placeholders": placeholders,
+        "warnings": assets.get("warnings") or [],
+        "details": {
+            "checks": resource_records,
+            "exists": exists,
+            "missing": missing,
+            "placeholders": placeholders,
+            "layout": {"source": "resource_dir"},
+        },
+    }
 
 
 def first_check_details(evidence: dict[str, Any], name: str) -> dict[str, Any]:

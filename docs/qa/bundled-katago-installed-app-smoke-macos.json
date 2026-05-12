@@ -10,8 +10,9 @@
     "sizeBytes": 17873356,
     "version": "0.1.0"
   },
-  "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
   "artifactOnly": false,
+  "backendCommand": "installed_app_runtime_proof",
+  "backendCommandInvoked": true,
   "backendRuntimeProof": {
     "appData": {
       "appDataDir": "<home>/Library/Application Support/org.lizzieyzy.next"
@@ -1335,26 +1336,324 @@
   "boundaries": {
     "artifactOnly": false,
     "browserFallbackUsed": false,
-    "fullInstalledAppParity": false,
-    "fullLayoutParity": false,
+    "bundledLargeModelParity": false,
+    "fullBundledKataGoParity": false,
+    "fullKataGoParity": false,
     "fullLegacyParity": false,
-    "fullShortcutParity": false,
     "linuxInstalledAppCovered": false,
     "notarized": false,
+    "ocrParity": false,
     "productionSigned": false,
-    "providerReadboardOCRParity": false,
-    "providerReadboardOcrParity": false,
-    "releasePublished": false,
+    "providerParity": false,
+    "readboardParity": false,
+    "releaseParity": false,
     "runnerStartedDevServer": false,
     "runnerStartedViteDevServer": false,
-    "signed": false,
+    "signedReleaseParity": false,
     "sourceStaticOnly": false,
-    "updaterCovered": false,
     "updaterReady": false,
     "windowsInstalledAppCovered": false,
-    "windowsLinuxInstalledAppCovered": false
+    "windowsLinuxParity": false
   },
   "browserFallbackUsed": false,
+  "bundledAssetLayout": {
+    "checks": 4,
+    "details": {
+      "checks": [
+        {
+          "kind": "directory",
+          "label": "runtime root",
+          "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "required": false,
+          "source": "resource_dir",
+          "status": "exists"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo bin",
+          "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo models",
+          "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo configs",
+          "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        }
+      ],
+      "exists": [
+        {
+          "kind": "directory",
+          "label": "runtime root",
+          "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "required": false,
+          "source": "resource_dir",
+          "status": "exists"
+        }
+      ],
+      "layout": {
+        "source": "resource_dir"
+      },
+      "missing": [
+        {
+          "kind": "directory",
+          "label": "KataGo bin",
+          "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo models",
+          "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo configs",
+          "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        }
+      ],
+      "placeholders": []
+    },
+    "exists": [
+      {
+        "kind": "directory",
+        "label": "runtime root",
+        "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+        "required": false,
+        "source": "resource_dir",
+        "status": "exists"
+      }
+    ],
+    "missing": [
+      {
+        "kind": "directory",
+        "label": "KataGo bin",
+        "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+        "required": true,
+        "source": "resource_dir",
+        "status": "missing"
+      },
+      {
+        "kind": "directory",
+        "label": "KataGo models",
+        "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+        "required": true,
+        "source": "resource_dir",
+        "status": "missing"
+      },
+      {
+        "kind": "directory",
+        "label": "KataGo configs",
+        "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+        "required": true,
+        "source": "resource_dir",
+        "status": "missing"
+      }
+    ],
+    "paths": [
+      "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+      "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+      "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+      "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models"
+    ],
+    "placeholders": [],
+    "sourceKind": "packaged-macos-app",
+    "status": "incomplete",
+    "validationStatus": "incomplete",
+    "warnings": [
+      "KataGo bin candidate is missing at <repo>/runtime/katago/bin",
+      "KataGo models candidate is missing at <repo>/runtime/katago/models",
+      "KataGo configs candidate is missing at <repo>/runtime/katago/configs",
+      "readboard runtime candidate is missing at <repo>/runtime/readboard",
+      "KataGo bin candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/bin",
+      "KataGo models candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/models",
+      "KataGo configs candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/configs",
+      "readboard runtime candidate is missing at <repo>/apps/desktop/src-tauri/runtime/readboard",
+      "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+      "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+      "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+      "readboard runtime candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/readboard"
+    ]
+  },
+  "bundledKataGo": {
+    "checks": 4,
+    "complete": false,
+    "details": {
+      "checks": [
+        {
+          "kind": "directory",
+          "label": "runtime root",
+          "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "required": false,
+          "source": "resource_dir",
+          "status": "exists"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo bin",
+          "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo models",
+          "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo configs",
+          "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        }
+      ],
+      "exists": [
+        {
+          "kind": "directory",
+          "label": "runtime root",
+          "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+          "required": false,
+          "source": "resource_dir",
+          "status": "exists"
+        }
+      ],
+      "layout": {
+        "source": "resource_dir"
+      },
+      "missing": [
+        {
+          "kind": "directory",
+          "label": "KataGo bin",
+          "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo models",
+          "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        },
+        {
+          "kind": "directory",
+          "label": "KataGo configs",
+          "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+          "required": true,
+          "source": "resource_dir",
+          "status": "missing"
+        }
+      ],
+      "placeholders": []
+    },
+    "exists": [
+      {
+        "kind": "directory",
+        "label": "runtime root",
+        "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+        "required": false,
+        "source": "resource_dir",
+        "status": "exists"
+      }
+    ],
+    "missing": [
+      {
+        "kind": "directory",
+        "label": "KataGo bin",
+        "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+        "required": true,
+        "source": "resource_dir",
+        "status": "missing"
+      },
+      {
+        "kind": "directory",
+        "label": "KataGo models",
+        "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+        "required": true,
+        "source": "resource_dir",
+        "status": "missing"
+      },
+      {
+        "kind": "directory",
+        "label": "KataGo configs",
+        "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+        "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+        "required": true,
+        "source": "resource_dir",
+        "status": "missing"
+      }
+    ],
+    "placeholders": [],
+    "sourceKind": "packaged-macos-app",
+    "status": "incomplete",
+    "validationStatus": "incomplete",
+    "warnings": [
+      "KataGo bin candidate is missing at <repo>/runtime/katago/bin",
+      "KataGo models candidate is missing at <repo>/runtime/katago/models",
+      "KataGo configs candidate is missing at <repo>/runtime/katago/configs",
+      "readboard runtime candidate is missing at <repo>/runtime/readboard",
+      "KataGo bin candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/bin",
+      "KataGo models candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/models",
+      "KataGo configs candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/configs",
+      "readboard runtime candidate is missing at <repo>/apps/desktop/src-tauri/runtime/readboard",
+      "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+      "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+      "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+      "readboard runtime candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/readboard"
+    ]
+  },
+  "bundledLargeModelParity": false,
   "checks": [
     {
       "details": {
@@ -1375,37 +1674,15 @@
     },
     {
       "details": {
-        "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
-        "installedAppLaunched": true
+        "runtimeSource": {
+          "appDataDir": "<home>/Library/Application Support/org.lizzieyzy.next",
+          "devServerRequired": false,
+          "resourceDir": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources",
+          "sourceKind": "packaged-macos-app",
+          "tauriRuntimeObserved": true
+        }
       },
-      "name": "installed_app_launched",
-      "status": "pass"
-    },
-    {
-      "details": {
-        "observed": true,
-        "pid": 12137,
-        "processName": "LizzieYzy Next",
-        "windowId": 17159
-      },
-      "name": "runtime_process_observed",
-      "status": "pass"
-    },
-    {
-      "details": {
-        "windowObserved": true
-      },
-      "name": "window_observed",
-      "status": "pass"
-    },
-    {
-      "details": {
-        "actionId": "execute_runtime_action",
-        "backendCommand": "installed_app_runtime_proof",
-        "proofSchema": "lizzieyzy.installed-app-runtime-proof.v1",
-        "workflowExecuted": true
-      },
-      "name": "workflow_action_executed",
+      "name": "runtime_started",
       "status": "pass"
     },
     {
@@ -2736,14 +3013,214 @@
     },
     {
       "details": {
+        "bundledAssetLayout": {
+          "checks": 4,
+          "details": {
+            "checks": [
+              {
+                "kind": "directory",
+                "label": "runtime root",
+                "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+                "required": false,
+                "source": "resource_dir",
+                "status": "exists"
+              },
+              {
+                "kind": "directory",
+                "label": "KataGo bin",
+                "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+                "required": true,
+                "source": "resource_dir",
+                "status": "missing"
+              },
+              {
+                "kind": "directory",
+                "label": "KataGo models",
+                "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+                "required": true,
+                "source": "resource_dir",
+                "status": "missing"
+              },
+              {
+                "kind": "directory",
+                "label": "KataGo configs",
+                "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+                "required": true,
+                "source": "resource_dir",
+                "status": "missing"
+              }
+            ],
+            "exists": [
+              {
+                "kind": "directory",
+                "label": "runtime root",
+                "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+                "required": false,
+                "source": "resource_dir",
+                "status": "exists"
+              }
+            ],
+            "layout": {
+              "source": "resource_dir"
+            },
+            "missing": [
+              {
+                "kind": "directory",
+                "label": "KataGo bin",
+                "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+                "required": true,
+                "source": "resource_dir",
+                "status": "missing"
+              },
+              {
+                "kind": "directory",
+                "label": "KataGo models",
+                "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+                "required": true,
+                "source": "resource_dir",
+                "status": "missing"
+              },
+              {
+                "kind": "directory",
+                "label": "KataGo configs",
+                "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+                "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+                "required": true,
+                "source": "resource_dir",
+                "status": "missing"
+              }
+            ],
+            "placeholders": []
+          },
+          "exists": [
+            {
+              "kind": "directory",
+              "label": "runtime root",
+              "message": "runtime root candidate exists at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+              "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+              "required": false,
+              "source": "resource_dir",
+              "status": "exists"
+            }
+          ],
+          "missing": [
+            {
+              "kind": "directory",
+              "label": "KataGo bin",
+              "message": "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+              "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+              "required": true,
+              "source": "resource_dir",
+              "status": "missing"
+            },
+            {
+              "kind": "directory",
+              "label": "KataGo models",
+              "message": "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+              "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+              "required": true,
+              "source": "resource_dir",
+              "status": "missing"
+            },
+            {
+              "kind": "directory",
+              "label": "KataGo configs",
+              "message": "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+              "path": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+              "required": true,
+              "source": "resource_dir",
+              "status": "missing"
+            }
+          ],
+          "paths": [
+            "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/",
+            "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+            "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+            "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models"
+          ],
+          "placeholders": [],
+          "sourceKind": "packaged-macos-app",
+          "status": "incomplete",
+          "validationStatus": "incomplete",
+          "warnings": [
+            "KataGo bin candidate is missing at <repo>/runtime/katago/bin",
+            "KataGo models candidate is missing at <repo>/runtime/katago/models",
+            "KataGo configs candidate is missing at <repo>/runtime/katago/configs",
+            "readboard runtime candidate is missing at <repo>/runtime/readboard",
+            "KataGo bin candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/bin",
+            "KataGo models candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/models",
+            "KataGo configs candidate is missing at <repo>/apps/desktop/src-tauri/runtime/katago/configs",
+            "readboard runtime candidate is missing at <repo>/apps/desktop/src-tauri/runtime/readboard",
+            "KataGo bin candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/bin",
+            "KataGo models candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/models",
+            "KataGo configs candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/katago/configs",
+            "readboard runtime candidate is missing at <repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources/runtime/readboard"
+          ]
+        }
+      },
+      "name": "bundled_asset_layout_validated",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "engineLaunchAttempt": {
+          "attempted": true,
+          "availability": "unavailable",
+          "details": {
+            "assetChecks": [
+              {
+                "exists": false,
+                "label": "engine binary",
+                "path": "",
+                "required": true
+              },
+              {
+                "exists": false,
+                "label": "model",
+                "path": "",
+                "required": true
+              },
+              {
+                "exists": false,
+                "label": "config",
+                "path": "",
+                "required": true
+              }
+            ],
+            "attempted": true,
+            "commandSpec": null,
+            "errorKind": "missingEnginePath",
+            "errorMessage": "engine path is required",
+            "exitCode": null,
+            "processId": null,
+            "recoverable": true,
+            "status": "unavailable",
+            "stderrPreview": null
+          },
+          "launchSucceeded": false,
+          "message": null,
+          "status": "unavailable"
+        }
+      },
+      "name": "bundled_engine_launch_attempted",
+      "status": "pass"
+    },
+    {
+      "details": {
         "screenshots": [
           {
-            "capturedAfterActionId": "observe_main_window",
             "label": "installed-macos-app-window",
             "path": "docs/qa/screenshots/installed-macos-app-window.png",
             "sha256": "fff9048fa026b5f3869f20f3f24023ed791d62b2bb580d24e6fa6f661cfafc35",
             "sizeBytes": 499726,
-            "source": "installed_app_runtime"
+            "source": "bundled_katago_installed_app"
           }
         ]
       },
@@ -2752,19 +3229,12 @@
     },
     {
       "details": {
-        "devServerAbsent": true
+        "devServerAbsent": true,
+        "devServerExcluded": true,
+        "runnerStartedDevServer": false,
+        "runnerStartedViteDevServer": false
       },
-      "name": "dev_server_absent",
-      "status": "pass"
-    },
-    {
-      "details": {
-        "attempted": true,
-        "exitCode": -15,
-        "method": "SIGTERM",
-        "terminated": true
-      },
-      "name": "quit_or_terminate_observed",
+      "name": "dev_server_excluded",
       "status": "pass"
     },
     {
@@ -2772,135 +3242,130 @@
         "boundaries": {
           "artifactOnly": false,
           "browserFallbackUsed": false,
-          "fullInstalledAppParity": false,
-          "fullLayoutParity": false,
+          "bundledLargeModelParity": false,
+          "fullBundledKataGoParity": false,
+          "fullKataGoParity": false,
           "fullLegacyParity": false,
-          "fullShortcutParity": false,
           "linuxInstalledAppCovered": false,
           "notarized": false,
+          "ocrParity": false,
           "productionSigned": false,
-          "providerReadboardOCRParity": false,
-          "providerReadboardOcrParity": false,
-          "releasePublished": false,
+          "providerParity": false,
+          "readboardParity": false,
+          "releaseParity": false,
           "runnerStartedDevServer": false,
           "runnerStartedViteDevServer": false,
-          "signed": false,
+          "signedReleaseParity": false,
           "sourceStaticOnly": false,
-          "updaterCovered": false,
           "updaterReady": false,
           "windowsInstalledAppCovered": false,
-          "windowsLinuxInstalledAppCovered": false
+          "windowsLinuxParity": false
         }
       },
       "name": "scope_boundaries_recorded",
       "status": "pass"
     }
   ],
-  "collectionMethod": "installed_app_smoke_plus_backend_runtime_proof",
-  "devServerAbsent": true,
-  "devServerPreflight": {
-    "checkedBeforeLaunch": true,
-    "error": "URLError: <urlopen error [Errno 61] Connection refused>",
-    "observedAt": "2026-05-12T13:24:24Z",
-    "reachableBeforeLaunch": false,
-    "runnerStartedDevServer": false,
-    "url": "http://127.0.0.1:1420"
+  "collectionMethod": "installed_app_runtime_bundled_katago_layout_probe",
+  "engineLaunchAttempt": {
+    "attempted": true,
+    "availability": "unavailable",
+    "details": {
+      "assetChecks": [
+        {
+          "exists": false,
+          "label": "engine binary",
+          "path": "",
+          "required": true
+        },
+        {
+          "exists": false,
+          "label": "model",
+          "path": "",
+          "required": true
+        },
+        {
+          "exists": false,
+          "label": "config",
+          "path": "",
+          "required": true
+        }
+      ],
+      "attempted": true,
+      "commandSpec": null,
+      "errorKind": "missingEnginePath",
+      "errorMessage": "engine path is required",
+      "exitCode": null,
+      "processId": null,
+      "recoverable": true,
+      "status": "unavailable",
+      "stderrPreview": null
+    },
+    "launchSucceeded": false,
+    "message": null,
+    "status": "unavailable"
   },
-  "fullInstalledAppParity": false,
-  "fullLayoutParity": false,
+  "fullBundledKataGoParity": false,
+  "fullKataGoParity": false,
   "fullLegacyParity": false,
-  "fullShortcutParity": false,
   "installedAppLaunched": true,
   "linuxInstalledAppCovered": false,
-  "name": "installed_app_runtime_workflow",
+  "name": "bundled_katago_installed_app_smoke",
   "notarized": false,
+  "ocrParity": false,
   "platform": "macos",
   "productionSigned": false,
-  "providerReadboardOCRParity": false,
-  "providerReadboardOcrParity": false,
-  "releasePublished": false,
+  "profileStatus": {
+    "errorMessage": null,
+    "loaded": false,
+    "maxVisits": 800,
+    "path": "<home>/Library/Application Support/org.lizzieyzy.next/lizzieyzy-next-engine-profile.json",
+    "profileCount": 1,
+    "selectedProfile": {
+      "backend": "kata_go_analysis",
+      "config_path": null,
+      "engine_path": "",
+      "model_path": null,
+      "name": "Local KataGo",
+      "working_dir": null
+    },
+    "selectedProfileId": "default",
+    "selectedProfileName": "Local KataGo",
+    "status": "defaultMissingFile"
+  },
+  "providerParity": false,
+  "readboardParity": false,
+  "releaseParity": false,
   "runnerStartedDevServer": false,
   "runnerStartedViteDevServer": false,
   "runtimeObserved": true,
-  "runtimeProcess": {
-    "observed": true,
-    "pid": 12137,
-    "processName": "LizzieYzy Next",
-    "windowId": 17159
+  "runtimeSource": {
+    "appDataDir": "<home>/Library/Application Support/org.lizzieyzy.next",
+    "devServerRequired": false,
+    "resourceDir": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources",
+    "sourceKind": "packaged-macos-app",
+    "tauriRuntimeObserved": true
   },
-  "runtimeProcessObserved": true,
-  "runtimeSource": "packaged-macos-app",
-  "schema": "lizzieyzy.installed-app-runtime-workflow.v1",
+  "schema": "lizzieyzy.bundled-katago-installed-app-smoke.v1",
   "screenshotObserved": true,
   "screenshots": [
     {
-      "capturedAfterActionId": "observe_main_window",
       "label": "installed-macos-app-window",
       "path": "docs/qa/screenshots/installed-macos-app-window.png",
       "sha256": "fff9048fa026b5f3869f20f3f24023ed791d62b2bb580d24e6fa6f661cfafc35",
       "sizeBytes": 499726,
-      "source": "installed_app_runtime"
+      "source": "bundled_katago_installed_app"
     }
   ],
-  "signed": false,
+  "signedReleaseParity": false,
+  "sourceEvidence": {
+    "backendProofSchema": "lizzieyzy.installed-app-runtime-proof.v1",
+    "installedAppRuntimeWorkflow": "docs/qa/installed-app-runtime-workflow-macos.json",
+    "installedAppSmoke": "docs/qa/installed-macos-app-smoke.json"
+  },
   "sourceStaticOnly": false,
   "status": "pass",
-  "termination": {
-    "attempted": true,
-    "exitCode": -15,
-    "method": "SIGTERM",
-    "terminated": true
-  },
-  "updaterCovered": false,
   "updaterReady": false,
-  "windowObserved": true,
   "windowsInstalledAppCovered": false,
-  "windowsLinuxInstalledAppCovered": false,
-  "workflowActions": [
-    {
-      "actionId": "launch_installed_app",
-      "evidence": {
-        "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
-        "launchMethod": "installed-app-smoke"
-      },
-      "runtimeObserved": true,
-      "status": "pass"
-    },
-    {
-      "actionId": "observe_main_window",
-      "evidence": {
-        "runtimeProcess": {
-          "observed": true,
-          "pid": 12137,
-          "processName": "LizzieYzy Next",
-          "windowId": 17159
-        },
-        "screenshotCount": 1
-      },
-      "runtimeObserved": true,
-      "status": "pass"
-    },
-    {
-      "actionId": "execute_runtime_action",
-      "evidence": {
-        "backendCommand": "installed_app_runtime_proof",
-        "proofSchema": "lizzieyzy.installed-app-runtime-proof.v1",
-        "runtimeSource": "packaged-macos-app"
-      },
-      "runtimeObserved": true,
-      "status": "pass"
-    },
-    {
-      "actionId": "terminate_installed_app",
-      "evidence": {
-        "attempted": true,
-        "exitCode": -15,
-        "method": "SIGTERM",
-        "terminated": true
-      },
-      "runtimeObserved": true,
-      "status": "pass"
-    }
-  ],
-  "workflowExecuted": true
+  "windowsLinuxParity": false
 }

@@ -239,6 +239,40 @@ INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_ACTIONS = [
     "execute_runtime_action",
     "terminate_installed_app",
 ]
+BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE = "docs/qa/bundled-katago-installed-app-smoke-macos.json"
+BUNDLED_KATAGO_INSTALLED_APP_SMOKE_SCHEMA = "lizzieyzy.bundled-katago-installed-app-smoke.v1"
+BUNDLED_KATAGO_INSTALLED_APP_REQUIRED_CHECKS = [
+    "app_bundle_verified",
+    "runtime_started",
+    "backend_runtime_proof_observed",
+    "bundled_asset_layout_validated",
+    "bundled_engine_launch_attempted",
+    "screenshot_recorded",
+    "dev_server_excluded",
+    "scope_boundaries_recorded",
+]
+BUNDLED_KATAGO_INSTALLED_APP_REQUIRED_FALSE_FIELDS = [
+    "sourceStaticOnly",
+    "artifactOnly",
+    "browserFallbackUsed",
+    "runnerStartedDevServer",
+    "runnerStartedViteDevServer",
+    "fullBundledKataGoParity",
+    "fullKataGoParity",
+    "bundledLargeModelParity",
+    "releaseParity",
+    "signedReleaseParity",
+    "productionSigned",
+    "notarized",
+    "updaterReady",
+    "windowsLinuxParity",
+    "windowsInstalledAppCovered",
+    "linuxInstalledAppCovered",
+    "fullLegacyParity",
+    "providerParity",
+    "readboardParity",
+    "ocrParity",
+]
 INSTALLED_APP_SGF_WORKFLOW_EVIDENCE = "docs/qa/installed-app-sgf-workflow-macos.json"
 INSTALLED_APP_SGF_WORKFLOW_SCHEMA = "lizzieyzy.installed-app-sgf-workflow.v1"
 INSTALLED_APP_SGF_WORKFLOW_REQUIRED_CHECKS = [
@@ -1267,6 +1301,7 @@ class UserFlowSmoke:
         self.check_legacy_shortcut_layout_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_installed_app_runtime_workflow_evidence()
+        self.check_bundled_katago_installed_app_smoke_evidence()
         self.check_installed_app_sgf_workflow_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
@@ -1546,6 +1581,35 @@ class UserFlowSmoke:
         self.pass_(
             "installed_app_runtime_workflow",
             "scoped installed app runtime workflow evidence passes with runtime actions, process/window/screenshot proof, dev-server exclusion, and release-boundary checks",
+        )
+
+    def check_bundled_katago_installed_app_smoke_evidence(self) -> None:
+        evidence_path = self.path(BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "bundled_katago_installed_app_smoke",
+                f"TODO gate: record scoped bundled KataGo installed-app launch/layout evidence at {BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        if str(evidence.get("status", "")).lower() == "pending":
+            reason = evidence.get("pendingReason")
+            detail = reason if isinstance(reason, str) and reason.strip() else "bundled KataGo installed-app runtime proof has not been captured yet"
+            self.pending("bundled_katago_installed_app_smoke", detail)
+            return
+        failures = validate_bundled_katago_installed_app_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "bundled_katago_installed_app_smoke",
+                f"{BUNDLED_KATAGO_INSTALLED_APP_SMOKE_EVIDENCE} is present but not valid scoped bundled KataGo installed-app PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "bundled_katago_installed_app_smoke",
+            "scoped bundled KataGo installed-app evidence passes with installed runtime proof, asset layout validation, launch/unavailable semantics, screenshots, and boundary checks",
         )
 
     def check_installed_app_sgf_workflow_evidence(self) -> None:
@@ -3616,6 +3680,395 @@ def validate_installed_app_runtime_workflow_check_details(check_by_name: dict[st
                 if boundary_detail.get(key) is not False:
                     failures.append(f"scope_boundaries_recorded.boundaries.{key} must be false")
     return failures
+
+
+def validate_bundled_katago_installed_app_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != BUNDLED_KATAGO_INSTALLED_APP_SMOKE_SCHEMA:
+        failures.append(f"schema must be {BUNDLED_KATAGO_INSTALLED_APP_SMOKE_SCHEMA}")
+    if str(evidence.get("name", "bundled_katago_installed_app_smoke")) != "bundled_katago_installed_app_smoke":
+        failures.append("name must be bundled_katago_installed_app_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    method = str(evidence.get("collectionMethod", "")).lower()
+    if "installed" not in method or "runtime" not in method or "katago" not in method:
+        failures.append("collectionMethod must combine installed app, runtime, and bundled KataGo evidence")
+    for forbidden in ("static-only", "artifact-only", "browser-only", "tauri-dev-only", "dev-server-only"):
+        if forbidden in method:
+            failures.append(f"collectionMethod must not be {forbidden}")
+    for key in ("runtimeObserved", "installedAppLaunched", "backendCommandInvoked", "screenshotObserved"):
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    if evidence.get("backendCommand") != "installed_app_runtime_proof":
+        failures.append("backendCommand must be installed_app_runtime_proof")
+    failures.extend(validate_bundled_katago_installed_app_boundaries(evidence))
+    failures.extend(validate_installed_macos_app_bundle(evidence.get("appBundle"), evidence))
+    failures.extend(validate_bundled_katago_runtime_source(evidence.get("runtimeSource")))
+    failures.extend(validate_bundled_katago_asset_layout(evidence.get("bundledAssetLayout")))
+    failures.extend(validate_bundled_katago_engine_attempt(evidence.get("engineLaunchAttempt")))
+    failures.extend(validate_bundled_katago_screenshots(evidence.get("screenshots")))
+    proof = evidence.get("backendRuntimeProof")
+    failures.extend(validate_installed_app_backend_runtime_proof(proof))
+    if isinstance(proof, dict):
+        bundled = bundled_katago_from_backend_proof(proof)
+        if bundled is None:
+            failures.append("backendRuntimeProof.bundledKatago must be recorded")
+        else:
+            failures.extend(validate_backend_bundled_katago(bundled))
+            raw = proof.get("raw")
+            if isinstance(raw, dict):
+                raw_bundled = bundled_katago_from_backend_proof(raw)
+                if raw_bundled is None:
+                    failures.append("backendRuntimeProof.raw.bundledKatago must be recorded")
+                else:
+                    failures.extend(
+                        "backendRuntimeProof.raw." + failure
+                        for failure in validate_backend_bundled_katago(raw_bundled)
+                    )
+            else:
+                failures.append("backendRuntimeProof.raw.bundledKatago must be recorded")
+        proof_runtime = proof.get("runtime")
+        proof_source = first_present(proof_runtime, "source", "runtimeSource") if isinstance(proof_runtime, dict) else None
+        if proof_source != "packaged-macos-app":
+            failures.append("backendRuntimeProof.runtime.source must be packaged-macos-app")
+    top_level_bundled = evidence.get("bundledKataGo")
+    if isinstance(top_level_bundled, dict):
+        failures.extend(validate_backend_bundled_katago(top_level_bundled))
+    else:
+        failures.append("bundledKataGo must be recorded")
+    failures.extend(validate_bundled_katago_missing_launch_consistency(evidence.get("bundledKataGo"), evidence.get("engineLaunchAttempt")))
+
+    checks = bundled_katago_installed_app_check_by_name(evidence)
+    raw_checks = evidence.get("checks")
+    if not isinstance(raw_checks, list):
+        failures.append("checks must be a list")
+    missing = [name for name in BUNDLED_KATAGO_INSTALLED_APP_REQUIRED_CHECKS if name not in checks]
+    not_pass = [
+        name
+        for name in BUNDLED_KATAGO_INSTALLED_APP_REQUIRED_CHECKS
+        if name in checks and str(checks[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_bundled_katago_installed_app_check_details(checks))
+    return unique_ordered(failures)
+
+
+def validate_bundled_katago_installed_app_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        return ["boundaries must be an object"]
+    for key in BUNDLED_KATAGO_INSTALLED_APP_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_bundled_katago_runtime_source(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["runtimeSource must be an object"]
+    failures: list[str] = []
+    source_kind = first_present(value, "sourceKind", "source", "runtimeSource")
+    if source_kind != "packaged-macos-app":
+        failures.append("runtimeSource.sourceKind must be packaged-macos-app")
+    if first_present(value, "tauriRuntimeObserved", "runtimeObserved") is not True:
+        failures.append("runtimeSource.tauriRuntimeObserved must be true")
+    if first_present(value, "devServerRequired", "devServerStarted") is not False:
+        failures.append("runtimeSource.devServerRequired must be false")
+    for label in ("resourceDir", "appDataDir"):
+        path = first_present(value, label, label[0].lower() + label[1:])
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"runtimeSource.{label} must be recorded")
+        elif not is_stable_or_sanitized_path(path):
+            failures.append(f"runtimeSource.{label} must be sanitized or repo-relative")
+    return failures
+
+
+def validate_bundled_katago_asset_layout(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["bundledAssetLayout must be an object"]
+    failures: list[str] = []
+    source_kind = first_present(value, "sourceKind", "source")
+    if source_kind not in {"packaged-macos-app", "resource_dir", "installed_app_runtime"}:
+        failures.append("bundledAssetLayout.sourceKind must be packaged installed-app/resource evidence")
+    status = str(first_present(value, "status", "validationStatus", "result") or "").lower()
+    if not status:
+        failures.append("bundledAssetLayout.status must be recorded")
+    missing_count = installed_app_asset_count(value, "missing")
+    placeholder_count = installed_app_asset_count(value, "placeholders")
+    exists_count = installed_app_asset_count(value, "exists")
+    checks_count = installed_app_asset_count(value, "checks")
+    if status in {"ready", "ok", "pass", "passed", "success", "available"} and (missing_count > 0 or placeholder_count > 0):
+        failures.append("bundledAssetLayout must not be ready when missing/placeholders are present")
+    if missing_count <= 0 and placeholder_count <= 0 and exists_count <= 0 and checks_count <= 0:
+        failures.append("bundledAssetLayout must include observed exists/missing/placeholders/checks")
+    paths = value.get("paths")
+    if isinstance(paths, list):
+        for index, path in enumerate(paths):
+            if not isinstance(path, str) or not is_stable_or_sanitized_path(path):
+                failures.append(f"bundledAssetLayout.paths[{index}] must be sanitized or repo-relative")
+    details = value.get("details")
+    if isinstance(details, dict):
+        for section in ("checks", "exists", "missing", "placeholders"):
+            records = details.get(section)
+            if isinstance(records, list):
+                for index, record in enumerate(records):
+                    if not isinstance(record, dict):
+                        continue
+                    path = record.get("path")
+                    if isinstance(path, str) and path.strip() and not is_stable_or_sanitized_path(path):
+                        failures.append(f"bundledAssetLayout.details.{section}[{index}].path must be sanitized or repo-relative")
+    return failures
+
+
+def bundled_katago_from_backend_proof(proof: dict[str, Any]) -> dict[str, Any] | None:
+    bundled = proof.get("bundledKatago")
+    if isinstance(bundled, dict):
+        return bundled
+    bundled = proof.get("bundledKataGo")
+    if isinstance(bundled, dict):
+        return bundled
+    bundled = proof.get("bundled_katago")
+    if isinstance(bundled, dict):
+        return bundled
+    return None
+
+
+def validate_backend_bundled_katago(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["backendRuntimeProof.bundledKataGo must be an object"]
+    failures: list[str] = []
+    source_kind = first_present(value, "sourceKind", "source", "runtimeSource")
+    if source_kind not in {"packaged-macos-app", "resource_dir", "installed_app_runtime", "bundledAsset"}:
+        failures.append("backendRuntimeProof.bundledKataGo.sourceKind must be packaged installed-app/resource evidence")
+    status = str(first_present(value, "status", "validationStatus", "availability") or "").lower()
+    if not status:
+        failures.append("backendRuntimeProof.bundledKataGo.status must be recorded")
+    missing_count = bundled_katago_count(value, "missing")
+    incomplete = value.get("incomplete") is True or value.get("complete") is False or status in {
+        "missing",
+        "incomplete",
+        "problem",
+        "unavailable",
+        "not_configured",
+    }
+    checks_count = bundled_katago_count(value, "checks")
+    exists_count = bundled_katago_count(value, "exists")
+    placeholder_count = bundled_katago_count(value, "placeholders")
+    if checks_count <= 0 and exists_count <= 0 and missing_count <= 0 and placeholder_count <= 0:
+        failures.append("backendRuntimeProof.bundledKataGo must include observed checks/exists/missing/placeholders")
+    if status in {"ready", "ok", "pass", "passed", "success", "available"} and (missing_count > 0 or placeholder_count > 0):
+        failures.append("backendRuntimeProof.bundledKataGo must not be ready when missing/placeholders are present")
+    if missing_count > 0 and first_present(value, "complete", "ready", "available") is True:
+        failures.append("backendRuntimeProof.bundledKataGo missing assets must remain incomplete/unavailable")
+    if incomplete and first_present(value, "launchSucceeded", "success", "analysisSucceeded") is True:
+        failures.append("backendRuntimeProof.bundledKataGo incomplete/unavailable assets must not be counted as launch success")
+    details = value.get("details")
+    if isinstance(details, dict):
+        for section in ("checks", "exists", "missing", "placeholders"):
+            records = details.get(section)
+            if isinstance(records, list):
+                for index, record in enumerate(records):
+                    if not isinstance(record, dict):
+                        continue
+                    path = record.get("path")
+                    if isinstance(path, str) and path.strip() and not is_stable_or_sanitized_path(path):
+                        failures.append(f"backendRuntimeProof.bundledKataGo.details.{section}[{index}].path must be sanitized or repo-relative")
+    return failures
+
+
+def bundled_katago_count(value: dict[str, Any], key: str) -> int:
+    count = installed_app_asset_count(value, key)
+    if count > 0:
+        return count
+    records = bundled_katago_asset_records(value)
+    if key == "checks":
+        return len(records)
+    if key == "exists":
+        return sum(1 for record in records if bundled_katago_record_exists(record))
+    if key == "missing":
+        return sum(1 for record in records if bundled_katago_record_missing(record))
+    if key == "placeholders":
+        return sum(1 for record in records if str(record.get("status", "")).lower() == "placeholder")
+    return 0
+
+
+def bundled_katago_asset_records(value: dict[str, Any]) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for name in ("engine", "model", "config"):
+        record = value.get(name)
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
+def bundled_katago_record_exists(record: dict[str, Any]) -> bool:
+    status = str(record.get("status", "")).lower()
+    return record.get("exists") is True or status in {"exists", "ready", "available", "ok", "present"}
+
+
+def bundled_katago_record_missing(record: dict[str, Any]) -> bool:
+    status = str(record.get("status", "")).lower()
+    return record.get("exists") is False or status in {"missing", "not_found", "unavailable", "incomplete", "problem"}
+
+
+def validate_bundled_katago_missing_launch_consistency(bundled: Any, attempt: Any) -> list[str]:
+    if not isinstance(bundled, dict) or not isinstance(attempt, dict):
+        return []
+    failures: list[str] = []
+    missing_count = bundled_katago_count(bundled, "missing")
+    placeholder_count = bundled_katago_count(bundled, "placeholders")
+    if missing_count <= 0 and placeholder_count <= 0:
+        return failures
+    status = str(first_present(attempt, "status", "result", "outcome", "availability") or "").lower()
+    success = any(
+        attempt.get(key) is True
+        for key in ("success", "launchSucceeded", "launched", "analysisSucceeded", "analyzeSucceeded")
+    )
+    if success:
+        failures.append("bundled KataGo missing assets must not be counted as launch/analyze success")
+    if status in {"success", "launched", "available", "ok", "pass"}:
+        failures.append("engineLaunchAttempt status must remain unavailable/incomplete when bundled KataGo assets are missing")
+    return failures
+
+
+def validate_bundled_katago_engine_attempt(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["engineLaunchAttempt must be an object"]
+    failures = validate_installed_app_backend_engine_launch_attempt(value)
+    status = str(first_present(value, "status", "result", "outcome", "availability") or "").lower()
+    unavailable = bool(re.search(r"unavailable|missing|not[_ -]?found|not[_ -]?configured|skipped", status))
+    success_claim = first_present(value, "success", "launchSucceeded", "launched", "analysisSucceeded", "analyzeSucceeded")
+    any_success_claim = any(
+        value.get(key) is True
+        for key in ("success", "launchSucceeded", "launched", "analysisSucceeded", "analyzeSucceeded")
+    )
+    if unavailable and (success_claim is True or any_success_claim):
+        failures.append("engineLaunchAttempt unavailable/problem status must not be counted as success")
+    if unavailable:
+        reason = first_present(value, "reason", "message", "errorMessage", "errorKind")
+        details = value.get("details") if isinstance(value.get("details"), dict) else {}
+        nested_reason = first_present(details, "errorMessage", "errorKind", "message") if isinstance(details, dict) else None
+        if not isinstance(reason, str) and not isinstance(nested_reason, str):
+            failures.append("engineLaunchAttempt unavailable status must include reason/error metadata")
+    return failures
+
+
+def validate_bundled_katago_screenshots(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not value:
+        failures.append("screenshots must include at least one installed app screenshot")
+    for index, screenshot in enumerate(value):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        source = first_present(screenshot, "source", "captureSource")
+        if source not in {"bundled_katago_installed_app", "installed_app_runtime", "macos_installed_app"}:
+            failures.append(f"screenshots[{index}].source must be installed app runtime/bundled KataGo evidence")
+        if not is_sha256_hex(screenshot.get("sha256")):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        if not positive_number(first_present(screenshot, "sizeBytes", "bytes")):
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be recorded")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+    return failures
+
+
+def bundled_katago_installed_app_check_by_name(evidence: dict[str, Any]) -> dict[str, Any]:
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    return {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+
+
+def validate_bundled_katago_installed_app_check_details(checks: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+
+    def require_detail(name: str) -> dict[str, Any] | None:
+        detail = check_evidence(checks.get(name))
+        if detail is None:
+            failures.append(f"{name} evidence must be an object")
+            return None
+        return detail
+
+    bundle = require_detail("app_bundle_verified")
+    if bundle is not None:
+        failures.extend(validate_installed_macos_app_bundle(bundle.get("appBundle", bundle), bundle))
+    runtime = require_detail("runtime_started")
+    if runtime is not None:
+        failures.extend(validate_bundled_katago_runtime_source(runtime.get("runtimeSource", runtime)))
+    proof = require_detail("backend_runtime_proof_observed")
+    if proof is not None:
+        backend = first_present(proof, "backendRuntimeProof", "runtimeProof", "proof")
+        if backend is None:
+            backend = proof
+        failures.extend(validate_installed_app_backend_runtime_proof(backend))
+        if isinstance(backend, dict):
+            bundled = bundled_katago_from_backend_proof(backend)
+            if bundled is None:
+                failures.append("backend_runtime_proof_observed.backendRuntimeProof.bundledKatago must be recorded")
+            else:
+                failures.extend(validate_backend_bundled_katago(bundled))
+                raw = backend.get("raw")
+                if isinstance(raw, dict):
+                    raw_bundled = bundled_katago_from_backend_proof(raw)
+                    if raw_bundled is None:
+                        failures.append("backend_runtime_proof_observed.backendRuntimeProof.raw.bundledKatago must be recorded")
+                    else:
+                        failures.extend(
+                            "backend_runtime_proof_observed.backendRuntimeProof.raw." + failure
+                            for failure in validate_backend_bundled_katago(raw_bundled)
+                        )
+                else:
+                    failures.append("backend_runtime_proof_observed.backendRuntimeProof.raw.bundledKatago must be recorded")
+    layout = require_detail("bundled_asset_layout_validated")
+    if layout is not None:
+        failures.extend(validate_bundled_katago_asset_layout(layout.get("bundledAssetLayout", layout)))
+    attempt = require_detail("bundled_engine_launch_attempted")
+    if attempt is not None:
+        failures.extend(validate_bundled_katago_engine_attempt(attempt.get("engineLaunchAttempt", attempt)))
+    screenshot = require_detail("screenshot_recorded")
+    if screenshot is not None:
+        records = first_present(screenshot, "screenshots", "windowScreenshots")
+        if not isinstance(records, list) or not records:
+            failures.append("screenshot_recorded must include screenshot records")
+        else:
+            failures.extend(validate_bundled_katago_screenshots(records))
+    dev_server = require_detail("dev_server_excluded")
+    if dev_server is not None:
+        if first_present(dev_server, "devServerAbsent", "devServerExcluded", "runnerStartedDevServer") is not True:
+            failures.append("dev_server_excluded.devServerAbsent/devServerExcluded must be true")
+        if dev_server.get("runnerStartedDevServer") is True or dev_server.get("runnerStartedViteDevServer") is True:
+            failures.append("dev_server_excluded must not start a dev server")
+    boundaries = require_detail("scope_boundaries_recorded")
+    if boundaries is not None:
+        boundary_detail = boundaries.get("boundaries", boundaries)
+        if not isinstance(boundary_detail, dict):
+            failures.append("scope_boundaries_recorded.boundaries must be an object")
+        else:
+            for key in BUNDLED_KATAGO_INSTALLED_APP_REQUIRED_FALSE_FIELDS:
+                if boundary_detail.get(key) is not False:
+                    failures.append(f"scope_boundaries_recorded.boundaries.{key} must be false")
+    return unique_ordered(failures)
 
 
 def validate_installed_app_sgf_workflow_evidence(evidence: Any) -> list[str]:

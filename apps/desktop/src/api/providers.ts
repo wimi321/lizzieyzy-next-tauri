@@ -59,7 +59,8 @@ export async function syncReadboardSidecarSnapshot(
   request: ReadboardSidecarSyncSnapshotRequest
 ): Promise<ReadboardSidecarSyncSnapshotResult> {
   if (!isTauriRuntime()) {
-    throw new Error("Readboard protocol preview requires the desktop Tauri runtime; browser preview cannot reach the local sidecar.");
+    const source = request.image_path || request.image_base64 ? "controlled board image import" : "readboard protocol preview";
+    throw new Error(`${source} requires the desktop Tauri runtime; browser preview cannot reach the local readboard sidecar.`);
   }
   return await invoke<ReadboardSidecarSyncSnapshotResult>("readboard_sidecar_sync_snapshot", { request });
 }
@@ -153,16 +154,16 @@ function legacyImportCaptureHelperFallback(
   const isOcr = request.kind === "image_ocr";
   return {
     kind: request.kind,
-    status: "recoverable_unsupported",
-    title: isOcr ? "OCR/image helper unsupported" : "External window/client capture unsupported",
+    status: isOcr ? "available" : "recoverable_unsupported",
+    title: isOcr ? "Controlled board image import MVP" : "External window/client capture unsupported",
     message: isOcr
-      ? "Image OCR import is not implemented in this build. No SGF was imported and the board was not replaced."
+      ? "Use the controlled board image import fields in ProviderPanel to preview via the readboard sidecar, then import only after a position preview is shown."
       : "External window/client capture is not implemented in this build. No SGF was imported and the board was not replaced.",
     recoverable: true,
     imported: false,
     boardReplacement: "none",
     warnings: [
-      isOcr ? "OCR/image helper is a recoverable unsupported path." : "External window/client capture helper is a recoverable unsupported path.",
+      isOcr ? "Controlled board image import is scoped to selected/pasted board images; arbitrary screenshots and external capture remain unsupported." : "External window/client capture helper is a recoverable unsupported path.",
       "No stale, guessed, or partial board replacement was applied.",
       ...(backendMessage ? [`Backend helper contract unavailable: ${backendMessage}`] : [])
     ],

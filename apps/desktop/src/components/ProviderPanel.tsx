@@ -66,6 +66,9 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [statuses, setStatuses] = useState<OperationStatus>(initialStatuses);
   const [readboardEndpoint, setReadboardEndpoint] = useState("");
   const [readboardProtocolLine, setReadboardProtocolLine] = useState("");
+  const [readboardImagePath, setReadboardImagePath] = useState("");
+  const [readboardImageBase64, setReadboardImageBase64] = useState("");
+  const [readboardImageName, setReadboardImageName] = useState("");
   const [readboardProbeResult, setReadboardProbeResult] = useState<ReadboardSidecarProbeResult | null>(null);
   const [readboardSyncResult, setReadboardSyncResult] = useState<ReadboardSidecarSyncSnapshotResult | null>(null);
   const [legacyHelperResult, setLegacyHelperResult] = useState<LegacyImportCaptureHelperResult | null>(null);
@@ -76,6 +79,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canImport = !disabled && payload.trim().length > 0;
   const canProbeReadboard = !disabled;
   const canSyncReadboard = !disabled && readboardProtocolLine.trim().length > 0;
+  const canPreviewReadboardImage = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
   const canImportReadboardSnapshot = !disabled && readboardSyncResult?.position != null;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
     ? statuses.fetch
@@ -181,6 +185,45 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     } catch (error) {
       setReadboardSyncResult(null);
       setOperationStatus("readboardSync", `Readboard preview failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function handleReadboardImagePreview() {
+    if (!canPreviewReadboardImage) return;
+    setOperationStatus("readboardSync", "Previewing controlled board image import...");
+    try {
+      const hasPath = readboardImagePath.trim().length > 0;
+      const result = await syncReadboardSidecarSnapshot({
+        endpoint: optionalTrimmed(readboardEndpoint),
+        image_path: hasPath ? readboardImagePath.trim() : null,
+        image_base64: hasPath ? null : cleanImageBase64(readboardImageBase64),
+        metadata: {
+          source: "provider_panel",
+          input: hasPath ? "controlled_image_path" : "controlled_image_base64",
+          scope: "controlled_board_image_import_mvp",
+          file_name: readboardImageName
+        },
+        timeout_ms: readboardTimeoutMs
+      });
+      setReadboardSyncResult(result);
+      setOperationStatus("readboardSync", readboardImagePreviewStatus(result));
+    } catch (error) {
+      setReadboardSyncResult(null);
+      setOperationStatus("readboardSync", `Controlled board image preview failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
+    }
+  }
+
+  async function handleReadboardImageFile(file: File | null) {
+    if (!file) return;
+    setReadboardImageName(file.name);
+    setReadboardImagePath("");
+    setOperationStatus("readboardSync", `Loaded ${file.name} for controlled board image preview. Use Preview image before importing.`);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setReadboardImageBase64(cleanImageBase64(dataUrl));
+    } catch (error) {
+      setReadboardImageBase64("");
+      setOperationStatus("readboardSync", `Image selection failed: ${errorMessage(error)}`);
     }
   }
 
@@ -306,11 +349,14 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       <p className="provider-status" title={statuses.import}>{statuses.import}</p>
       <WarningList label="Provider warnings" warnings={providerWarnings} />
 
-      <div className="provider-readboard">
+      <div className="provider-readboard" data-testid="controlled-board-image-import-mvp">
         <div className="provider-subheader">
-          <h3>Readboard protocol preview</h3>
+          <h3>Readboard preview and controlled image import</h3>
           <span title={statuses.readboardProbe}>{statuses.readboardProbe}</span>
         </div>
+        <p className="provider-status">
+          Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base64 and previews the extracted current position before import. It is not full OCR parity, arbitrary screenshot capture, or external client/window capture.
+        </p>
         <div className="provider-grid">
           <label>
             <span>Endpoint</span>
@@ -345,6 +391,61 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           </dl>
         ) : null}
         <WarningList label="Readboard probe warnings" warnings={readboardProbeResult?.warnings ?? []} />
+        <div className="provider-subheader">
+          <h4>Controlled board image import MVP</h4>
+          <span data-testid="readboard-image-import-status" title={statuses.readboardSync}>{statuses.readboardSync}</span>
+        </div>
+        <div className="provider-grid">
+          <label>
+            <span>Image path</span>
+            <input
+              data-testid="readboard-image-path-input"
+              value={readboardImagePath}
+              disabled={disabled}
+              placeholder="Controlled board image path in desktop runtime"
+              onChange={(event) => {
+                setReadboardImagePath(event.target.value);
+                if (event.target.value.trim()) setReadboardImageBase64("");
+              }}
+            />
+          </label>
+          <label className="file-button">
+            Choose image
+            <input
+              data-testid="readboard-image-file-input"
+              type="file"
+              accept="image/*"
+              disabled={disabled}
+              onChange={(event) => {
+                void handleReadboardImageFile(event.target.files?.[0] ?? null);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        </div>
+        <label className="provider-payload-label">
+          <span>Image base64</span>
+          <textarea
+            data-testid="readboard-image-base64-textarea"
+            className="provider-payload provider-readboard-line"
+            value={readboardImageBase64}
+            disabled={disabled}
+            spellCheck={false}
+            aria-label="Controlled board image base64"
+            placeholder="Paste a controlled board image data URL or base64. Preview is required before import."
+            onChange={(event) => {
+              setReadboardImageBase64(event.target.value);
+              if (event.target.value.trim()) setReadboardImagePath("");
+            }}
+          />
+        </label>
+        <div className="provider-grid">
+          <button data-testid="readboard-preview-image" onClick={() => void handleReadboardImagePreview()} disabled={!canPreviewReadboardImage}>Preview image</button>
+          <button data-testid="readboard-import-image-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import previewed position</button>
+        </div>
+        <p className="provider-status" data-testid="readboard-image-boundary">
+          Image import is scoped to controlled board images and imports only the previewed current position. Failed preview is recoverable and does not import or replace the board.
+        </p>
         <label className="provider-payload-label">
           <span>Protocol preview line</span>
             <textarea
@@ -364,14 +465,26 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         </div>
         <p className="provider-status" title={statuses.readboardSync}>{statuses.readboardSync}</p>
         {readboardSyncResult ? (
-          <dl className="provider-preview">
+          <dl className="provider-preview" data-testid="readboard-snapshot-preview-summary">
             <div>
               <dt>Snapshot</dt>
               <dd title={readboardSyncResult.snapshot_id}>{readboardSyncResult.snapshot_id}</dd>
             </div>
             <div>
-              <dt>Position</dt>
-              <dd>{positionStatus(readboardSyncResult)}</dd>
+              <dt>Board size</dt>
+              <dd>{readboardSyncResult.position ? `${readboardSyncResult.position.board_size}x${readboardSyncResult.position.board_size}` : "none"}</dd>
+            </div>
+            <div>
+              <dt>Move</dt>
+              <dd>{readboardSyncResult.position?.move_number ?? "unknown"}</dd>
+            </div>
+            <div>
+              <dt>Stones</dt>
+              <dd>{readboardSyncResult.position?.stones.length ?? 0}</dd>
+            </div>
+            <div>
+              <dt>To play</dt>
+              <dd>{readboardSyncResult.position ? colorLabel(readboardSyncResult.position.to_play) : "unknown"}</dd>
             </div>
             <div>
               <dt>Warnings</dt>
@@ -408,10 +521,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           />
           <HelperCard
             testId="legacy-helper-ocr-unsupported"
-            title="OCR/image helper"
-            status="recoverable unsupported"
-            detail="Image OCR import is not implemented here; it will not import SGF or replace the board."
-            actionLabel="Check OCR status"
+            title="Controlled board image import"
+            status="scoped MVP"
+            detail="Use the controlled board image import fields above. Arbitrary screenshots and full OCR parity remain out of scope."
+            actionLabel="Show image import scope"
             disabled={disabled}
             onAction={() => void handleLegacyHelperStatus("image_ocr")}
           />
@@ -426,7 +539,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           />
         </div>
         <p className="provider-status" data-testid="legacy-helper-no-board-replacement">
-          Unsupported helpers are recoverable boundaries: no SGF import is performed and the board was not replaced with guessed, stale, or partial data.
+          External capture helpers remain recoverable unsupported boundaries: no SGF import is performed and the board was not replaced with guessed, stale, or partial data.
         </p>
         {legacyHelperResult ? (
           <dl className="provider-preview legacy-helper-result" data-testid="legacy-helper-status">
@@ -701,12 +814,17 @@ function readboardSyncStatus(result: ReadboardSidecarSyncSnapshotResult): string
   return `Snapshot preview ${result.snapshot_id}: ${position}${warnings}.`;
 }
 
+function readboardImagePreviewStatus(result: ReadboardSidecarSyncSnapshotResult): string {
+  if (!result.position) return `Controlled board image preview ${result.snapshot_id}: no position extracted; no import performed.`;
+  return `Controlled board image preview ${result.snapshot_id}: ${result.position.board_size}x${result.position.board_size}, ${result.position.stones.length} stones, ${colorLabel(result.position.to_play)} to play.`;
+}
+
 function readboardSnapshotImportStatus(result: ProviderImportResult): string {
   return `Imported readboard snapshot ${result.metadata.source_id ?? "current"} with ${result.summary.board_size ?? "unknown"}x${result.summary.board_size ?? "unknown"} position and ${result.warnings.length} warning(s).`;
 }
 
 function legacyHelperPendingStatus(kind: LegacyImportCaptureHelperKind): string {
-  if (kind === "image_ocr") return "Checking OCR/image helper boundary...";
+  if (kind === "image_ocr") return "Checking controlled image import / external OCR helper boundary...";
   if (kind === "external_window_capture" || kind === "external_client_capture") return "Checking external capture helper boundary...";
   return "Checking legacy import helper path...";
 }
@@ -723,6 +841,32 @@ function positionStatus(result: ReadboardSidecarSyncSnapshotResult): string {
 
 function warningCount(warnings: string[]): string {
   return warnings.length === 0 ? "none" : `${warnings.length} warning(s)`;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Image file did not produce a base64 data URL."));
+      }
+    });
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Image file read failed.")));
+    reader.readAsDataURL(file);
+  });
+}
+
+function cleanImageBase64(value: string): string {
+  const trimmed = value.trim();
+  const comma = trimmed.indexOf(",");
+  if (/^data:image\//i.test(trimmed) && comma >= 0) return trimmed.slice(comma + 1).trim();
+  return trimmed;
+}
+
+function colorLabel(color: PlayerColor): string {
+  return color === "black" ? "Black" : "White";
 }
 
 function errorMessage(error: unknown): string {

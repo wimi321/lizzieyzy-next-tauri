@@ -1974,7 +1974,7 @@ fn readboard_external_capture_with_runner(
     validate_timeout_ms(request.timeout_ms, "readboard_external_capture")?;
     let metadata = request.metadata.unwrap_or_default();
     match capture_source.as_str() {
-        "local_image" | "image_path" => {
+        "local_image" | "local_image_file" | "image_path" => {
             let path = request
                 .image_path
                 .as_deref()
@@ -1991,19 +1991,37 @@ fn readboard_external_capture_with_runner(
                 metadata,
             ))
         }
+        "operator_selected_file" | "selected_file" | "file" => {
+            let path = request
+                .image_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    invalid_request("readboard_external_capture operator_selected_file requires imagePath")
+                })?;
+            Ok(readboard_external_capture_decode_path(
+                Path::new(path),
+                "operator_selected_file",
+                true,
+                true,
+                metadata,
+            ))
+        }
         "screen"
         | "window"
+        | "macos_interactive_capture"
         | "macos_interactive_screencapture"
         | "interactive_screencapture"
         | "external_window_capture" => {
             #[cfg(not(target_os = "macos"))]
             {
                 Ok(readboard_external_capture_status(
-                    "unsupported_platform",
+                    "unsupported",
                     true,
                     true,
                     true,
-                    "macos_interactive_screencapture",
+                    "macos_interactive_capture",
                     metadata,
                     Some("interactive screencapture is only supported on macOS".to_string()),
                 ))
@@ -2052,7 +2070,7 @@ fn readboard_external_capture_with_runner(
                     }
                     ReadboardCaptureFileOutcome::Unsupported { message } => {
                         Ok(readboard_external_capture_status(
-                            "unsupported_platform",
+                            "unsupported",
                             true,
                             true,
                             true,
@@ -2184,7 +2202,7 @@ fn readboard_external_capture_decode_path(
     user_selection_required: bool,
     metadata: BTreeMap<String, String>,
 ) -> ReadboardExternalCaptureResultDto {
-    let sanitized_path = sanitize_capture_path(path);
+    let sanitized_path = sanitize_capture_path_for_source(path, capture_source);
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(err) => {
@@ -2218,6 +2236,8 @@ fn readboard_external_capture_decode_path(
             let position = dto.position.clone();
             let snapshot_id = Some(dto.snapshot_id.clone());
             let snapshot_hash = position.as_ref().and_then(snapshot_position_hash);
+            let mut warnings = dto.warnings.clone();
+            warnings.push(readboard_external_capture_scope_warning(capture_source));
             let decode = dto
                 .position
                 .as_ref()
@@ -2258,7 +2278,7 @@ fn readboard_external_capture_decode_path(
                 decode,
                 snapshot,
                 board_replacement: "none".to_string(),
-                warnings: dto.warnings,
+                warnings,
                 message: None,
                 error_message: None,
                 metadata,
@@ -2336,6 +2356,7 @@ fn readboard_external_capture_status_with_file(
     sha256: Option<String>,
     size: Option<u64>,
 ) -> ReadboardExternalCaptureResultDto {
+    let warnings = vec![readboard_external_capture_scope_warning(capture_source)];
     ReadboardExternalCaptureResultDto {
         schema: "lizzieyzy.readboard-external-capture.v1".to_string(),
         status: status.to_string(),
@@ -2362,7 +2383,7 @@ fn readboard_external_capture_status_with_file(
         },
         snapshot: None,
         board_replacement: "none".to_string(),
-        warnings: Vec::new(),
+        warnings,
         message: error_message.clone(),
         error_message,
         metadata,
@@ -2370,15 +2391,24 @@ fn readboard_external_capture_status_with_file(
 }
 
 fn sanitize_capture_path(path: &Path) -> String {
+    sanitize_capture_path_for_source(path, "local_image")
+}
+
+fn sanitize_capture_path_for_source(path: &Path, source: &str) -> String {
     let file_name = path
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("image");
+    let prefix = match source {
+        "operator_selected_file" => "operator-selected-file",
+        "macos_interactive_capture" | "macos_interactive_screencapture" => "macos-interactive-capture",
+        _ => "local-image",
+    };
     let parent = path.parent();
     if parent == Some(std::env::temp_dir().as_path()) {
-        format!("<tmp>/{file_name}")
+        format!("{prefix}:<tmp>/{file_name}")
     } else {
-        format!("local-image:{file_name}")
+        format!("{prefix}:{file_name}")
     }
 }
 
@@ -2387,10 +2417,21 @@ fn normalize_capture_source(source: &str) -> &'static str {
     match source {
         "screen"
         | "window"
+        | "macos_interactive_capture"
         | "macos_interactive_screencapture"
         | "interactive_screencapture"
-        | "external_window_capture" => "macos_interactive_screencapture",
+        | "external_window_capture" => "macos_interactive_capture",
+        "operator_selected_file" | "selected_file" | "file" => "operator_selected_file",
         _ => "local_image",
+    }
+}
+
+fn readboard_external_capture_scope_warning(source: &str) -> String {
+    match source {
+        "local_image" | "local_image_file" => "Readboard external capture decoded an explicit local image file only; this is not arbitrary OCR or target-client capture parity.".to_string(),
+        "operator_selected_file" => "Readboard external capture decoded an operator-selected image file only; no target-client discovery or automatic board replacement was performed.".to_string(),
+        "macos_interactive_capture" => "Readboard external capture used operator-selected macOS interactive capture only; this is not arbitrary OCR or external client parity.".to_string(),
+        _ => "Readboard external capture is scoped preview-only proof; no arbitrary OCR, target-client parity, or automatic board replacement is claimed.".to_string(),
     }
 }
 
@@ -8768,6 +8809,10 @@ mod tests {
         assert_eq!(result.decode.white_stones, Some(1));
         assert!(result.snapshot.is_some());
         assert_eq!(result.board_replacement, "none");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("not arbitrary OCR")));
         assert_eq!(result.metadata.get("case").map(String::as_str), Some("fixture"));
         let serialized = serde_json::to_string(&result).unwrap();
         assert!(!serialized.contains("/Users/"));
@@ -8798,8 +8843,64 @@ mod tests {
         );
         assert_eq!(
             normalize_capture_source(&request.capture_source),
-            "macos_interactive_screencapture"
+            "macos_interactive_capture"
         );
+    }
+
+    #[test]
+    fn readboard_external_capture_operator_selected_file_is_preview_only() {
+        let path = readboard_image_fixture("controlled-19-three-stones.ppm");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "operator_selected_file".to_string(),
+            image_path: Some(path.display().to_string()),
+            timeout_ms: Some(1_000),
+            metadata: Some(BTreeMap::from([(
+                "selection".to_string(),
+                "operator".to_string(),
+            )])),
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "captured");
+        assert_eq!(result.source, "operator_selected_file");
+        assert!(result.operator_initiated);
+        assert!(result.user_selection_required);
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("operator-selected-file:controlled-19-three-stones.ppm")
+        );
+        assert_eq!(result.sha256.as_deref().unwrap().len(), 64);
+        assert_eq!(result.snapshot_hash.as_deref().unwrap().len(), 64);
+        assert!(result.position.is_some());
+        assert_eq!(result.board_replacement, "none");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("no target-client discovery")));
+    }
+
+    #[test]
+    fn readboard_external_capture_local_image_file_alias_returns_legacy_capture_source() {
+        let path = readboard_image_fixture("controlled-19-three-stones.ppm");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "local_image_file".to_string(),
+            image_path: Some(path.display().to_string()),
+            timeout_ms: Some(1_000),
+            metadata: None,
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "captured");
+        assert_eq!(result.source, "local_image");
+        assert_eq!(result.capture_source, "local_image");
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("local-image:controlled-19-three-stones.ppm")
+        );
+        assert!(result.position.is_some());
+        assert_eq!(result.board_replacement, "none");
     }
 
     #[test]
@@ -8907,11 +9008,15 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.status, "cancelled");
-        assert_eq!(result.source, "macos_interactive_screencapture");
+        assert_eq!(result.source, "macos_interactive_capture");
         assert!(result.recoverable);
         assert!(result.operator_initiated);
         assert!(result.user_selection_required);
         assert_eq!(result.board_replacement, "none");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("operator-selected macOS interactive capture")));
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -8925,8 +9030,8 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(result.status, "unsupported_platform");
-        assert_eq!(result.source, "macos_interactive_screencapture");
+        assert_eq!(result.status, "unsupported");
+        assert_eq!(result.source, "macos_interactive_capture");
         assert!(result.recoverable);
         assert!(result.operator_initiated);
         assert!(result.user_selection_required);

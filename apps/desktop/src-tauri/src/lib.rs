@@ -1474,6 +1474,8 @@ fn readboard_external_capture_with_runner(
     request: ReadboardExternalCaptureRequestDto,
     screencapture_runner: fn(Duration) -> ReadboardCaptureFileOutcome,
 ) -> Result<ReadboardExternalCaptureResultDto, ProviderError> {
+    #[cfg(not(target_os = "macos"))]
+    let _ = screencapture_runner;
     let capture_source = request.capture_source.trim().to_ascii_lowercase();
     if capture_source.is_empty() {
         return Err(invalid_request(
@@ -1481,7 +1483,6 @@ fn readboard_external_capture_with_runner(
         ));
     }
     let metadata = request.metadata.unwrap_or_default();
-    let timeout = Duration::from_millis(request.timeout_ms.unwrap_or(120_000).clamp(1_000, 300_000));
     match capture_source.as_str() {
         "local_image" | "image_path" => {
             let path = request
@@ -1519,6 +1520,8 @@ fn readboard_external_capture_with_runner(
             }
             #[cfg(target_os = "macos")]
             {
+                let timeout =
+                    Duration::from_millis(request.timeout_ms.unwrap_or(120_000).clamp(1_000, 300_000));
                 let source = normalize_capture_source(&capture_source);
                 match screencapture_runner(timeout) {
                     ReadboardCaptureFileOutcome::Captured { path } => Ok(
@@ -1577,6 +1580,7 @@ fn readboard_external_capture_with_runner(
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 enum ReadboardCaptureFileOutcome {
     Captured { path: PathBuf },
     Cancelled { message: String },
@@ -1888,6 +1892,7 @@ fn sanitize_capture_path(path: &Path) -> String {
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn normalize_capture_source(source: &str) -> &'static str {
     match source {
         "screen"
@@ -2031,6 +2036,7 @@ fn sha256_digest(bytes: &[u8]) -> [u8; 32] {
     out
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn sanitize_capture_error(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

@@ -51,6 +51,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
             self.assertIn("desktop_sgf_editing_ux_smoke", pending_names)
             self.assertIn("desktop_ui_click_smoke", pending_names)
+            self.assertIn("legacy_shell_menu_action_smoke", pending_names)
             self.assertIn("tauri_window_runtime_smoke", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
@@ -181,6 +182,8 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertEqual([], failures)
             self.assertIn("desktop_ui_click_smoke", pass_names)
             self.assertNotIn("desktop_ui_click_smoke", pending_names)
+            self.assertIn("legacy_shell_menu_action_smoke", pass_names)
+            self.assertNotIn("legacy_shell_menu_action_smoke", pending_names)
 
     def test_desktop_ui_click_evidence_requires_screenshots(self) -> None:
         self.assert_invalid_desktop_ui_click_evidence_pending(
@@ -219,6 +222,81 @@ class SmokeUserFlowsTests(unittest.TestCase):
             "screenshots[0].path must not be a local absolute path",
         )
 
+    def test_legacy_shell_menu_action_smoke_missing_section_is_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_ui_click_evidence()
+            del evidence["legacyShellMenuActionSmoke"]
+            write_json(root / smoke_user_flows.DESKTOP_UI_CLICK_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("legacy_shell_menu_action_smoke", failures)
+            self.assertIn("legacy_shell_menu_action_smoke", pending)
+            self.assertIn("legacyShellMenuActionSmoke section", pending["legacy_shell_menu_action_smoke"])
+
+    def test_legacy_shell_menu_action_smoke_requires_clicked_actions(self) -> None:
+        self.assert_invalid_legacy_shell_menu_action_evidence_pending(
+            lambda section: section.__setitem__("clickedControls", []),
+            "legacyShellMenuActionSmoke.clickedControls missing View:Candidates",
+        )
+
+    def test_legacy_shell_menu_action_smoke_requires_active_targets(self) -> None:
+        self.assert_invalid_legacy_shell_menu_action_evidence_pending(
+            lambda section: section.__setitem__("activeTargets", []),
+            "legacyShellMenuActionSmoke.activeTargets missing candidates",
+        )
+
+    def test_legacy_shell_menu_action_smoke_rejects_boundary_overclaims(self) -> None:
+        def mutate(section: dict[str, object]) -> None:
+            boundaries = section["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["nativeFileDialogCovered"] = True
+            boundaries["tauriWebviewDomObserved"] = True
+            boundaries["fullLegacyParityCovered"] = True
+            boundaries["osNativeMenuCovered"] = True
+            boundaries["fullShortcutParityCovered"] = True
+            boundaries["fullLayoutParityCovered"] = True
+
+        self.assert_invalid_legacy_shell_menu_action_evidence_pending(
+            mutate,
+            "legacyShellMenuActionSmoke.boundaries.nativeFileDialogCovered must be false",
+        )
+
+    def test_legacy_shell_menu_action_smoke_requires_explicit_optional_boundary_fields(self) -> None:
+        def mutate(section: dict[str, object]) -> None:
+            boundaries = section["boundaries"]
+            assert isinstance(boundaries, dict)
+            del boundaries["osNativeMenuCovered"]
+            del boundaries["fullShortcutParityCovered"]
+            del boundaries["fullLayoutParityCovered"]
+
+        self.assert_invalid_legacy_shell_menu_action_evidence_pending(
+            mutate,
+            "legacyShellMenuActionSmoke.boundaries.osNativeMenuCovered must be false",
+        )
+
+    def test_legacy_shell_menu_action_smoke_rejects_shortcut_layout_boundary_claims(self) -> None:
+        def mutate(section: dict[str, object]) -> None:
+            boundaries = section["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullShortcutParityCovered"] = True
+            boundaries["fullLayoutParityCovered"] = True
+
+        self.assert_invalid_legacy_shell_menu_action_evidence_pending(
+            mutate,
+            "legacyShellMenuActionSmoke.boundaries.fullShortcutParityCovered must be false",
+        )
+
+    def test_legacy_shell_menu_action_smoke_rejects_missing_visible_assertions(self) -> None:
+        self.assert_invalid_legacy_shell_menu_action_evidence_pending(
+            lambda section: section.__setitem__("visibleAssertions", []),
+            "legacyShellMenuActionSmoke.visibleAssertions missing View:Candidates target",
+        )
+
     def assert_invalid_desktop_ui_click_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -234,6 +312,24 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("desktop_ui_click_smoke", failures)
             self.assertIn("desktop_ui_click_smoke", pending)
             self.assertIn(expected_detail, pending["desktop_ui_click_smoke"])
+
+    def assert_invalid_legacy_shell_menu_action_evidence_pending(self, mutate_section, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_ui_click_evidence()
+            section = evidence["legacyShellMenuActionSmoke"]
+            assert isinstance(section, dict)
+            mutate_section(section)
+            write_json(root / smoke_user_flows.DESKTOP_UI_CLICK_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("legacy_shell_menu_action_smoke", failures)
+            self.assertIn("legacy_shell_menu_action_smoke", pending)
+            self.assertIn(expected_detail, pending["legacy_shell_menu_action_smoke"])
 
     def test_valid_tauri_window_runtime_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2238,12 +2334,66 @@ def valid_desktop_ui_click_evidence() -> dict[str, object]:
             {"label": "SGF tree", "selector": ".sgf-tree-panel", "visible": True, "status": "pass"},
             {"label": "Annotation editor", "selector": ".sgf-annotation-editor", "visible": True, "status": "pass"},
         ],
+        "legacyShellMenuActionSmoke": valid_legacy_shell_menu_action_smoke_section(),
         "boundaries": {
             "nativeFileDialogCovered": False,
             "tauriWebviewDomObserved": False,
             "fullNativeDialogProof": False,
             "fullLegacyParityCovered": False,
         },
+    }
+
+
+def valid_legacy_shell_menu_action_smoke_section() -> dict[str, object]:
+    required = smoke_user_flows.LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS
+    return {
+        "status": "pass",
+        "clickedControls": [
+            {
+                "name": action,
+                "group": action.split(":", 1)[0],
+                "label": action.split(":", 1)[1],
+                "target": target,
+                "selector": f"[data-testid='legacy-menu-{action.split(':', 1)[0].lower()}-{action.split(':', 1)[1].lower().replace(' ', '-')}']",
+                "clicked": True,
+                "visible": True,
+                "enabled": True,
+            }
+            for action, target in required
+        ],
+        "activeTargets": [
+            {
+                "name": action,
+                "target": target,
+                "selector": f"#legacy-menu-target-{target}",
+                "visible": True,
+                "active": True,
+                "lastAction": action,
+                "status": "focused",
+            }
+            for action, target in required
+        ],
+        "visibleAssertions": [
+            {
+                "name": f"{action} target",
+                "target": target,
+                "selector": f"#legacy-menu-target-{target}",
+                "visible": True,
+                "status": "pass",
+            }
+            for action, target in required
+        ],
+        "boundaries": {
+            "browserRenderedDomObserved": True,
+            "nativeFileDialogCovered": False,
+            "tauriWebviewDomObserved": False,
+            "tauriNativeDialogProof": False,
+            "fullLegacyParityCovered": False,
+            "osNativeMenuCovered": False,
+            "fullShortcutParityCovered": False,
+            "fullLayoutParityCovered": False,
+        },
+        "failures": [],
     }
 
 

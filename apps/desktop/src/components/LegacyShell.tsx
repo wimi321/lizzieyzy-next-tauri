@@ -41,6 +41,24 @@ type LegacyMenuTarget =
   | "preferences"
   | "backend-status";
 
+type LegacyMenuItem = {
+  label: string;
+  onSelect?: () => void | Promise<void>;
+  disabled?: boolean;
+  target?: LegacyMenuTarget;
+};
+
+type LegacyMenuGroup = {
+  label: string;
+  items: LegacyMenuItem[];
+};
+
+type LegacyMenuActionState = {
+  activeTarget: LegacyMenuTarget | null;
+  lastAction: string;
+  status: "idle" | "focused" | "missing";
+};
+
 export function LegacyShell({
   themeClassName = "",
   architectureLabel,
@@ -80,6 +98,11 @@ export function LegacyShell({
   const focusResetRef = useRef<number | null>(null);
   const highlightedElementRef = useRef<HTMLElement | null>(null);
   const [highlightedTarget, setHighlightedTarget] = useState<LegacyMenuTarget | null>(null);
+  const [menuAction, setMenuAction] = useState<LegacyMenuActionState>({
+    activeTarget: null,
+    lastAction: "",
+    status: "idle"
+  });
 
   useEffect(() => {
     return () => {
@@ -90,15 +113,16 @@ export function LegacyShell({
     };
   }, []);
 
-  function focusTarget(target: LegacyMenuTarget) {
+  function focusTarget(target: LegacyMenuTarget): boolean {
     const targetElement = resolveTargetElement(target);
-    if (!targetElement) return;
+    if (!targetElement) return false;
 
     if (focusResetRef.current !== null) {
       window.clearTimeout(focusResetRef.current);
       focusResetRef.current = null;
     }
     highlightedElementRef.current?.classList.remove("legacy-focus-highlight");
+    ensureMenuTargetElement(targetElement, target);
 
     targetElement.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
     if (!canFocusElement(targetElement) && !targetElement.hasAttribute("tabindex")) targetElement.setAttribute("tabindex", "-1");
@@ -111,6 +135,16 @@ export function LegacyShell({
       highlightedElementRef.current?.classList.remove("legacy-focus-highlight");
       highlightedElementRef.current = null;
     }, 1400);
+    return true;
+  }
+
+  function runMenuTargetAction(target: LegacyMenuTarget, actionLabel: string) {
+    const focused = focusTarget(target);
+    setMenuAction({
+      activeTarget: target,
+      lastAction: actionLabel,
+      status: focused ? "focused" : "missing"
+    });
   }
 
   function resolveTargetElement(target: LegacyMenuTarget): HTMLElement | null {
@@ -160,7 +194,21 @@ export function LegacyShell({
     return /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(element.tagName);
   }
 
-  const menuGroups = [
+  function menuTargetId(target: LegacyMenuTarget): string {
+    return `legacy-menu-target-${target}`;
+  }
+
+  function ensureMenuTargetElement(element: HTMLElement, target: LegacyMenuTarget) {
+    element.id = menuTargetId(target);
+    element.dataset.menuTarget = target;
+    element.dataset.legacyMenuTargetId = menuTargetId(target);
+  }
+
+  function menuActionLabel(groupLabel: string, itemLabel: string): string {
+    return `${groupLabel}:${itemLabel}`;
+  }
+
+  const menuGroups: LegacyMenuGroup[] = [
     {
       label: "File",
       items: [
@@ -181,41 +229,47 @@ export function LegacyShell({
       label: "Analysis",
       items: [
         { label: "Run review", onSelect: onRunReview, disabled: isBusy },
-        { label: "KataGo panel", onSelect: () => focusTarget("profiles") }
+        { label: "KataGo panel", target: "profiles" }
       ]
     },
     {
       label: "View",
       items: [
-        { label: "Candidates", onSelect: () => focusTarget("candidates") },
-        { label: "Ownership", onSelect: () => focusTarget("ownership") },
-        { label: "Policy", onSelect: () => focusTarget("policy") }
+        { label: "Candidates", target: "candidates" },
+        { label: "Ownership", target: "ownership" },
+        { label: "Policy", target: "policy" }
       ]
     },
     {
       label: "Engine",
       items: [
-        { label: "Profiles", onSelect: () => focusTarget("profiles") },
-        { label: "Assets", onSelect: () => focusTarget("assets") }
+        { label: "Profiles", target: "profiles" },
+        { label: "Assets", target: "assets" }
       ]
     },
     {
       label: "Tools",
       items: [
-        { label: "Providers", onSelect: () => focusTarget("providers") },
-        { label: "Preferences", onSelect: () => focusTarget("preferences") }
+        { label: "Providers", target: "providers" },
+        { label: "Preferences", target: "preferences" }
       ]
     },
     {
       label: "Help",
       items: [
-        { label: "Backend status", onSelect: () => focusTarget("backend-status") }
+        { label: "Backend status", target: "backend-status" }
       ]
     }
   ];
 
   return (
-    <main className={`app-shell legacy-shell${themeClassName ? ` ${themeClassName}` : ""}`} data-testid="legacy-shell">
+    <main
+      className={`app-shell legacy-shell${themeClassName ? ` ${themeClassName}` : ""}`}
+      data-testid="legacy-shell"
+      data-active-menu-target={menuAction.activeTarget ?? ""}
+      data-last-menu-action={menuAction.lastAction}
+      data-menu-action-status={menuAction.status}
+    >
       <header className="legacy-titlebar">
         <div className="legacy-appmark">
           <h1>LizzieYzy Next</h1>
@@ -231,9 +285,15 @@ export function LegacyShell({
                     key={item.label}
                     type="button"
                     disabled={item.disabled}
+                    data-menu-target={item.target ?? undefined}
+                    aria-controls={item.target ? menuTargetId(item.target) : undefined}
                     data-testid={`legacy-menu-${group.label.toLowerCase()}-${item.label.toLowerCase().replaceAll(" ", "-")}`}
                     onClick={(event) => {
-                      void item.onSelect?.();
+                      if (item.target) {
+                        runMenuTargetAction(item.target, menuActionLabel(group.label, item.label));
+                      } else {
+                        void item.onSelect?.();
+                      }
                       event.currentTarget.closest("details")?.removeAttribute("open");
                     }}
                   >
@@ -249,6 +309,9 @@ export function LegacyShell({
           <span className="status-pill">{backendStatusLabel}</span>
         </div>
       </header>
+      <span className="legacy-menu-action-status" aria-live="polite" data-testid="legacy-menu-action-status">
+        {menuAction.status === "idle" ? "" : `${menuAction.lastAction}:${menuAction.status}`}
+      </span>
 
       <section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar">
         <button type="button" data-testid="toolbar-open-sgf" onClick={() => void onOpen()} disabled={isBusy} title="Open SGF">Open</button>
@@ -317,7 +380,15 @@ export function LegacyShell({
         {preferencesPanel}
       </section>
 
-      <footer ref={statusbarRef} className={`legacy-statusbar${highlightedTarget === "backend-status" ? " legacy-focus-highlight" : ""}`} role="status" data-testid="legacy-statusbar">
+      <footer
+        ref={statusbarRef}
+        id="legacy-menu-target-backend-status"
+        className={`legacy-statusbar${highlightedTarget === "backend-status" ? " legacy-focus-highlight" : ""}`}
+        role="status"
+        tabIndex={-1}
+        data-menu-target="backend-status"
+        data-testid="legacy-statusbar"
+      >
         <span>{message}</span>
       </footer>
     </main>

@@ -15,22 +15,29 @@
     "Help"
   ],
   "actionIds": [
+    "file.new",
     "file.open",
     "file.save",
     "file.saveAs",
     "file.importSgf",
     "game.loadSample",
     "game.parseSgf",
+    "game.firstMove",
+    "game.previousMove",
+    "game.nextMove",
+    "game.lastMove",
     "analysis.runReview",
     "analysis.katagoPanel",
     "view.candidates",
     "view.ownership",
     "view.policy",
+    "view.sgfSource",
     "engine.profiles",
     "engine.assets",
     "tools.providers",
     "tools.preferences",
-    "help.backendStatus"
+    "help.backendStatus",
+    "help.about"
   ],
   "nativeMenuSurface": true,
   "nativeMenuEventBridge": true,
@@ -89,7 +96,7 @@
       "status": "pass",
       "details": {
         "actionIdsAligned": true,
-        "scope": "native menu items and keyboard shortcuts share scoped action ids"
+        "scope": "native menu items and keyboard shortcuts share the scoped 23-action LegacyShell action ids"
       }
     },
     {

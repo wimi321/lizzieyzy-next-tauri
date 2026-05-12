@@ -94,6 +94,14 @@ struct NativeMenuActionEventDto {
 
 const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
     NativeMenuActionSpec {
+        menu_id: "legacy-menu-file-new",
+        action_id: "file.new",
+        target_id: "legacy-shell",
+        label: "New",
+        menu_path: &["File", "New"],
+        accelerator: Some("CmdOrCtrl+N"),
+    },
+    NativeMenuActionSpec {
         menu_id: "legacy-menu-file-open",
         action_id: "file.open",
         target_id: "open-sgf",
@@ -123,7 +131,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "import-sgf",
         label: "Import SGF",
         menu_path: &["File", "Import SGF"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+I"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-game-load-sample",
@@ -131,7 +139,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "load-sample",
         label: "Load sample",
         menu_path: &["Game", "Load sample"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+Shift+L"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-game-parse-sgf",
@@ -139,7 +147,39 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "parse-sgf",
         label: "Parse SGF",
         menu_path: &["Game", "Parse SGF"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+Enter"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-game-first-move",
+        action_id: "game.firstMove",
+        target_id: "timeline",
+        label: "First move",
+        menu_path: &["Game", "First move"],
+        accelerator: Some("CmdOrCtrl+ArrowLeft"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-game-previous-move",
+        action_id: "game.previousMove",
+        target_id: "timeline",
+        label: "Previous move",
+        menu_path: &["Game", "Previous move"],
+        accelerator: Some("CmdOrCtrl+Shift+ArrowLeft"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-game-next-move",
+        action_id: "game.nextMove",
+        target_id: "timeline",
+        label: "Next move",
+        menu_path: &["Game", "Next move"],
+        accelerator: Some("CmdOrCtrl+Shift+ArrowRight"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-game-last-move",
+        action_id: "game.lastMove",
+        target_id: "timeline",
+        label: "Last move",
+        menu_path: &["Game", "Last move"],
+        accelerator: Some("CmdOrCtrl+ArrowRight"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-analysis-run-review",
@@ -155,7 +195,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "profiles",
         label: "KataGo panel",
         menu_path: &["Analysis", "KataGo panel"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+Shift+K"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-view-candidates",
@@ -163,7 +203,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "candidates",
         label: "Candidates",
         menu_path: &["View", "Candidates"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+1"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-view-ownership",
@@ -171,7 +211,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "ownership",
         label: "Ownership",
         menu_path: &["View", "Ownership"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+2"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-view-policy",
@@ -179,7 +219,15 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "policy",
         label: "Policy",
         menu_path: &["View", "Policy"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+3"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-view-sgf-source",
+        action_id: "view.sgfSource",
+        target_id: "sgf-source",
+        label: "SGF source",
+        menu_path: &["View", "SGF source"],
+        accelerator: Some("CmdOrCtrl+8"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-engine-profiles",
@@ -187,7 +235,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "profiles",
         label: "Profiles",
         menu_path: &["Engine", "Profiles"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+4"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-engine-assets",
@@ -195,7 +243,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "assets",
         label: "Assets",
         menu_path: &["Engine", "Assets"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+5"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-tools-providers",
@@ -203,7 +251,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "providers",
         label: "Providers",
         menu_path: &["Tools", "Providers"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+6"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-tools-preferences",
@@ -211,7 +259,7 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "preferences",
         label: "Preferences",
         menu_path: &["Tools", "Preferences"],
-        accelerator: Some("CmdOrCtrl+,"),
+        accelerator: Some("CmdOrCtrl+7"),
     },
     NativeMenuActionSpec {
         menu_id: "legacy-menu-help-backend-status",
@@ -219,7 +267,15 @@ const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
         target_id: "backend-status",
         label: "Backend status",
         menu_path: &["Help", "Backend status"],
-        accelerator: None,
+        accelerator: Some("CmdOrCtrl+/"),
+    },
+    NativeMenuActionSpec {
+        menu_id: "legacy-menu-help-about",
+        action_id: "help.about",
+        target_id: "about",
+        label: "About",
+        menu_path: &["Help", "About"],
+        accelerator: Some("CmdOrCtrl+Shift+/"),
     },
 ];
 
@@ -6276,66 +6332,94 @@ mod tests {
             .actions
             .into_iter()
             .map(|action| action.action_id)
-            .collect::<HashSet<_>>();
+            .collect::<Vec<_>>();
         let expected = [
+            "file.new",
             "file.open",
             "file.save",
             "file.saveAs",
             "file.importSgf",
             "game.loadSample",
             "game.parseSgf",
+            "game.firstMove",
+            "game.previousMove",
+            "game.nextMove",
+            "game.lastMove",
             "analysis.runReview",
             "analysis.katagoPanel",
             "view.candidates",
             "view.ownership",
             "view.policy",
+            "view.sgfSource",
             "engine.profiles",
             "engine.assets",
             "tools.providers",
             "tools.preferences",
             "help.backendStatus",
+            "help.about",
         ];
 
-        for action_id in expected {
-            assert!(
-                actions.contains(action_id),
-                "missing native menu action {action_id}"
-            );
-        }
+        assert_eq!(actions, expected);
+        assert_eq!(actions.len(), 23);
     }
 
     #[test]
     fn native_menu_event_mapping_returns_frontend_payload() {
-        let payload = native_menu_event_payload("legacy-menu-view-candidates").unwrap();
+        let payload = native_menu_event_payload("legacy-menu-view-sgf-source").unwrap();
 
         assert_eq!(payload.source, "native_menu");
-        assert_eq!(payload.menu_id, "legacy-menu-view-candidates");
-        assert_eq!(payload.action_id, "view.candidates");
-        assert_eq!(payload.target_id, "candidates");
+        assert_eq!(payload.menu_id, "legacy-menu-view-sgf-source");
+        assert_eq!(payload.action_id, "view.sgfSource");
+        assert_eq!(payload.target_id, "sgf-source");
         assert_eq!(
             payload.menu_path,
-            vec!["View".to_string(), "Candidates".to_string()]
+            vec!["View".to_string(), "SGF source".to_string()]
         );
-        assert!(payload.accelerator.is_none());
+        assert_eq!(payload.accelerator.as_deref(), Some("CmdOrCtrl+8"));
         assert!(native_menu_event_payload("unknown-menu-id").is_none());
     }
 
     #[test]
     fn native_menu_contract_keeps_accelerators_nullable() {
         let contract = native_menu_contract();
-        let open = contract
+        let accelerators = contract
             .actions
             .iter()
-            .find(|action| action.action_id == "file.open")
-            .unwrap();
-        let import = contract
-            .actions
-            .iter()
-            .find(|action| action.action_id == "file.importSgf")
-            .unwrap();
+            .map(|action| (action.action_id.as_str(), action.accelerator.as_deref()))
+            .collect::<HashMap<_, _>>();
+        let expected = [
+            ("file.new", Some("CmdOrCtrl+N")),
+            ("file.open", Some("CmdOrCtrl+O")),
+            ("file.save", Some("CmdOrCtrl+S")),
+            ("file.saveAs", Some("CmdOrCtrl+Shift+S")),
+            ("file.importSgf", Some("CmdOrCtrl+I")),
+            ("game.loadSample", Some("CmdOrCtrl+Shift+L")),
+            ("game.parseSgf", Some("CmdOrCtrl+Enter")),
+            ("game.firstMove", Some("CmdOrCtrl+ArrowLeft")),
+            ("game.previousMove", Some("CmdOrCtrl+Shift+ArrowLeft")),
+            ("game.nextMove", Some("CmdOrCtrl+Shift+ArrowRight")),
+            ("game.lastMove", Some("CmdOrCtrl+ArrowRight")),
+            ("analysis.runReview", Some("CmdOrCtrl+R")),
+            ("analysis.katagoPanel", Some("CmdOrCtrl+Shift+K")),
+            ("view.candidates", Some("CmdOrCtrl+1")),
+            ("view.ownership", Some("CmdOrCtrl+2")),
+            ("view.policy", Some("CmdOrCtrl+3")),
+            ("view.sgfSource", Some("CmdOrCtrl+8")),
+            ("engine.profiles", Some("CmdOrCtrl+4")),
+            ("engine.assets", Some("CmdOrCtrl+5")),
+            ("tools.providers", Some("CmdOrCtrl+6")),
+            ("tools.preferences", Some("CmdOrCtrl+7")),
+            ("help.backendStatus", Some("CmdOrCtrl+/")),
+            ("help.about", Some("CmdOrCtrl+Shift+/")),
+        ];
 
-        assert_eq!(open.accelerator.as_deref(), Some("CmdOrCtrl+O"));
-        assert!(import.accelerator.is_none());
+        for (action_id, accelerator) in expected {
+            assert_eq!(
+                accelerators.get(action_id).copied().flatten(),
+                accelerator,
+                "accelerator mismatch for {action_id}"
+            );
+        }
     }
 
     #[test]

@@ -1,0 +1,320 @@
+{
+  "appBundle": {
+    "exists": true,
+    "fileCount": 3,
+    "identifier": "org.lizzieyzy.next",
+    "mainExecutable": "lizzieyzy-next-desktop",
+    "path": "target/release/bundle/macos/LizzieYzy Next.app",
+    "productName": "LizzieYzy Next",
+    "sha256": "2530d458dd7b676911e5e36088d7a902887e9a9e9edffa1bbecada7b12bc9de6",
+    "sizeBytes": 17399164,
+    "version": "0.1.0"
+  },
+  "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
+  "boundaries": {
+    "nativeDialogClickCovered": false,
+    "notarized": false,
+    "note": "This smoke proves a local packaged .app can launch and display a macOS window. It does not claim signing, notarization, native dialog coverage, WebView DOM coverage, or production release publication.",
+    "productionSigned": false,
+    "releasePublished": false,
+    "viteDevServerStarted": false,
+    "webviewDomClickCovered": false
+  },
+  "build": {
+    "ran": false,
+    "requested": false
+  },
+  "bundle": {
+    "app": {
+      "bytes": 17399164,
+      "fileCount": 3,
+      "path": "target/release/bundle/macos/LizzieYzy Next.app",
+      "sha256": "2530d458dd7b676911e5e36088d7a902887e9a9e9edffa1bbecada7b12bc9de6"
+    },
+    "binary": {
+      "bytes": 16951808,
+      "path": "target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+      "sha256": "176487313acb56c5f60c4388043fad81b849e8b83a3591025754dfbd9ec5e2bd"
+    },
+    "dmg": {
+      "bytes": 7296634,
+      "path": "target/release/bundle/dmg/LizzieYzy Next_0.1.0_aarch64.dmg",
+      "sha256": "f43d35e9823d8fdf31c0f3d2ff80caf17352c96c0e961fc0f7831bcbdbe34a1a"
+    },
+    "dmgs": [
+      {
+        "bytes": 7296634,
+        "path": "target/release/bundle/dmg/LizzieYzy Next_0.1.0_aarch64.dmg",
+        "sha256": "f43d35e9823d8fdf31c0f3d2ff80caf17352c96c0e961fc0f7831bcbdbe34a1a"
+      }
+    ],
+    "expected": {
+      "identifier": "org.lizzieyzy.next",
+      "mainExecutable": "lizzieyzy-next-desktop",
+      "packageType": "APPL",
+      "productName": "LizzieYzy Next",
+      "version": "0.1.0"
+    },
+    "infoPlist": {
+      "CFBundleDisplayName": "LizzieYzy Next",
+      "CFBundleExecutable": "lizzieyzy-next-desktop",
+      "CFBundleIdentifier": "org.lizzieyzy.next",
+      "CFBundleName": "LizzieYzy Next",
+      "CFBundlePackageType": "APPL",
+      "CFBundleShortVersionString": "0.1.0",
+      "CFBundleVersion": "0.1.0",
+      "LSMinimumSystemVersion": "10.13",
+      "path": "target/release/bundle/macos/LizzieYzy Next.app/Contents/Info.plist"
+    },
+    "signature": {
+      "codesignDisplay": {
+        "command": "codesign -dv --verbose=4 <repo>/target/release/bundle/macos/LizzieYzy Next.app",
+        "exitCode": 0,
+        "stderrTail": "Executable=<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop\nIdentifier=lizzieyzy_next_desktop-71ed13ed6f861753\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=131560 flags=0x20002(adhoc,linker-signed) hashes=4107+0 location=embedded\nVersionPlatform=1\nVersionMin=720896\nVersionSDK=1704448\nHash type=sha256 size=32\nCandidateCDHash sha256=047c4edcb1fe68cdebde228ad56532d9ebc7abb7\nCandidateCDHashFull sha256=047c4edcb1fe68cdebde228ad56532d9ebc7abb71b33dd1684d82b66c0d36279\nHash choices=sha256\nCMSDigest=047c4edcb1fe68cdebde228ad56532d9ebc7abb71b33dd1684d82b66c0d36279\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=12697600\nExecutable Segment flags=0x1\nPage size=4096\nCDHash=047c4edcb1fe68cdebde228ad56532d9ebc7abb7\nSignature=adhoc\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements=none",
+        "stdoutTail": ""
+      },
+      "codesignVerify": {
+        "command": "codesign --verify --deep --strict",
+        "exitCode": 1,
+        "stderrTail": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present",
+        "stdoutTail": ""
+      },
+      "notarized": false,
+      "productionSigned": false,
+      "releasePublished": false,
+      "scopeNote": "This smoke records local packaged-app launchability only. It does not claim Developer ID signing, notarization, or published production release status.",
+      "signatureKind": "adhoc",
+      "spctlAccepted": false,
+      "spctlAssess": {
+        "command": "spctl -a -vv <repo>/target/release/bundle/macos/LizzieYzy Next.app",
+        "exitCode": 1,
+        "stderrTail": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present",
+        "stdoutTail": ""
+      },
+      "spctlRawSummary": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present"
+    }
+  },
+  "checks": [
+    {
+      "details": {
+        "checkedBeforeLaunch": true,
+        "error": "URLError: <urlopen error [Errno 61] Connection refused>",
+        "observedAt": "2026-05-12T03:00:13Z",
+        "reachableBeforeLaunch": false,
+        "runnerStartedDevServer": false,
+        "url": "http://127.0.0.1:1420"
+      },
+      "name": "dev_server_absent_before_launch",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "app": {
+          "bytes": 17399164,
+          "fileCount": 3,
+          "path": "target/release/bundle/macos/LizzieYzy Next.app",
+          "sha256": "2530d458dd7b676911e5e36088d7a902887e9a9e9edffa1bbecada7b12bc9de6"
+        },
+        "binary": {
+          "bytes": 16951808,
+          "path": "target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+          "sha256": "176487313acb56c5f60c4388043fad81b849e8b83a3591025754dfbd9ec5e2bd"
+        },
+        "dmg": {
+          "bytes": 7296634,
+          "path": "target/release/bundle/dmg/LizzieYzy Next_0.1.0_aarch64.dmg",
+          "sha256": "f43d35e9823d8fdf31c0f3d2ff80caf17352c96c0e961fc0f7831bcbdbe34a1a"
+        },
+        "dmgs": [
+          {
+            "bytes": 7296634,
+            "path": "target/release/bundle/dmg/LizzieYzy Next_0.1.0_aarch64.dmg",
+            "sha256": "f43d35e9823d8fdf31c0f3d2ff80caf17352c96c0e961fc0f7831bcbdbe34a1a"
+          }
+        ],
+        "expected": {
+          "identifier": "org.lizzieyzy.next",
+          "mainExecutable": "lizzieyzy-next-desktop",
+          "packageType": "APPL",
+          "productName": "LizzieYzy Next",
+          "version": "0.1.0"
+        },
+        "infoPlist": {
+          "CFBundleDisplayName": "LizzieYzy Next",
+          "CFBundleExecutable": "lizzieyzy-next-desktop",
+          "CFBundleIdentifier": "org.lizzieyzy.next",
+          "CFBundleName": "LizzieYzy Next",
+          "CFBundlePackageType": "APPL",
+          "CFBundleShortVersionString": "0.1.0",
+          "CFBundleVersion": "0.1.0",
+          "LSMinimumSystemVersion": "10.13",
+          "path": "target/release/bundle/macos/LizzieYzy Next.app/Contents/Info.plist"
+        },
+        "signature": {
+          "codesignDisplay": {
+            "command": "codesign -dv --verbose=4 <repo>/target/release/bundle/macos/LizzieYzy Next.app",
+            "exitCode": 0,
+            "stderrTail": "Executable=<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop\nIdentifier=lizzieyzy_next_desktop-71ed13ed6f861753\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=131560 flags=0x20002(adhoc,linker-signed) hashes=4107+0 location=embedded\nVersionPlatform=1\nVersionMin=720896\nVersionSDK=1704448\nHash type=sha256 size=32\nCandidateCDHash sha256=047c4edcb1fe68cdebde228ad56532d9ebc7abb7\nCandidateCDHashFull sha256=047c4edcb1fe68cdebde228ad56532d9ebc7abb71b33dd1684d82b66c0d36279\nHash choices=sha256\nCMSDigest=047c4edcb1fe68cdebde228ad56532d9ebc7abb71b33dd1684d82b66c0d36279\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=12697600\nExecutable Segment flags=0x1\nPage size=4096\nCDHash=047c4edcb1fe68cdebde228ad56532d9ebc7abb7\nSignature=adhoc\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements=none",
+            "stdoutTail": ""
+          },
+          "codesignVerify": {
+            "command": "codesign --verify --deep --strict",
+            "exitCode": 1,
+            "stderrTail": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present",
+            "stdoutTail": ""
+          },
+          "notarized": false,
+          "productionSigned": false,
+          "releasePublished": false,
+          "scopeNote": "This smoke records local packaged-app launchability only. It does not claim Developer ID signing, notarization, or published production release status.",
+          "signatureKind": "adhoc",
+          "spctlAccepted": false,
+          "spctlAssess": {
+            "command": "spctl -a -vv <repo>/target/release/bundle/macos/LizzieYzy Next.app",
+            "exitCode": 1,
+            "stderrTail": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present",
+            "stdoutTail": ""
+          },
+          "spctlRawSummary": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present"
+        }
+      },
+      "name": "bundle_metadata",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "screenshot": {
+          "bytes": 186268,
+          "captureMode": "coregraphics-window-id",
+          "captureTool": "screencapture",
+          "name": "installed-macos-app-window",
+          "path": "docs/qa/screenshots/installed-macos-app-window.png",
+          "sha256": "f0731971b0dd93513a5d103e18c96aa275495d814e2ac5940c5af59481cab3ba",
+          "windowId": 14945
+        },
+        "window": {
+          "bounds": {
+            "Height": 824,
+            "Width": 1258,
+            "X": 331,
+            "Y": 71
+          },
+          "layer": 0,
+          "ownerName": "LizzieYzy Next",
+          "ownerPid": 59579,
+          "title": "LizzieYzy Next",
+          "windowId": 14945
+        }
+      },
+      "name": "packaged_app_window_screenshot",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "notarized": false,
+        "productionSigned": false,
+        "releasePublished": false
+      },
+      "name": "signature_boundaries",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "attempted": true,
+        "exitCode": -15,
+        "method": "SIGTERM",
+        "terminated": true
+      },
+      "name": "app_terminated",
+      "status": "pass"
+    }
+  ],
+  "codesign": {
+    "codesignDisplay": {
+      "command": "codesign -dv --verbose=4 <repo>/target/release/bundle/macos/LizzieYzy Next.app",
+      "exitCode": 0,
+      "stderrTail": "Executable=<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop\nIdentifier=lizzieyzy_next_desktop-71ed13ed6f861753\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=131560 flags=0x20002(adhoc,linker-signed) hashes=4107+0 location=embedded\nVersionPlatform=1\nVersionMin=720896\nVersionSDK=1704448\nHash type=sha256 size=32\nCandidateCDHash sha256=047c4edcb1fe68cdebde228ad56532d9ebc7abb7\nCandidateCDHashFull sha256=047c4edcb1fe68cdebde228ad56532d9ebc7abb71b33dd1684d82b66c0d36279\nHash choices=sha256\nCMSDigest=047c4edcb1fe68cdebde228ad56532d9ebc7abb71b33dd1684d82b66c0d36279\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=12697600\nExecutable Segment flags=0x1\nPage size=4096\nCDHash=047c4edcb1fe68cdebde228ad56532d9ebc7abb7\nSignature=adhoc\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements=none",
+      "stdoutTail": ""
+    },
+    "codesignVerify": {
+      "command": "codesign --verify --deep --strict",
+      "exitCode": 1,
+      "stderrTail": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present",
+      "stdoutTail": ""
+    },
+    "notarized": false,
+    "productionSigned": false,
+    "releasePublished": false,
+    "scopeNote": "This smoke records local packaged-app launchability only. It does not claim Developer ID signing, notarization, or published production release status.",
+    "signatureKind": "adhoc",
+    "spctlAccepted": false,
+    "spctlAssess": {
+      "command": "spctl -a -vv <repo>/target/release/bundle/macos/LizzieYzy Next.app",
+      "exitCode": 1,
+      "stderrTail": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present",
+      "stdoutTail": ""
+    },
+    "spctlRawSummary": "<repo>/target/release/bundle/macos/LizzieYzy Next.app: code has no resources but signature indicates they must be present"
+  },
+  "collectionMethod": "packaged-app-executable-coregraphics-window-screencapture",
+  "completedAt": "2026-05-12T03:00:16Z",
+  "devServerAbsent": true,
+  "devServerPreflight": {
+    "checkedBeforeLaunch": true,
+    "error": "URLError: <urlopen error [Errno 61] Connection refused>",
+    "observedAt": "2026-05-12T03:00:13Z",
+    "reachableBeforeLaunch": false,
+    "runnerStartedDevServer": false,
+    "url": "http://127.0.0.1:1420"
+  },
+  "failures": [],
+  "launch": {
+    "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
+    "devServerStartedByRunner": false,
+    "executablePath": "target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+    "method": "direct-bundle-executable",
+    "pid": 59579
+  },
+  "launched": true,
+  "name": "installed_macos_app_smoke",
+  "notarized": false,
+  "platform": "macos",
+  "productionSigned": false,
+  "releasePublished": false,
+  "runnerStartedViteDevServer": false,
+  "schema": "lizzieyzy.installed-macos-app-smoke.v1",
+  "screenshotObserved": true,
+  "screenshots": [
+    {
+      "bytes": 186268,
+      "captureMode": "coregraphics-window-id",
+      "captureTool": "screencapture",
+      "name": "installed-macos-app-window",
+      "path": "docs/qa/screenshots/installed-macos-app-window.png",
+      "sha256": "f0731971b0dd93513a5d103e18c96aa275495d814e2ac5940c5af59481cab3ba",
+      "windowId": 14945
+    }
+  ],
+  "startedAt": "2026-05-12T03:00:13Z",
+  "status": "pass",
+  "termination": {
+    "attempted": true,
+    "exitCode": -15,
+    "method": "SIGTERM",
+    "terminated": true
+  },
+  "window": {
+    "bounds": {
+      "Height": 824,
+      "Width": 1258,
+      "X": 331,
+      "Y": 71
+    },
+    "layer": 0,
+    "ownerName": "LizzieYzy Next",
+    "ownerPid": 59579,
+    "title": "LizzieYzy Next",
+    "windowId": 14945
+  },
+  "windowObserved": true
+}

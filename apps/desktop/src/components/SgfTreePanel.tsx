@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { SgfPropertyUpdate } from "../api/backend";
 import { vertexLabel } from "../domain/board";
 import type { MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "../domain/types";
+import { SgfAnnotationPanel } from "./SgfAnnotationPanel";
 
 type Props = {
   tree: SgfTreeDto | null;
@@ -10,6 +11,7 @@ type Props = {
   onSelectNode: (nodeId: string) => void;
   onSaveComment: (nodeId: string, comment: string) => void;
   onSaveProperties?: (nodeId: string, updates: SgfPropertyUpdate[]) => void;
+  onSaveAnnotations?: (nodeId: string, updates: SgfPropertyUpdate[]) => void;
   onDeleteNode?: (nodeId: string) => void;
   onReorderNode?: (nodeId: string, targetIndex: number) => void;
   canDelete?: boolean;
@@ -19,10 +21,12 @@ type Props = {
   commentReadOnly?: boolean;
   isCommentSaving?: boolean;
   isPropertySaving?: boolean;
+  isAnnotationSaving?: boolean;
   isNodeDeleting?: boolean;
   isNodeReordering?: boolean;
   commentActionLabel?: string;
   commentNote?: string;
+  annotationError?: string | null;
   isLoading?: boolean;
   parseError?: string | null;
   boardSize?: number;
@@ -56,6 +60,7 @@ export function SgfTreePanel({
   onSelectNode,
   onSaveComment,
   onSaveProperties,
+  onSaveAnnotations,
   onDeleteNode,
   onReorderNode,
   canDelete = true,
@@ -65,10 +70,12 @@ export function SgfTreePanel({
   commentReadOnly = false,
   isCommentSaving = false,
   isPropertySaving = false,
+  isAnnotationSaving = false,
   isNodeDeleting = false,
   isNodeReordering = false,
   commentActionLabel = "Save Comment",
   commentNote,
+  annotationError = null,
   isLoading = false,
   parseError = null,
   boardSize = 19,
@@ -293,6 +300,14 @@ export function SgfTreePanel({
         </button>
       </section>
 
+      <SgfAnnotationPanel
+        selectedNode={selectedNode}
+        disabled={isLoading}
+        isSaving={isAnnotationSaving}
+        error={annotationError}
+        onSaveAnnotations={onSaveAnnotations}
+      />
+
       <section className="sgf-properties-editor" aria-label="SGF node properties">
         <div className="sgf-properties-header">
           <div>
@@ -351,12 +366,7 @@ type PropertyField = {
 };
 
 const nodePropertyFields: PropertyField[] = [
-  { key: "N", label: "N node name", placeholder: "Fuseki choice" },
-  { key: "TR", label: "TR triangles", placeholder: "dd, pp", multiline: true, multiValue: true },
-  { key: "SQ", label: "SQ squares", placeholder: "dc, qc", multiline: true, multiValue: true },
-  { key: "CR", label: "CR circles", placeholder: "jj", multiline: true, multiValue: true },
-  { key: "MA", label: "MA marks", placeholder: "pq", multiline: true, multiValue: true },
-  { key: "LB", label: "LB labels", placeholder: "dd:A, pp:B", multiline: true, multiValue: true }
+  { key: "N", label: "N node name", placeholder: "Fuseki choice" }
 ];
 
 const rootPropertyFields: PropertyField[] = [

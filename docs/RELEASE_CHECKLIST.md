@@ -36,19 +36,20 @@ CI should not run platform packaging builds inside the repository smoke gate. `s
 
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` currently reports `28 passed, 0 failed, 0 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped legacy config migration UI/API surface evidence, scoped bundled/runtime asset layout surface evidence, scoped macOS two-launch save/reopen runtime evidence, scoped macOS live KataGo evidence, scoped macOS readboard runtime evidence, scoped macOS provider controlled-network evidence, and scoped multiplatform packaging smoke evidence are complete for their current gates.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `29 passed, 0 failed, 0 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped annotation UI/API evidence, scoped legacy config migration UI/API surface evidence, scoped bundled/runtime asset layout surface evidence, scoped macOS local Tauri runtime UI evidence, scoped macOS live KataGo evidence, scoped macOS readboard runtime evidence, scoped macOS provider controlled-network evidence, and scoped multiplatform packaging smoke evidence are complete for their current gates. The macOS local Tauri runtime UI evidence is recorded with `annotation_edit` and reopened `afterReopen.annotationsVerified`.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
 - The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
 - The static `sgf_existing_move_edit_surface` and `edit-existing-move` checks pass for repository-local existing-move edit surface evidence: existing SGF node edits are exposed through the command-backed edit surface and covered by repository-local wiring evidence. This is not real desktop GUI smoke proof.
+- The static `sgf_annotation_surface` check passes for scoped SGF annotation persistence evidence: SgfAnnotationPanel exposes TR/SQ/CR/MA/SL/LB/AR/LN add/update/remove controls, App saves through `updateSgfNodeProperties`, and runtime smoke records `annotation_edit` add/update/remove semantics. This is not legacy capture/import, OCR, or external client/window capture proof.
 - The static `legacy_config_migration_surface` check passes for repository-local legacy Java/Swing config migration entrypoint evidence: backend wrappers call the existing Tauri preview/apply commands, App wires path/preview/apply state, and PreferencesPanel exposes path input, Preview/Apply actions, status, warnings, and migrated fields. This is not broad migrated-config corpus, rollback, or real-user migration proof.
 - The static `runtime_asset_layout_surface` check passes for repository-local bundled/runtime asset layout surface evidence: frontend backend wrappers call the existing Tauri layout commands, and EngineSetupPanel displays bundled/runtime asset status while preserving local engine/model/config fields. This is not large-model bundling proof, installed-app bundled-engine launch proof, signing/notarization proof, or release inclusion proof.
-- `docs/qa/tauri-runtime-ui-smoke-macos.json` is the macOS local runtime evidence target from `scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json`. The repository gate requires schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, all required check names passing, top-level `firstLaunch`/`secondLaunch`/`saveReopenProof`, and semantic `secondLaunch`, `reopen`, and `afterReopen` fields proving save/reopen after a second launch.
+- `docs/qa/tauri-runtime-ui-smoke-macos.json` is the macOS local runtime evidence target from `scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json`. The repository gate requires schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, all required check names passing including `annotation_edit`, top-level `firstLaunch`/`secondLaunch`/`saveReopenProof`, and semantic `secondLaunch`, `reopen`, and `afterReopen` fields proving save/reopen after a second launch.
 - `docs/qa/katago-live-smoke-macos.json` is the macOS live KataGo CLI evidence target from `scripts/smoke_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-live-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-live-smoke.v1`, status `pass`, platform `macos`, engine/model/config metadata, and passing checks for engine assets, version probe, one-position analysis, batch analysis, and stderr capture.
 - `docs/qa/katago-tauri-runtime-smoke-macos.json` is the macOS Tauri runtime KataGo evidence target from `scripts/smoke_tauri_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-tauri-runtime-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, assets, analyze-once, analyze-game, and start/cancel.
 - `docs/qa/readboard-tauri-runtime-smoke-macos.json` is the scoped macOS Tauri runtime readboard evidence target from the readboard runtime smoke runner. The repository gate requires schema `lizzieyzy.readboard-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, sidecar probe ready/unavailable states, protocol-line sync with snapshot id, board size, move number, stone count, and player-to-play, target-state-change sync with distinct before/after snapshot ids, changed stone count or move number, and stable board size, unsupported OCR boundary behavior, and explicit markers that OCR and external client/window capture are not covered.
 - `docs/qa/provider-live-smoke-macos.json` is the scoped macOS controlled-network Tauri provider evidence target from the provider runtime smoke runner. The repository gate requires schema `lizzieyzy.provider-live-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, controlled-network Yike fetch, controlled-network Fox fetch, typed failure modes, controlled request observation, offline parser exclusion, and explicit external account/service scope limits.
 - `docs/qa/multiplatform-packaging-smoke.json` is the scoped packaging evidence target from the multiplatform packaging smoke runner. The repository gate requires schema `lizzieyzy.multiplatform-packaging-smoke.v1`, status `pass`, and passing checks for macOS, Windows, and Linux artifacts, signing-state recording, dev-server absence, and SHA-256 checksums.
-- The repository smoke gate has no pending items after scoped packaging evidence is recorded. Official signing/notarization, release publication, updater readiness, store distribution, platform-specific installed-app release smoke, and full legacy parity remain outside that proof.
+- The repository smoke gate currently has zero pending items after the annotation gate expansion because the macOS local Tauri runtime UI evidence is recorded with `annotation_edit` and reopened `afterReopen.annotationsVerified`. Official signing/notarization, release publication, updater readiness, store distribution, platform-specific installed-app release smoke, and full legacy parity remain outside that proof.
 - This status must be recorded with the scoped evidence boundaries in release notes and handoff material; do not present it as formal release publication or full parity.
 
 Frontend build:
@@ -165,7 +166,7 @@ Run this as one continuous user flow before release notes claim SGF editing, des
 - Navigate the mainline and at least one branch; confirm board state, move number, comments, captures/pass moves where present, and variation selection update together.
 - Edit a node comment and at least one node property through the intended UI or command-backed surface.
 - Append a move or pass, delete a selected non-root node/subtree, and reorder sibling variations.
-- Save or Save As, quit or restart the desktop runtime, reopen the saved SGF, and confirm comments, properties, branch order, move count, and replayed board state round-trip.
+- Save or Save As, quit or restart the desktop runtime, reopen the saved SGF, and confirm comments, properties, annotations, branch order, move count, and replayed board state round-trip.
 - Run a fake or controlled review path if a mock/fixture engine is the candidate evidence; label it as fake/controlled and do not count it as live KataGo.
 - Run the KataGo external gate only with recorded binary, model, config, OS, and success/failure output.
 - Run readboard/provider external gates only with recorded sidecar/provider environment; mark unavailable environments `SKIPPED` and keep claims limited to offline/runtime path evidence.
@@ -242,11 +243,11 @@ Pass: saved SGF is parseable and round-trips through native open.
 ### SGF Tree Editing
 
 - Navigate from mainline into at least one variation and back.
-- Edit a comment and a node property on a non-root node.
+- Edit a comment, a node property, and TR/SQ/CR/MA/SL/LB/AR/LN annotations on a non-root node.
 - Append a child move or pass from the selected node.
 - Delete a selected non-root node/subtree and confirm the parent/selection behavior is understandable.
 - Reorder sibling variations and confirm the visible tree order changes.
-- Save, restart the desktop runtime, reopen the SGF, and confirm comments, properties, appended/deleted nodes, variation order, and board replay persisted.
+- Save, restart the desktop runtime, reopen the SGF, and confirm comments, properties, annotations, appended/deleted nodes, variation order, and board replay persisted.
 
 Pass: tree editing behaves as a user-visible desktop workflow, not only as repository command-surface evidence.
 
@@ -380,7 +381,7 @@ Automated checks:
 Manual smoke:
 - SGF open: PASS/FAIL
 - SGF branch navigation: PASS/FAIL
-- SGF comment/property edit: PASS/FAIL
+- SGF comment/property/annotation edit: PASS/FAIL
 - SGF append/delete/reorder: PASS/FAIL
 - SGF save/restart/reopen round-trip: PASS/FAIL
 - Engine profile persistence: PASS/FAIL

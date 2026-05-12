@@ -43,6 +43,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shell_menu_surface", pass_names)
             self.assertIn("native_sgf_save_readback_surface", pass_names)
             self.assertIn("sgf_existing_move_edit_surface", pass_names)
+            self.assertIn("sgf_annotation_surface", pass_names)
             self.assertIn("legacy_config_migration_surface", pass_names)
             self.assertIn("runtime_asset_layout_surface", pass_names)
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
@@ -483,6 +484,83 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("ui_tauri_runtime_smoke", pending)
             self.assertIn("variation_reorder target index must be 0", pending["ui_tauri_runtime_smoke"])
 
+    def test_runtime_evidence_requires_annotation_add_update_remove_semantics(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_tauri_runtime_ui_evidence()
+            annotation = find_evidence_check(evidence, "annotation_edit")["evidence"]
+            assert isinstance(annotation, dict)
+            annotation["removed"] = []
+            annotation["annotations"]["SQ"] = ["tt"]
+            write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("ui_tauri_runtime_smoke", failures)
+            self.assertIn("ui_tauri_runtime_smoke", pending)
+            self.assertIn("annotation_edit annotations.SQ must equal []", pending["ui_tauri_runtime_smoke"])
+            self.assertIn("annotation_edit removed must be exactly SQ", pending["ui_tauri_runtime_smoke"])
+
+    def test_runtime_evidence_rejects_wrong_annotation_points(self) -> None:
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: annotation["annotations"].__setitem__("TR", ["ab"]),
+            "annotation_edit annotations.TR must equal ['aa']",
+        )
+
+    def test_runtime_evidence_rejects_wrong_annotation_labels(self) -> None:
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: annotation["annotations"].__setitem__("LB", ["aa:B", "ee:E"]),
+            "annotation_edit annotations.LB must include aa:A and ee:E",
+        )
+
+    def test_runtime_evidence_rejects_wrong_annotation_arrow_and_line(self) -> None:
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: (
+                annotation["annotations"].__setitem__("AR", ["bb:aa"]),
+                annotation["annotations"].__setitem__("LN", ["dd:cc"]),
+            ),
+            "annotation_edit annotations.AR must equal ['aa:bb']",
+        )
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: annotation["annotations"].__setitem__("LN", ["dd:cc"]),
+            "annotation_edit annotations.LN must equal ['cc:dd']",
+        )
+
+    def test_runtime_evidence_rejects_wrong_annotation_change_property_names(self) -> None:
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: annotation.__setitem__("added", ["TR", "CR", "MA", "SL", "LB", "LN"]),
+            "annotation_edit added must be exactly AR, CR, LN, MA, SL, TR",
+        )
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: annotation.__setitem__("updated", ["TR"]),
+            "annotation_edit updated must be exactly LB",
+        )
+        self.assert_invalid_annotation_evidence_pending(
+            lambda annotation: annotation.__setitem__("removed", ["CR"]),
+            "annotation_edit removed must be exactly SQ",
+        )
+
+    def assert_invalid_annotation_evidence_pending(self, mutate_annotation, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_tauri_runtime_ui_evidence()
+            annotation = find_evidence_check(evidence, "annotation_edit")["evidence"]
+            assert isinstance(annotation, dict)
+            mutate_annotation(annotation)
+            write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("ui_tauri_runtime_smoke", failures)
+            self.assertIn("ui_tauri_runtime_smoke", pending)
+            self.assertIn(expected_detail, pending["ui_tauri_runtime_smoke"])
+
     def test_runtime_evidence_requires_second_launch_reopen_fields(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -588,6 +666,30 @@ class SmokeUserFlowsTests(unittest.TestCase):
             failures = {result.name: result.detail for result in results if result.status == "FAIL"}
             self.assertIn("legacy_config_migration_surface", failures)
             self.assertIn("PreferencesPanel missing legacyConfigPath", failures["legacy_config_migration_surface"])
+
+    def test_sgf_annotation_surface_passes_with_frontend_wiring(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            passes = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("sgf_annotation_surface", failures)
+            self.assertIn("sgf_annotation_surface", passes)
+
+    def test_sgf_annotation_surface_missing_annotation_panel_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            (root / smoke_user_flows.SGF_ANNOTATION_PANEL_SOURCE).unlink()
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("sgf_annotation_surface", failures)
+            self.assertIn("SgfAnnotationPanel source", failures["sgf_annotation_surface"])
 
     def test_runtime_asset_layout_surface_passes_with_frontend_wiring(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -823,6 +925,8 @@ def create_complete_smoke_fixture(
     create_backend_fixture(root)
     create_app_fixture(root, edit_existing_move_handler=app_edit_handler)
     create_sgf_tree_panel_fixture(root)
+    create_sgf_annotation_panel_fixture(root)
+    create_runtime_smoke_fixture(root)
     create_preferences_panel_fixture(root, migration_ui=preferences_migration_ui)
     create_engine_setup_panel_fixture(root, runtime_asset_ui=runtime_asset_ui)
 
@@ -1239,6 +1343,23 @@ def valid_runtime_check_evidence(name: str) -> dict[str, object]:
     if name == "edit_move":
         vertex = {"point": {"x": 3, "y": 3}}
         return {"nodeId": "move-1", "targetVertex": vertex, "confirmedVertex": vertex}
+    if name == "annotation_edit":
+        return {
+            "nodeId": "branch-1",
+            "added": ["TR", "CR", "MA", "SL", "AR", "LN"],
+            "updated": ["LB"],
+            "removed": ["SQ"],
+            "annotations": {
+                "TR": ["aa"],
+                "SQ": [],
+                "CR": ["bb"],
+                "MA": ["cc"],
+                "SL": ["dd"],
+                "LB": ["aa:A", "ee:E"],
+                "AR": ["aa:bb"],
+                "LN": ["cc:dd"],
+            },
+        }
     if name == "delete_node":
         return {"deletedNodeId": "variation-c", "existsAfterDelete": False}
     if name == "save_readback_roundtrip":
@@ -1251,6 +1372,7 @@ def valid_runtime_check_evidence(name: str) -> dict[str, object]:
                 "treeOrderVerified": True,
                 "commentsVerified": True,
                 "propertiesVerified": True,
+                "annotationsVerified": True,
                 "moveCountVerified": True,
                 "boardStateVerified": True,
             },
@@ -1400,6 +1522,10 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
           return await invoke("edit_sgf_move", {{ sgfText, nodeId, point }});
         }}
 
+        export async function updateSgfNodeProperties(sgfText: string, nodeId: string, updates: SgfPropertyUpdate[]) {{
+          return await invoke("update_sgf_node_properties", {{ sgfText, nodeId, updates }});
+        }}
+
         export type LegacyConfigMigrationPreviewDto = {{
           sourcePath: string;
           migratedFields: string[];
@@ -1499,6 +1625,8 @@ def create_app_fixture(
           const legacyConfigStatus = "Ready to preview legacy config.";
           const legacyConfigPreview = null;
           const legacyConfigApplyResult = null;
+          const annotationError = null;
+          const isAnnotationSaving = false;
           const sgfTextEditVersionRef = {{ current: 0 }};
           async function loadAppPreferences() {{
             return {{}};
@@ -1515,6 +1643,15 @@ def create_app_fixture(
             await loadEngineProfilesSettings();
             return result;
           }}
+          async function handleSaveAnnotations(nodeId, updates) {{
+            try {{
+              setAnnotationError(null);
+              return await updateSgfNodeProperties(sgfText, nodeId, updates);
+            }} catch (error) {{
+              setAnnotationError(`Save annotations failed: ${{error}}`);
+              throw error;
+            }}
+          }}
           async function handleSaveSgfDocument(saveAs = false) {{
             try {{
               {save_body}
@@ -1523,7 +1660,7 @@ def create_app_fixture(
             }}
           }}
           {edit_handler_body}
-          return {{ handleSaveSgfDocument, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
+          return {{ handleSaveSgfDocument, handleSaveAnnotations, annotationError, isAnnotationSaving, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
         }}
         """,
     )
@@ -1537,11 +1674,75 @@ def create_sgf_tree_panel_fixture(root: Path) -> None:
           moveEditMode: "append" | "existing";
           canEditSelectedMove: boolean;
           onEditSelectedMovePass: (nodeId: string) => void;
+          onSaveAnnotations: (nodeId: string, updates: unknown[]) => void;
+          isAnnotationSaving: boolean;
+          annotationError: string | null;
         };
 
-        export function SgfTreePanel({ moveEditMode, canEditSelectedMove, onEditSelectedMovePass }: Props) {
-          return { moveEditMode, canEditSelectedMove, onEditSelectedMovePass };
+        export function SgfTreePanel({ moveEditMode, canEditSelectedMove, onEditSelectedMovePass, onSaveAnnotations, isAnnotationSaving, annotationError }: Props) {
+          return <SgfAnnotationPanel onSaveAnnotations={onSaveAnnotations} isSaving={isAnnotationSaving} error={annotationError} moveEditMode={moveEditMode} canEditSelectedMove={canEditSelectedMove} onEditSelectedMovePass={onEditSelectedMovePass} />;
         }
+        """,
+    )
+
+
+def create_sgf_annotation_panel_fixture(root: Path) -> None:
+    write(
+        root / smoke_user_flows.SGF_ANNOTATION_PANEL_SOURCE,
+        """
+        import type { SgfPropertyUpdate } from "../api/backend";
+
+        const annotationFields = ["TR", "SQ", "CR", "MA", "SL", "LB", "AR", "LN"];
+
+        export function SgfAnnotationPanel({ onSaveAnnotations, error }) {
+          return (
+            <section aria-label="SGF node annotations">
+              {annotationFields.map((key) => (
+                <label key={key}>{key}<textarea aria-label={`${key} annotation values`} /></label>
+              ))}
+              <button>Add</button>
+              <button>Remove aa</button>
+              <button>Clear</button>
+              {error ? <p role="alert">{error}</p> : null}
+              <button onClick={() => onSaveAnnotations("node-1", [] as SgfPropertyUpdate[])}>Save Annotations</button>
+            </section>
+          );
+        }
+        """,
+    )
+
+
+def create_runtime_smoke_fixture(root: Path) -> None:
+    write(
+        root / "apps/desktop/src/runtimeSmoke.ts",
+        """
+        const expectedBranchAnnotations = {
+          TR: ["aa"],
+          SQ: [],
+          CR: ["bb"],
+          MA: ["cc"],
+          SL: ["dd"],
+          LB: ["aa:A", "ee:E"],
+          AR: ["aa:bb"],
+          LN: ["cc:dd"]
+        };
+
+        async function runEditSavePhase() {
+          await check(report, "annotation_edit", async () => ({
+            annotations: expectedBranchAnnotations,
+            added: ["TR", "CR", "MA", "SL", "AR", "LN"],
+            updated: ["LB"],
+            removed: ["SQ"]
+          }));
+        }
+
+        function verifyReopenedState() {
+          const annotationsVerified = true;
+          assertPropertyAbsent(node, "SQ");
+          return { annotationsVerified };
+        }
+
+        function assertPropertyAbsent() {}
         """,
     )
 

@@ -32,6 +32,7 @@ TAURI_RUNTIME_UI_SMOKE_REQUIRED_CHECKS = [
     "branch_navigation",
     "comment_edit",
     "property_edit",
+    "annotation_edit",
     "append_move",
     "edit_move",
     "delete_node",
@@ -131,6 +132,7 @@ LEGACY_SHELL_SOURCE = "apps/desktop/src/components/LegacyShell.tsx"
 APP_SOURCE = "apps/desktop/src/App.tsx"
 BACKEND_SOURCE = "apps/desktop/src/api/backend.ts"
 SGF_TREE_PANEL_SOURCE = "apps/desktop/src/components/SgfTreePanel.tsx"
+SGF_ANNOTATION_PANEL_SOURCE = "apps/desktop/src/components/SgfAnnotationPanel.tsx"
 PREFERENCES_PANEL_SOURCE = "apps/desktop/src/components/PreferencesPanel.tsx"
 ENGINE_SETUP_PANEL_SOURCE = "apps/desktop/src/components/EngineSetupPanel.tsx"
 LEGACY_SHELL_MENU_SURFACE = {
@@ -385,6 +387,83 @@ class UserFlowSmoke:
         self.pass_(
             "sgf_existing_move_edit_surface",
             "edit_sgf_move is defined/registered and frontend backend/App/SgfTreePanel edit-existing-move surface is wired",
+        )
+
+    def check_sgf_annotation_surface(self) -> None:
+        sources = {
+            "backend source": self.path(BACKEND_SOURCE),
+            "App source": self.path(APP_SOURCE),
+            "SgfTreePanel source": self.path(SGF_TREE_PANEL_SOURCE),
+            "SgfAnnotationPanel source": self.path(SGF_ANNOTATION_PANEL_SOURCE),
+            "runtime smoke source": self.path("apps/desktop/src/runtimeSmoke.ts"),
+            "Tauri command source": self.path("apps/desktop/src-tauri/src/lib.rs"),
+        }
+        frontend_paths = [path for label, path in sources.items() if label != "Tauri command source"]
+        if not any(path.is_file() for path in frontend_paths):
+            self.pending(
+                "sgf_annotation_surface",
+                "annotation source files absent in reduced fixture; full repository smoke must include SGF annotation editor and runtime smoke evidence",
+            )
+            return
+        missing_sources = [label for label, path in sources.items() if not path.is_file()]
+        if missing_sources:
+            self.fail("sgf_annotation_surface", "missing source file(s): " + ", ".join(missing_sources))
+            return
+
+        backend_text = self.read_text(BACKEND_SOURCE)
+        app_text = self.read_text(APP_SOURCE)
+        tree_panel_text = self.read_text(SGF_TREE_PANEL_SOURCE)
+        annotation_panel_text = self.read_text(SGF_ANNOTATION_PANEL_SOURCE)
+        runtime_smoke_text = self.read_text("apps/desktop/src/runtimeSmoke.ts")
+        tauri_text = self.read_text("apps/desktop/src-tauri/src/lib.rs")
+        if None in (backend_text, app_text, tree_panel_text, annotation_panel_text, runtime_smoke_text, tauri_text):
+            return
+
+        failures = [
+            *missing_tauri_command_surface(tauri_text or "", ["update_sgf_node_properties"]),
+            *missing_required_tokens(backend_text or "", "backend", ["updateSgfNodeProperties", "update_sgf_node_properties"]),
+            *missing_required_tokens(
+                app_text or "",
+                "App",
+                ["handleSaveAnnotations", "annotationError", "setAnnotationError", "isAnnotationSaving", "updateSgfNodeProperties"],
+            ),
+            *missing_required_tokens(
+                tree_panel_text or "",
+                "SgfTreePanel",
+                ["SgfAnnotationPanel", "onSaveAnnotations", "isAnnotationSaving", "annotationError"],
+            ),
+            *missing_required_tokens(
+                annotation_panel_text or "",
+                "SgfAnnotationPanel",
+                [
+                    "TR",
+                    "SQ",
+                    "CR",
+                    "MA",
+                    "SL",
+                    "LB",
+                    "AR",
+                    "LN",
+                    "Save Annotations",
+                    "Remove",
+                    "Clear",
+                    "role",
+                    "alert",
+                    "SgfPropertyUpdate",
+                ],
+            ),
+            *missing_required_tokens(
+                runtime_smoke_text or "",
+                "runtimeSmoke",
+                ["annotation_edit", "expectedBranchAnnotations", "annotationsVerified", "assertPropertyAbsent"],
+            ),
+        ]
+        if failures:
+            self.fail("sgf_annotation_surface", "missing SGF annotation surface: " + ", ".join(failures))
+            return
+        self.pass_(
+            "sgf_annotation_surface",
+            "SGF annotation editor and runtime smoke evidence cover TR/SQ/CR/MA/SL/LB/AR/LN add/update/remove through update_sgf_node_properties",
         )
 
     def check_legacy_config_migration_surface(self) -> None:
@@ -693,6 +772,7 @@ class UserFlowSmoke:
         self.check_legacy_shell_menu_surface()
         self.check_native_sgf_save_readback_surface()
         self.check_sgf_existing_move_edit_surface()
+        self.check_sgf_annotation_surface()
         self.check_legacy_config_migration_surface()
         self.check_runtime_asset_layout_surface()
         self.check_external_runtime_gates()
@@ -1440,10 +1520,60 @@ def validate_tauri_runtime_ui_semantic_checks(checks: list[Any]) -> list[str]:
     }
     failures: list[str] = []
     failures.extend(validate_variation_reorder_evidence(check_by_name.get("variation_reorder")))
+    failures.extend(validate_annotation_edit_evidence(check_by_name.get("annotation_edit")))
     failures.extend(validate_edit_move_evidence(check_by_name.get("edit_move")))
     failures.extend(validate_delete_node_evidence(check_by_name.get("delete_node")))
     failures.extend(validate_save_readback_roundtrip_evidence(check_by_name.get("save_readback_roundtrip")))
     failures.extend(validate_board_state_evidence(check_by_name.get("board_state_verified")))
+    return failures
+
+
+def validate_annotation_edit_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["annotation_edit evidence must be an object"]
+    failures: list[str] = []
+    annotations = evidence.get("annotations")
+    if not isinstance(annotations, dict):
+        failures.append("annotation_edit annotations must be an object")
+        return failures
+    expected_annotations = {
+        "TR": ["aa"],
+        "SQ": [],
+        "CR": ["bb"],
+        "MA": ["cc"],
+        "SL": ["dd"],
+        "AR": ["aa:bb"],
+        "LN": ["cc:dd"],
+    }
+    for key, expected_values in expected_annotations.items():
+        values = annotations.get(key)
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            failures.append(f"annotation_edit annotations.{key} must be a string list")
+            continue
+        if values != expected_values:
+            failures.append(f"annotation_edit annotations.{key} must equal {expected_values!r}")
+    label_values = annotations.get("LB")
+    if not isinstance(label_values, list) or any(not isinstance(value, str) for value in label_values):
+        failures.append("annotation_edit annotations.LB must be a string list")
+    else:
+        missing_labels = [value for value in ("aa:A", "ee:E") if value not in label_values]
+        if missing_labels:
+            failures.append("annotation_edit annotations.LB must include aa:A and ee:E")
+    expected_lists = {
+        "added": {"TR", "CR", "MA", "SL", "AR", "LN"},
+        "updated": {"LB"},
+        "removed": {"SQ"},
+    }
+    for field, expected_values in expected_lists.items():
+        values = evidence.get(field)
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            failures.append(f"annotation_edit {field} must be a string list")
+            continue
+        actual = set(values)
+        if actual != expected_values:
+            expected_label = ", ".join(sorted(expected_values))
+            failures.append(f"annotation_edit {field} must be exactly {expected_label}")
     return failures
 
 
@@ -1558,6 +1688,7 @@ def validate_two_launch_save_reopen_evidence(evidence: dict[str, Any]) -> list[s
         "treeOrderVerified": ("treeOrderVerified", "tree_order_verified"),
         "commentsVerified": ("commentsVerified", "comments_verified"),
         "propertiesVerified": ("propertiesVerified", "properties_verified"),
+        "annotationsVerified": ("annotationsVerified", "annotations_verified"),
         "moveCountVerified": ("moveCountVerified", "move_count_verified"),
         "boardStateVerified": ("boardStateVerified", "board_state_verified"),
     }

@@ -38,6 +38,7 @@ type RuntimeSmokeCheckName =
   | "branch_navigation"
   | "comment_edit"
   | "property_edit"
+  | "annotation_edit"
   | "append_move"
   | "edit_move"
   | "delete_node"
@@ -109,6 +110,7 @@ type RuntimeSmokeExpectedEvidence = {
   branchComment: string;
   branchName: string;
   branchLabel: string;
+  branchAnnotations: Record<string, string[]>;
   deletedTargetVertex: string;
   editTargetVertex: string;
   appendColor: PlayerColor;
@@ -232,6 +234,16 @@ const truthyValues = new Set(["1", "true", "yes", "on"]);
 const expectedBranchComment = "runtime smoke branch persisted";
 const expectedBranchName = "runtime-smoke-branch";
 const expectedBranchLabel = "aa:A";
+const expectedBranchAnnotations: Record<string, string[]> = {
+  TR: ["aa"],
+  SQ: [],
+  CR: ["bb"],
+  MA: ["cc"],
+  SL: ["dd"],
+  LB: [expectedBranchLabel, "ee:E"],
+  AR: ["aa:bb"],
+  LN: ["cc:dd"]
+};
 const replayInvariant = "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position";
 const defaultKatagoMaxVisits = 32;
 const defaultKatagoGameMaxVisits = 16;
@@ -382,7 +394,8 @@ async function runEditSavePhase(report: RuntimeSmokeReport, sgfPath: string, pha
   edited = (await check(report, "property_edit", async () => {
     const result = await updateSgfNodeProperties(edited, branchNode.id, [
       { key: "N", values: [expectedBranchName] },
-      { key: "LB", values: [expectedBranchLabel] }
+      { key: "LB", values: [expectedBranchLabel] },
+      { key: "SQ", values: ["hh"] }
     ]);
     const tree = await parseSgfTree(result.sgf_text);
     const node = requireNode(tree, branchNode.id, "property-edited branch node");
@@ -393,6 +406,29 @@ async function runEditSavePhase(report: RuntimeSmokeReport, sgfPath: string, pha
       details: {
         nodeId: result.node_id,
         expectedProperties: { N: expectedBranchName, LB: expectedBranchLabel }
+      }
+    };
+  })).sgfText;
+
+  edited = (await check(report, "annotation_edit", async () => {
+    const result = await updateSgfNodeProperties(edited, branchNode.id, Object.entries(expectedBranchAnnotations).map(([key, values]) => ({ key, values })));
+    const tree = await parseSgfTree(result.sgf_text);
+    const node = requireNode(tree, branchNode.id, "annotation-edited branch node");
+    for (const [key, values] of Object.entries(expectedBranchAnnotations)) {
+      if (values.length === 0) {
+        assertPropertyAbsent(node, key);
+      } else {
+        for (const value of values) assertPropertyValue(node, key, value);
+      }
+    }
+    return {
+      sgfText: result.sgf_text,
+      details: {
+        nodeId: result.node_id,
+        added: ["TR", "CR", "MA", "SL", "AR", "LN"],
+        updated: ["LB"],
+        removed: ["SQ"],
+        annotations: expectedBranchAnnotations
       }
     };
   })).sgfText;
@@ -525,6 +561,7 @@ async function runEditSavePhase(report: RuntimeSmokeReport, sgfPath: string, pha
     branchComment: expectedBranchComment,
     branchName: expectedBranchName,
     branchLabel: expectedBranchLabel,
+    branchAnnotations: expectedBranchAnnotations,
     deletedTargetVertex: editVertexKey,
     editTargetVertex: editVertexKey,
     appendColor,
@@ -998,6 +1035,7 @@ async function verifyReopenedState(
     comment: node.comment,
     expectedComment: expected.branchComment,
     expectedProperties: { N: expected.branchName, LB: expected.branchLabel },
+    expectedAnnotations: expected.branchAnnotations,
     deletedTargetVertex: expected.deletedTargetVertex,
     targetExistsAfterReopen,
     absentAfterReopen: !targetExistsAfterReopen,
@@ -1010,6 +1048,7 @@ async function verifyReopenedState(
     treeOrderVerified: parent.child_ids.length === expected.siblingCountAfterDelete,
     commentsVerified: node.comment === expected.branchComment,
     propertiesVerified: hasPropertyValue(node, "N", expected.branchName) && hasPropertyValue(node, "LB", expected.branchLabel),
+    annotationsVerified: annotationsMatch(node, expected.branchAnnotations),
     moveCountVerified: replay.moveCount === expected.savedMoveCount && replay.positionCount === expected.savedPositionCount,
     boardStateVerified: true,
     invariant: expected.invariant,
@@ -1281,6 +1320,7 @@ function normalizeExpectedEvidence(value: Record<string, unknown>): RuntimeSmoke
   const branchComment = requiredString(value.branchComment, "expected.branchComment");
   const branchName = requiredString(value.branchName, "expected.branchName");
   const branchLabel = requiredString(value.branchLabel, "expected.branchLabel");
+  const branchAnnotations = normalizeExpectedAnnotations(value.branchAnnotations);
   const deletedTargetVertex = requiredString(value.deletedTargetVertex, "expected.deletedTargetVertex");
   const editTargetVertex = requiredString(value.editTargetVertex, "expected.editTargetVertex");
   const appendColor = value.appendColor === "black" || value.appendColor === "white" ? value.appendColor : null;
@@ -1294,6 +1334,7 @@ function normalizeExpectedEvidence(value: Record<string, unknown>): RuntimeSmoke
     branchComment,
     branchName,
     branchLabel,
+    branchAnnotations,
     deletedTargetVertex,
     editTargetVertex,
     appendColor,
@@ -1399,6 +1440,31 @@ function assertPropertyValue(node: SgfTreeNodeDto, key: string, expectedValue: s
 function hasPropertyValue(node: SgfTreeNodeDto, key: string, expectedValue: string): boolean {
   const values = node.properties.find((property) => property.key === key)?.values ?? [];
   return values.includes(expectedValue);
+}
+
+function assertPropertyAbsent(node: SgfTreeNodeDto, key: string) {
+  const values = node.properties.find((property) => property.key === key)?.values ?? [];
+  if (values.length > 0) throw new Error(`${key} property was expected to be removed.`);
+}
+
+function annotationsMatch(node: SgfTreeNodeDto, expected: Record<string, string[]>): boolean {
+  return Object.entries(expected).every(([key, values]) => {
+    const actual = node.properties.find((property) => property.key === key)?.values ?? [];
+    return actual.length === values.length && values.every((value) => actual.includes(value));
+  });
+}
+
+function normalizeExpectedAnnotations(value: unknown): Record<string, string[]> {
+  if (!isRecord(value)) throw new Error("expected.branchAnnotations must be an object.");
+  const normalized: Record<string, string[]> = {};
+  for (const key of ["TR", "SQ", "CR", "MA", "SL", "LB", "AR", "LN"]) {
+    const raw = value[key];
+    if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+      throw new Error(`expected.branchAnnotations.${key} must be a string array.`);
+    }
+    normalized[key] = raw;
+  }
+  return normalized;
 }
 
 function assertNonEmptyString(value: string, message: string) {

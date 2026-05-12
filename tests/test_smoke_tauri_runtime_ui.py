@@ -61,6 +61,27 @@ class SmokeTauriRuntimeUiTests(unittest.TestCase):
 
         self.assertIn("edit_move confirmed vertex must match target vertex", failures)
 
+    def test_validate_report_rejects_invalid_annotation_evidence(self) -> None:
+        report = valid_report()
+        check = find_check(report, "annotation_edit")
+        check["evidence"]["annotations"]["TR"] = ["ab"]
+        check["evidence"]["annotations"]["LB"] = ["aa:B", "ee:E"]
+        check["evidence"]["annotations"]["AR"] = ["bb:aa"]
+        check["evidence"]["annotations"]["LN"] = ["dd:cc"]
+        check["evidence"]["added"] = ["TR", "CR", "MA", "SL", "LB", "LN"]
+        check["evidence"]["updated"] = ["TR"]
+        check["evidence"]["removed"] = ["CR"]
+
+        failures = smoke_tauri_runtime_ui.validate_report(report)
+
+        self.assertIn("annotation_edit annotations.TR must equal ['aa']", failures)
+        self.assertIn("annotation_edit annotations.LB must include aa:A and ee:E", failures)
+        self.assertIn("annotation_edit annotations.AR must equal ['aa:bb']", failures)
+        self.assertIn("annotation_edit annotations.LN must equal ['cc:dd']", failures)
+        self.assertIn("annotation_edit added must be exactly AR, CR, LN, MA, SL, TR", failures)
+        self.assertIn("annotation_edit updated must be exactly LB", failures)
+        self.assertIn("annotation_edit removed must be exactly SQ", failures)
+
     def test_validate_report_rejects_delete_node_without_absence_confirmation(self) -> None:
         report = valid_report()
         check = find_check(report, "delete_node")
@@ -135,6 +156,8 @@ class SmokeTauriRuntimeUiTests(unittest.TestCase):
             self.assertEqual("reopen-verify", written["secondLaunch"]["phase"])
             self.assertTrue(written["saveReopenProof"]["distinctProcesses"])
             self.assertIn("checks", written)
+            roundtrip = find_check(written, "save_readback_roundtrip")
+            self.assertTrue(roundtrip["evidence"]["afterReopen"]["annotationsVerified"])
 
     def test_run_returns_failure_for_invalid_report(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -222,6 +245,23 @@ def valid_evidence_for(name: str) -> dict[str, object]:
     if name == "edit_move":
         vertex = {"point": {"x": 3, "y": 3}}
         return {"nodeId": "move-1", "targetVertex": vertex, "confirmedVertex": vertex}
+    if name == "annotation_edit":
+        return {
+            "nodeId": "branch-1",
+            "added": ["TR", "CR", "MA", "SL", "AR", "LN"],
+            "updated": ["LB"],
+            "removed": ["SQ"],
+            "annotations": {
+                "TR": ["aa"],
+                "SQ": [],
+                "CR": ["bb"],
+                "MA": ["cc"],
+                "SL": ["dd"],
+                "LB": ["aa:A", "ee:E"],
+                "AR": ["aa:bb"],
+                "LN": ["cc:dd"],
+            },
+        }
     if name == "delete_node":
         return {"deletedNodeId": "variation-c", "existsAfterDelete": False}
     if name == "save_readback_roundtrip":
@@ -233,6 +273,7 @@ def valid_evidence_for(name: str) -> dict[str, object]:
             "treeOrderVerified": True,
             "commentsVerified": True,
             "propertiesVerified": True,
+            "annotationsVerified": True,
             "moveCountVerified": True,
             "boardStateVerified": True,
             "absentAfterReopen": True,

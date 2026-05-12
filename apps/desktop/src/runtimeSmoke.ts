@@ -26,6 +26,7 @@ import {
   type InstalledAppRuntimeProofDto
 } from "./api/backend";
 import {
+  captureReadboardExternal,
   fetchFoxProvider,
   fetchYikeProvider,
   importProviderPayload,
@@ -63,6 +64,7 @@ type RuntimeSmokeCheckName =
   | "target_state_change_sync"
   | "arbitrary_ocr_not_covered"
   | "external_client_not_covered"
+  | "readboard_external_capture_mvp"
   | "backend_runtime_proof_observed"
   | "runtime_source_observed"
   | "backend_availability_observed"
@@ -118,6 +120,7 @@ type RuntimeSmokeReport = {
   katago?: KataGoLiveSmokeEvidence;
   katagoWorkflowCache?: KataGoWorkflowCacheEvidence;
   readboard?: ReadboardLiveSmokeEvidence;
+  readboardExternalCaptureMvp?: ReadboardExternalCaptureMvpEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
   installedAppRuntimeProof?: InstalledAppRuntimeProofEvidence;
@@ -125,7 +128,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -295,6 +298,39 @@ type ReadboardLiveSmokeEvidence = {
   targetStateChangeSync?: ReadboardTargetStateChangeEvidence;
   arbitraryOcrNotCovered?: Record<string, unknown>;
   externalClientNotCovered?: Record<string, unknown>;
+};
+type ReadboardExternalCaptureMvpEvidence = {
+  rawBackendResult?: Record<string, unknown>;
+  captureArtifact?: {
+    path: string;
+    sanitized: true;
+    sizeBytes: number;
+    sha256: string;
+  };
+  captureSource?: {
+    operatorInitiated: false;
+    userSelectionRequired: false;
+    selection: null;
+    sourceKind: "local_image";
+    requestedSource: "local_image";
+    localImageProvided: true;
+    selectedScreenRegionCovered: false;
+    externalScreenRegionCovered: false;
+    externalWindowRegionCovered: false;
+    targetClientDiscoveryCovered: false;
+    externalClientCaptureCovered: false;
+  };
+  previewConfirmation?: {
+    previewOnlyBeforeConfirmation: false;
+    boardReplacedBeforeConfirmation: false;
+    userConfirmed: false;
+    boardReplacedOnlyAfterConfirmation: false;
+    previewConfirmationObserved: false;
+    boardReplacementObserved: false;
+    fullOcrParity: false;
+    fullReadboardParity: false;
+    targetClientParity: false;
+  };
 };
 type ReadboardProtocolLineEvidence = {
   snapshotId: string;
@@ -496,6 +532,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runInstalledAppKataGoLiveWorkflowPhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "readboard-live") {
       await runReadboardLivePhase(report);
+    } else if (resolvedConfig.phase === "readboard-external-capture-mvp") {
+      await runReadboardExternalCaptureMvpPhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "katago-live-workflow-cache") {
@@ -1220,6 +1258,65 @@ async function runReadboardLivePhase(report: RuntimeSmokeReport) {
       externalClientCaptureCovered: false
     };
     return evidence.externalClientNotCovered;
+  });
+}
+
+async function runReadboardExternalCaptureMvpPhase(report: RuntimeSmokeReport) {
+  const endpoint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ENDPOINT");
+  const imagePath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH");
+  if (!imagePath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH is required for readboard-external-capture-mvp.");
+  const evidence: ReadboardExternalCaptureMvpEvidence = {};
+  report.readboardExternalCaptureMvp = evidence;
+
+  await check(report, "readboard_external_capture_mvp", async () => {
+    const result = await captureReadboardExternal({
+      source: "local_image",
+      endpoint,
+      image_path: imagePath,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_external_capture_mvp",
+        scope: "operator_selected_local_image_capture_mvp_not_full_ocr_readboard_or_target_client_parity"
+      }
+    });
+    evidence.rawBackendResult = result as Record<string, unknown>;
+    const status = normalizeCaptureStatus(result.status);
+    if (status !== "captured") {
+      throw new Error(`Readboard external capture MVP expected captured backend status, got ${String(result.status || "empty")}.`);
+    }
+    const artifact = summarizeReadboardCaptureArtifact(result, imagePath);
+    evidence.captureArtifact = artifact;
+    evidence.captureSource = {
+      operatorInitiated: false,
+      userSelectionRequired: false,
+      selection: null,
+      sourceKind: "local_image",
+      requestedSource: "local_image",
+      localImageProvided: true,
+      selectedScreenRegionCovered: false,
+      externalScreenRegionCovered: false,
+      externalWindowRegionCovered: false,
+      targetClientDiscoveryCovered: false,
+      externalClientCaptureCovered: false
+    };
+    evidence.previewConfirmation = {
+      previewOnlyBeforeConfirmation: false,
+      boardReplacedBeforeConfirmation: false,
+      userConfirmed: false,
+      boardReplacedOnlyAfterConfirmation: false,
+      previewConfirmationObserved: false,
+      boardReplacementObserved: false,
+      fullOcrParity: false,
+      fullReadboardParity: false,
+      targetClientParity: false
+    };
+    return evidence;
+  });
+
+  await check(report, "scope_boundaries_recorded", async () => {
+    if (!evidence.previewConfirmation) throw new Error("Readboard capture MVP boundary evidence was not recorded.");
+    return evidence.previewConfirmation;
   });
 }
 
@@ -2247,6 +2344,8 @@ function runtimeSmokeStaticEnv(name: string): string | undefined {
       return env?.VITE_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL;
     case "TAURI_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL":
       return env?.TAURI_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL;
+    case "VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH":
+      return env?.VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH;
     default:
       return undefined;
   }
@@ -2259,6 +2358,7 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "katago-live" ||
     value === "katago-live-workflow-cache" ||
     value === "readboard-live" ||
+    value === "readboard-external-capture-mvp" ||
     value === "provider-live" ||
     value === "webview-dom-click" ||
     value === "installed-app-runtime-proof" ||
@@ -2269,7 +2369,11 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
 }
 
 function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
-  return phase !== "provider-live" && phase !== "readboard-live" && phase !== "webview-dom-click" && phase !== "installed-app-runtime-proof";
+  return phase !== "provider-live" &&
+    phase !== "readboard-live" &&
+    phase !== "readboard-external-capture-mvp" &&
+    phase !== "webview-dom-click" &&
+    phase !== "installed-app-runtime-proof";
 }
 
 function requireRuntimeSmokeSgfPath(sgfPath: string | null): string {
@@ -2620,6 +2724,60 @@ function normalizeExpectedAnnotations(value: unknown): Record<string, string[]> 
 
 function assertNonEmptyString(value: string, message: string) {
   if (!value.trim()) throw new Error(message);
+}
+
+function normalizeCaptureStatus(value: unknown): string {
+  const status = typeof value === "string" ? value.toLowerCase() : "";
+  if (status.includes("captured") || status === "ok" || status === "success") return "captured";
+  if (status.includes("cancel")) return "cancelled";
+  if (status.includes("permission") || status.includes("denied")) return "permission";
+  if (status.includes("decode") || status.includes("image")) return "decode_error";
+  if (status.includes("unsupported") || status.includes("browser preview") || status.includes("unknown command")) return "unsupported";
+  return status || "error";
+}
+
+function summarizeReadboardCaptureArtifact(
+  result: Record<string, unknown>,
+  inputPath: string
+): ReadboardExternalCaptureMvpEvidence["captureArtifact"] {
+  const sha256 = readStringField(result, "sha256");
+  if (!sha256 || !/^[a-fA-F0-9]{64}$/.test(sha256)) throw new Error("Readboard capture MVP did not return a stable 64-char sha256.");
+  const sizeBytes = readNumberField(result, "size") ?? readNumberField(result, "sizeBytes");
+  if (sizeBytes === null || sizeBytes <= 0) throw new Error("Readboard capture MVP did not return a positive artifact size.");
+  const path = stableReadboardCapturePath(inputPath);
+  return {
+    path,
+    sanitized: true,
+    sizeBytes,
+    sha256
+  };
+}
+
+function stableReadboardCapturePath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").trim();
+  if (normalized.endsWith("tests/fixtures/readboard-images/controlled-19-three-stones.ppm")) {
+    return "tests/fixtures/readboard-images/controlled-19-three-stones.ppm";
+  }
+  if (normalized === "tests/fixtures/readboard-images/controlled-19-three-stones.ppm") return normalized;
+  if (normalized.endsWith("docs/qa/fixtures/readboard-controlled-board.png")) {
+    return "docs/qa/fixtures/readboard-controlled-board.png";
+  }
+  if (normalized === "docs/qa/fixtures/readboard-controlled-board.png") return normalized;
+  throw new Error(
+    "Readboard capture MVP evidence must use tests/fixtures/readboard-images/controlled-19-three-stones.ppm " +
+      "or docs/qa/fixtures/readboard-controlled-board.png as the stable artifact path."
+  );
+}
+
+function readStringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readNumberField(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function summarizeReadboardProtocolSync(result: { snapshot_id: string; position?: { board_size: number; move_number: number; stones: unknown[]; to_play: PlayerColor } | null; warnings: string[] }): ReadboardProtocolLineEvidence {

@@ -74,6 +74,7 @@ export async function captureReadboardExternal(request: ReadboardExternalCapture
       request: {
         captureSource: request.source,
         endpoint: request.endpoint ?? null,
+        imagePath: request.image_path ?? null,
         windowTitle: request.window_title ?? null,
         timeoutMs: request.timeout_ms ?? null,
         metadata: request.metadata

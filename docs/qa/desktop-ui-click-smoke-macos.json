@@ -23,7 +23,7 @@
     },
     {
       "details": {
-        "clickedCount": 17,
+        "clickedCount": 25,
         "controls": [
           "[data-testid=\"toolbar-load-sample\"]",
           "[data-testid=\"toolbar-parse-sgf\"]",
@@ -41,7 +41,15 @@
           "[data-testid=\"provider-source-input\"]",
           "[data-testid=\"preferences-board-theme\"]",
           "[data-testid=\"preferences-toggle-candidates\"]",
-          "[data-testid=\"engine-runtime-assets-refresh\"]"
+          "[data-testid=\"engine-runtime-assets-refresh\"]",
+          "[data-testid=\"legacy-menu-view-candidates\"]",
+          "[data-testid=\"legacy-menu-view-ownership\"]",
+          "[data-testid=\"legacy-menu-view-policy\"]",
+          "[data-testid=\"legacy-menu-engine-profiles\"]",
+          "[data-testid=\"legacy-menu-engine-assets\"]",
+          "[data-testid=\"legacy-menu-tools-providers\"]",
+          "[data-testid=\"legacy-menu-tools-preferences\"]",
+          "[data-testid=\"legacy-menu-help-backend-status\"]"
         ]
       },
       "name": "real_clicks_dispatched",
@@ -60,6 +68,15 @@
         "reason": "Open/Save/Save As/import controls are selector-visible but not clicked because this browser smoke does not prove native dialogs."
       },
       "name": "native_dialog_boundary",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "activeTargetCount": 8,
+        "clickedCount": 8,
+        "failures": []
+      },
+      "name": "legacy_shell_menu_action_smoke",
       "status": "pass"
     },
     {
@@ -195,11 +212,327 @@
       "name": "runtime assets refresh",
       "selector": "[data-testid=\"engine-runtime-assets-refresh\"]",
       "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "View",
+      "label": "Candidates",
+      "name": "View:Candidates",
+      "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+      "target": "candidates",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "View",
+      "label": "Ownership",
+      "name": "View:Ownership",
+      "selector": "[data-testid=\"legacy-menu-view-ownership\"]",
+      "target": "ownership",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "View",
+      "label": "Policy",
+      "name": "View:Policy",
+      "selector": "[data-testid=\"legacy-menu-view-policy\"]",
+      "target": "policy",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "Engine",
+      "label": "Profiles",
+      "name": "Engine:Profiles",
+      "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+      "target": "profiles",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "Engine",
+      "label": "Assets",
+      "name": "Engine:Assets",
+      "selector": "[data-testid=\"legacy-menu-engine-assets\"]",
+      "target": "assets",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "Tools",
+      "label": "Providers",
+      "name": "Tools:Providers",
+      "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+      "target": "providers",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "Tools",
+      "label": "Preferences",
+      "name": "Tools:Preferences",
+      "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+      "target": "preferences",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "group": "Help",
+      "label": "Backend status",
+      "name": "Help:Backend status",
+      "selector": "[data-testid=\"legacy-menu-help-backend-status\"]",
+      "target": "backend-status",
+      "visible": true
     }
   ],
   "collectionMethod": "vite-browser-playwright-dom-click-screenshot",
-  "completedAt": "2026-05-12T02:19:33Z",
+  "completedAt": "2026-05-12T04:38:16Z",
   "failures": [],
+  "legacyShellMenuActionSmoke": {
+    "activeTargets": [
+      {
+        "active": true,
+        "lastAction": "View:Candidates",
+        "name": "View:Candidates",
+        "selector": "#legacy-menu-target-candidates",
+        "status": "focused",
+        "target": "candidates",
+        "text": "Candidates",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "View:Ownership",
+        "name": "View:Ownership",
+        "selector": "#legacy-menu-target-ownership",
+        "status": "focused",
+        "target": "ownership",
+        "text": "Position\nVisits\n937\nBlack winrate\n60.0%\nScore lead\n2.8\nOwnership\nnone\nPolicy\nnone",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "View:Policy",
+        "name": "View:Policy",
+        "selector": "#legacy-menu-target-policy",
+        "status": "focused",
+        "target": "policy",
+        "text": "Policy\n\nNo policy data for this move.",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "Engine:Profiles",
+        "name": "Engine:Profiles",
+        "selector": "#legacy-menu-target-profiles",
+        "status": "focused",
+        "target": "profiles",
+        "text": "Local KataGo",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "Engine:Assets",
+        "name": "Engine:Assets",
+        "selector": "#legacy-menu-target-assets",
+        "status": "focused",
+        "target": "assets",
+        "text": "Check assets",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "Tools:Providers",
+        "name": "Tools:Providers",
+        "selector": "#legacy-menu-target-providers",
+        "status": "focused",
+        "target": "providers",
+        "text": "Provider\nFox fetch ready.\nSource\nYike\nFox\nPreview\nCommand / chessid\n\nFox accepts chessid or provider command input.\n\nFetch & import\n\nFox fetch ready.\n\nPayload / SGF\nImport pasted payload\n\nFox payload import ready.\n\nReadboard protocol preview\nReadboard probe ready.\nEndpoint\nProbe\nProtocol preview lin",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "Tools:Preferences",
+        "name": "Tools:Preferences",
+        "selector": "#legacy-menu-target-preferences",
+        "status": "focused",
+        "target": "preferences",
+        "text": "Preferences\nPreferences saved.\nCandidates\nOwnership\nPolicy\nAuto-load cache\nAuto-save analysis\nCandidates shown\nDefault visits\nReview mode\nQuick\nDeep\nBoard theme\nClassic\nHigh contrast\nLegacy config migration\nNo legacy config selected.\nLegacy config path\nPreview\nApply",
+        "visible": true
+      },
+      {
+        "active": true,
+        "lastAction": "Help:Backend status",
+        "name": "Help:Backend status",
+        "selector": "#legacy-menu-target-backend-status",
+        "status": "focused",
+        "target": "backend-status",
+        "text": "Save annotations failed: Editing SGF node properties requires the Tauri desktop backend. Browser preview cannot persist branch-safe SGF edits.",
+        "visible": true
+      }
+    ],
+    "boundaries": {
+      "browserRenderedDomObserved": true,
+      "fullLayoutParityCovered": false,
+      "fullLegacyParityCovered": false,
+      "fullShortcutParityCovered": false,
+      "nativeFileDialogCovered": false,
+      "osNativeMenuCovered": false,
+      "tauriNativeDialogProof": false,
+      "tauriWebviewDomObserved": false
+    },
+    "clickedControls": [
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "View",
+        "label": "Candidates",
+        "name": "View:Candidates",
+        "selector": "[data-testid=\"legacy-menu-view-candidates\"]",
+        "target": "candidates",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "View",
+        "label": "Ownership",
+        "name": "View:Ownership",
+        "selector": "[data-testid=\"legacy-menu-view-ownership\"]",
+        "target": "ownership",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "View",
+        "label": "Policy",
+        "name": "View:Policy",
+        "selector": "[data-testid=\"legacy-menu-view-policy\"]",
+        "target": "policy",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "Engine",
+        "label": "Profiles",
+        "name": "Engine:Profiles",
+        "selector": "[data-testid=\"legacy-menu-engine-profiles\"]",
+        "target": "profiles",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "Engine",
+        "label": "Assets",
+        "name": "Engine:Assets",
+        "selector": "[data-testid=\"legacy-menu-engine-assets\"]",
+        "target": "assets",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "Tools",
+        "label": "Providers",
+        "name": "Tools:Providers",
+        "selector": "[data-testid=\"legacy-menu-tools-providers\"]",
+        "target": "providers",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "Tools",
+        "label": "Preferences",
+        "name": "Tools:Preferences",
+        "selector": "[data-testid=\"legacy-menu-tools-preferences\"]",
+        "target": "preferences",
+        "visible": true
+      },
+      {
+        "clicked": true,
+        "enabled": true,
+        "group": "Help",
+        "label": "Backend status",
+        "name": "Help:Backend status",
+        "selector": "[data-testid=\"legacy-menu-help-backend-status\"]",
+        "target": "backend-status",
+        "visible": true
+      }
+    ],
+    "failures": [],
+    "status": "pass",
+    "visibleAssertions": [
+      {
+        "name": "View:Candidates target",
+        "selector": "#legacy-menu-target-candidates",
+        "status": "pass",
+        "text": "Candidates",
+        "visible": true
+      },
+      {
+        "name": "View:Ownership target",
+        "selector": "#legacy-menu-target-ownership",
+        "status": "pass",
+        "text": "Position\nVisits\n937\nBlack winrate\n60.0%\nScore lead\n2.8\nOwnership\nnone\nPolicy\nnone",
+        "visible": true
+      },
+      {
+        "name": "View:Policy target",
+        "selector": "#legacy-menu-target-policy",
+        "status": "pass",
+        "text": "Policy\n\nNo policy data for this move.",
+        "visible": true
+      },
+      {
+        "name": "Engine:Profiles target",
+        "selector": "#legacy-menu-target-profiles",
+        "status": "pass",
+        "text": "Local KataGo",
+        "visible": true
+      },
+      {
+        "name": "Engine:Assets target",
+        "selector": "#legacy-menu-target-assets",
+        "status": "pass",
+        "text": "Check assets",
+        "visible": true
+      },
+      {
+        "name": "Tools:Providers target",
+        "selector": "#legacy-menu-target-providers",
+        "status": "pass",
+        "text": "Provider\nFox fetch ready.\nSource\nYike\nFox\nPreview\nCommand / chessid\n\nFox accepts chessid or provider command input.\n\nFetch & import\n\nFox fetch ready.\n\nPayload / SGF\nImport pasted payload\n\nFox payload import ready.\n\nReadboard protocol preview\nReadboard probe ready.\nEndpoint\nProbe\nProtocol preview lin",
+        "visible": true
+      },
+      {
+        "name": "Tools:Preferences target",
+        "selector": "#legacy-menu-target-preferences",
+        "status": "pass",
+        "text": "Preferences\nPreferences saved.\nCandidates\nOwnership\nPolicy\nAuto-load cache\nAuto-save analysis\nCandidates shown\nDefault visits\nReview mode\nQuick\nDeep\nBoard theme\nClassic\nHigh contrast\nLegacy config migration\nNo legacy config selected.\nLegacy config path\nPreview\nApply",
+        "visible": true
+      },
+      {
+        "name": "Help:Backend status target",
+        "selector": "#legacy-menu-target-backend-status",
+        "status": "pass",
+        "text": "Save annotations failed: Editing SGF node properties requires the Tauri desktop backend. Browser preview cannot persist branch-safe SGF edits.",
+        "visible": true
+      }
+    ]
+  },
   "name": "desktop_ui_click_smoke",
   "platform": "macos",
   "schema": "lizzieyzy.desktop-ui-click-smoke.v1",
@@ -212,17 +545,17 @@
       "sha256": "1c42b37133b3d34c5b00668a62091f525c4936d0dd5458cd9c2dd1587215ba26"
     },
     {
-      "bytes": 530929,
+      "bytes": 531551,
       "name": "after-clicks",
       "path": "docs/qa/screenshots/desktop-ui-click-after-clicks.png",
-      "sha256": "72a92a54a79ffcf97969291828ec74290a618c3dc7198c8bbeb7601cd807891d"
+      "sha256": "5cdfe7a44c3a69b2bec1fadbadd99b9717f0054c557b48163ce5092c63235060"
     }
   ],
   "server": {
     "startedByRunner": true,
     "url": "http://127.0.0.1:1420"
   },
-  "startedAt": "2026-05-12T02:19:25Z",
+  "startedAt": "2026-05-12T04:38:03Z",
   "status": "pass",
   "viewport": {
     "height": 1100,

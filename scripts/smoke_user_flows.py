@@ -57,6 +57,16 @@ DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS = [
 ]
 DESKTOP_UI_CLICK_SMOKE_EVIDENCE = "docs/qa/desktop-ui-click-smoke-macos.json"
 DESKTOP_UI_CLICK_SMOKE_SCHEMA = "lizzieyzy.desktop-ui-click-smoke.v1"
+LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS = [
+    ("View:Candidates", "candidates"),
+    ("View:Ownership", "ownership"),
+    ("View:Policy", "policy"),
+    ("Engine:Profiles", "profiles"),
+    ("Engine:Assets", "assets"),
+    ("Tools:Providers", "providers"),
+    ("Tools:Preferences", "preferences"),
+    ("Help:Backend status", "backend-status"),
+]
 TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE = "docs/qa/tauri-window-runtime-smoke-macos.json"
 TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.tauri-window-runtime-smoke.v1"
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
@@ -706,6 +716,7 @@ class UserFlowSmoke:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_desktop_sgf_editing_ux_smoke_evidence()
         self.check_desktop_ui_click_smoke_evidence()
+        self.check_legacy_shell_menu_action_smoke_evidence()
         self.check_tauri_window_runtime_smoke_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
@@ -784,6 +795,33 @@ class UserFlowSmoke:
         self.pass_(
             "desktop_ui_click_smoke",
             "scoped browser-rendered desktop UI click smoke evidence passes with DOM, click, screenshot, and boundary checks",
+        )
+
+    def check_legacy_shell_menu_action_smoke_evidence(self) -> None:
+        evidence_path = self.path(DESKTOP_UI_CLICK_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "legacy_shell_menu_action_smoke",
+                f"TODO gate: run Worker-1 browser-rendered LegacyShell menu action smoke and record {DESKTOP_UI_CLICK_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(DESKTOP_UI_CLICK_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = [
+            *validate_desktop_ui_click_smoke_evidence(evidence),
+            *validate_legacy_shell_menu_action_smoke_evidence(evidence),
+        ]
+        if failures:
+            self.pending(
+                "legacy_shell_menu_action_smoke",
+                f"{DESKTOP_UI_CLICK_SMOKE_EVIDENCE} is present but not valid scoped browser-rendered LegacyShell menu action PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "legacy_shell_menu_action_smoke",
+            f"scoped browser-rendered LegacyShell menu action smoke evidence passes with {len(LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS)} menu targets",
         )
 
     def check_tauri_window_runtime_smoke_evidence(self) -> None:
@@ -1283,6 +1321,155 @@ def validate_desktop_ui_click_boundaries(value: Any) -> list[str]:
     if not non_empty_proof(proof_detail):
         failures.append("boundaries.tauriWebview proof detail must be non-empty when tauriWebviewDomObserved is true")
     return failures
+
+
+def validate_legacy_shell_menu_action_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    section = legacy_shell_menu_action_section(evidence)
+    if section is None:
+        return ["legacyShellMenuActionSmoke section or legacy_shell_menu_action_smoke check details must be present"]
+    if not isinstance(section, dict):
+        return ["legacyShellMenuActionSmoke must be an object"]
+    failures: list[str] = []
+    if str(section.get("status", "")).lower() != "pass":
+        failures.append("legacyShellMenuActionSmoke.status must be pass")
+    failures.extend(validate_legacy_shell_menu_clicked_controls(section.get("clickedControls")))
+    failures.extend(validate_legacy_shell_menu_active_targets(section.get("activeTargets")))
+    failures.extend(validate_legacy_shell_menu_visible_assertions(section.get("visibleAssertions")))
+    failures.extend(validate_legacy_shell_menu_boundaries(section.get("boundaries")))
+    check_status = check_status_by_name(evidence.get("checks")).get("legacy_shell_menu_action_smoke")
+    if check_status is not None and check_status not in {"pass", "passed"}:
+        failures.append("checks.legacy_shell_menu_action_smoke status must be pass when present")
+    return failures
+
+
+def legacy_shell_menu_action_section(evidence: dict[str, Any]) -> Any:
+    section = evidence.get("legacyShellMenuActionSmoke")
+    if section is not None:
+        return section
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return None
+    for check in checks:
+        if isinstance(check, dict) and check.get("name") == "legacy_shell_menu_action_smoke":
+            details = check.get("details")
+            if isinstance(details, dict) and any(key in details for key in ("clickedControls", "activeTargets", "visibleAssertions", "boundaries")):
+                return details
+    return None
+
+
+def validate_legacy_shell_menu_clicked_controls(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["legacyShellMenuActionSmoke.clickedControls must be a list"]
+    failures: list[str] = []
+    action_to_control = {legacy_menu_action_key(control): control for control in value if isinstance(control, dict)}
+    for action, _target in LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS:
+        control = action_to_control.get(legacy_menu_key(action))
+        if not isinstance(control, dict):
+            failures.append(f"legacyShellMenuActionSmoke.clickedControls missing {action}")
+            continue
+        if control.get("clicked") is not True:
+            failures.append(f"legacyShellMenuActionSmoke.clickedControls.{action}.clicked must be true")
+        if "visible" in control and control.get("visible") is not True:
+            failures.append(f"legacyShellMenuActionSmoke.clickedControls.{action}.visible must be true when present")
+    return failures
+
+
+def validate_legacy_shell_menu_active_targets(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["legacyShellMenuActionSmoke.activeTargets must be a list"]
+    failures: list[str] = []
+    target_to_entry = {entry.get("target"): entry for entry in value if isinstance(entry, dict)}
+    for action, target in LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS:
+        entry = target_to_entry.get(target)
+        if not isinstance(entry, dict):
+            failures.append(f"legacyShellMenuActionSmoke.activeTargets missing {target}")
+            continue
+        if entry.get("visible") is not True:
+            failures.append(f"legacyShellMenuActionSmoke.activeTargets.{target}.visible must be true")
+        if entry.get("active") is not True:
+            failures.append(f"legacyShellMenuActionSmoke.activeTargets.{target}.active must be true")
+        if entry.get("status") != "focused":
+            failures.append(f"legacyShellMenuActionSmoke.activeTargets.{target}.status must be focused")
+        if entry.get("lastAction") != action:
+            failures.append(f"legacyShellMenuActionSmoke.activeTargets.{target}.lastAction must be {action}")
+        selector = entry.get("selector")
+        if not isinstance(selector, str) or not selector.strip():
+            failures.append(f"legacyShellMenuActionSmoke.activeTargets.{target}.selector must be non-empty")
+    return failures
+
+
+def validate_legacy_shell_menu_visible_assertions(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["legacyShellMenuActionSmoke.visibleAssertions must be a list"]
+    failures: list[str] = []
+    text = "\n".join(normalize_legacy_menu_assertion_text(assertion) for assertion in value)
+    for action, target in LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS:
+        if legacy_menu_key(action) not in legacy_menu_key(text) and legacy_menu_key(target) not in legacy_menu_key(text):
+            failures.append(f"legacyShellMenuActionSmoke.visibleAssertions missing {action} target")
+    for index, assertion in enumerate(value):
+        if not isinstance(assertion, dict):
+            failures.append(f"legacyShellMenuActionSmoke.visibleAssertions[{index}] must be an object")
+            continue
+        if assertion.get("visible") is not True:
+            failures.append(f"legacyShellMenuActionSmoke.visibleAssertions[{index}].visible must be true")
+        status = str(assertion.get("status", "pass")).lower()
+        if status not in {"pass", "passed"}:
+            failures.append(f"legacyShellMenuActionSmoke.visibleAssertions[{index}].status must be pass when present")
+    return failures
+
+
+def validate_legacy_shell_menu_boundaries(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["legacyShellMenuActionSmoke.boundaries must be an object"]
+    failures: list[str] = []
+    if value.get("browserRenderedDomObserved") is not True:
+        failures.append("legacyShellMenuActionSmoke.boundaries.browserRenderedDomObserved must be true")
+    for key in ("nativeFileDialogCovered", "tauriWebviewDomObserved", "tauriNativeDialogProof", "fullLegacyParityCovered"):
+        if value.get(key) is not False:
+            failures.append(f"legacyShellMenuActionSmoke.boundaries.{key} must be false")
+    for key in ("osNativeMenuCovered", "fullShortcutParityCovered", "fullLayoutParityCovered"):
+        if value.get(key) is not False:
+            failures.append(f"legacyShellMenuActionSmoke.boundaries.{key} must be false")
+    return failures
+
+
+def legacy_menu_action_key(control: dict[str, Any]) -> str:
+    action = control.get("action")
+    if isinstance(action, str) and action.strip():
+        return legacy_menu_key(action)
+    group = control.get("group")
+    label = control.get("label")
+    if isinstance(group, str) and isinstance(label, str):
+        return legacy_menu_key(f"{group}:{label}")
+    return legacy_menu_key(first_present(control, "name", "control", "testId", "selector") or "")
+
+
+def legacy_menu_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value).lower())
+
+
+def normalize_legacy_menu_assertion_text(assertion: Any) -> str:
+    if isinstance(assertion, str):
+        return assertion
+    if not isinstance(assertion, dict):
+        return ""
+    parts = [first_present(assertion, "name", "label", "target", "selector", "testId"), assertion.get("text")]
+    return " ".join(part for part in parts if isinstance(part, str))
+
+
+def check_status_by_name(checks: Any) -> dict[str, str]:
+    if not isinstance(checks, list):
+        return {}
+    statuses: dict[str, str] = {}
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        name = check.get("name")
+        if isinstance(name, str) and name:
+            statuses[name] = str(check.get("status", "")).lower()
+    return statuses
 
 
 def validate_tauri_window_runtime_smoke_evidence(evidence: Any) -> list[str]:

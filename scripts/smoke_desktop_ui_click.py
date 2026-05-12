@@ -178,6 +178,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def build_evidence(result: dict[str, Any], url: str, width: int, height: int, server_started: bool, started_at: str) -> dict[str, Any]:
     visible_assertions = result.get("visibleAssertions", [])
     clicked_controls = result.get("clickedControls", [])
+    legacy_menu_action_smoke = result.get("legacyShellMenuActionSmoke", {})
     screenshots = normalize_screenshot_paths(result.get("screenshots", []))
     browser_dom_observed = bool(visible_assertions) and all(item.get("visible") for item in visible_assertions)
     click_observed = sum(1 for control in clicked_controls if control.get("clicked")) >= 8
@@ -214,13 +215,14 @@ def build_evidence(result: dict[str, Any], url: str, width: int, height: int, se
         "screenshots": screenshots,
         "clickedControls": clicked_controls,
         "visibleAssertions": visible_assertions,
+        "legacyShellMenuActionSmoke": legacy_menu_action_smoke,
         "boundaries": {
             "nativeFileDialogCovered": False,
             "tauriWebviewDomObserved": False,
             "tauriNativeDialogProof": False,
             "tauriBackendCommandProof": False,
         },
-        "checks": build_checks(visible_assertions, clicked_controls, screenshots, failures),
+        "checks": build_checks(visible_assertions, clicked_controls, legacy_menu_action_smoke, screenshots, failures),
         "failures": failures,
     }
 
@@ -256,6 +258,23 @@ def build_failure_evidence(
         "screenshots": [],
         "clickedControls": [],
         "visibleAssertions": [],
+        "legacyShellMenuActionSmoke": {
+            "status": "fail",
+            "clickedControls": [],
+            "activeTargets": [],
+            "visibleAssertions": [],
+            "boundaries": {
+                "browserRenderedDomObserved": False,
+                "nativeFileDialogCovered": False,
+                "tauriWebviewDomObserved": False,
+                "tauriNativeDialogProof": False,
+                "fullLegacyParityCovered": False,
+                "osNativeMenuCovered": False,
+                "fullShortcutParityCovered": False,
+                "fullLayoutParityCovered": False,
+            },
+            "failures": [str(exc)],
+        },
         "boundaries": {
             "nativeFileDialogCovered": False,
             "tauriWebviewDomObserved": False,
@@ -298,10 +317,12 @@ def normalized_platform() -> str:
 def build_checks(
     visible_assertions: list[dict[str, Any]],
     clicked_controls: list[dict[str, Any]],
+    legacy_menu_action_smoke: Any,
     screenshots: list[dict[str, Any]],
     failures: list[str],
 ) -> list[dict[str, Any]]:
     clicked_ok = [control for control in clicked_controls if control.get("clicked")]
+    legacy_menu_failures = legacy_menu_action_smoke.get("failures", []) if isinstance(legacy_menu_action_smoke, dict) else ["legacyShellMenuActionSmoke missing"]
     return [
         {
             "name": "browser_dom_visible",
@@ -322,6 +343,15 @@ def build_checks(
             "name": "native_dialog_boundary",
             "status": "pass",
             "details": {"nativeFileDialogCovered": False, "reason": "Open/Save/Save As/import controls are selector-visible but not clicked because this browser smoke does not prove native dialogs."},
+        },
+        {
+            "name": "legacy_shell_menu_action_smoke",
+            "status": "pass" if isinstance(legacy_menu_action_smoke, dict) and legacy_menu_action_smoke.get("status") == "pass" else "fail",
+            "details": {
+                "clickedCount": len(legacy_menu_action_smoke.get("clickedControls", [])) if isinstance(legacy_menu_action_smoke, dict) else 0,
+                "activeTargetCount": len(legacy_menu_action_smoke.get("activeTargets", [])) if isinstance(legacy_menu_action_smoke, dict) else 0,
+                "failures": legacy_menu_failures,
+            },
         },
         {
             "name": "runner_completed",
@@ -368,6 +398,23 @@ const result = {
   clickedControls: [],
   visibleAssertions: [],
   screenshots: [],
+  legacyShellMenuActionSmoke: {
+    status: "pass",
+    clickedControls: [],
+    activeTargets: [],
+    visibleAssertions: [],
+    boundaries: {
+      browserRenderedDomObserved: true,
+      nativeFileDialogCovered: false,
+      tauriWebviewDomObserved: false,
+      tauriNativeDialogProof: false,
+      fullLegacyParityCovered: false,
+      osNativeMenuCovered: false,
+      fullShortcutParityCovered: false,
+      fullLayoutParityCovered: false
+    },
+    failures: []
+  },
   failures: []
 };
 
@@ -409,6 +456,65 @@ async function click(page, name, selector, options = {}) {
     item.error = String(error.message || error);
     if (!options.optional) result.failures.push(`${name}: ${item.error}`);
   }
+  result.clickedControls.push(item);
+  return item.clicked;
+}
+
+async function clickMenuAction(page, group, label, target, targetSelector) {
+  const action = `${group}:${label}`;
+  const selector = `[data-testid="legacy-menu-${group.toLowerCase()}-${label.toLowerCase().replaceAll(" ", "-")}"]`;
+  const item = { name: action, group, label, target, selector, clicked: false, visible: false, enabled: false };
+  try {
+    const locator = page.locator(selector).first();
+    await locator.waitFor({ state: "attached", timeout: Math.min(timeout, 8000) });
+    await locator.evaluate(element => element.closest("details")?.setAttribute("open", ""));
+    await locator.waitFor({ state: "visible", timeout: Math.min(timeout, 8000) });
+    item.visible = true;
+    item.enabled = await locator.isEnabled();
+    if (!item.enabled) throw new Error(`${action} menu item is disabled`);
+    await locator.click({ timeout: Math.min(timeout, 8000) });
+    item.clicked = true;
+    await page.waitForFunction(
+      ({ action, target }) => {
+        const shell = document.querySelector('[data-testid="legacy-shell"]');
+        return shell?.getAttribute("data-active-menu-target") === target
+          && shell?.getAttribute("data-last-menu-action") === action
+          && shell?.getAttribute("data-menu-action-status") === "focused";
+      },
+      { action, target },
+      { timeout: Math.min(timeout, 8000) }
+    );
+    const shellAttrs = await page.locator('[data-testid="legacy-shell"]').evaluate(element => ({
+      activeTarget: element.getAttribute("data-active-menu-target") || "",
+      lastAction: element.getAttribute("data-last-menu-action") || "",
+      status: element.getAttribute("data-menu-action-status") || ""
+    }));
+    const targetLocator = page.locator(targetSelector).first();
+    await targetLocator.waitFor({ state: "visible", timeout: Math.min(timeout, 8000) });
+    const targetText = (await targetLocator.innerText({ timeout: 1000 }).catch(() => "")).slice(0, 300);
+    result.legacyShellMenuActionSmoke.activeTargets.push({
+      name: action,
+      target,
+      selector: targetSelector,
+      visible: true,
+      active: shellAttrs.activeTarget === target,
+      lastAction: shellAttrs.lastAction,
+      status: shellAttrs.status,
+      text: targetText
+    });
+    result.legacyShellMenuActionSmoke.visibleAssertions.push({
+      name: `${action} target`,
+      selector: targetSelector,
+      visible: true,
+      status: "pass",
+      text: targetText
+    });
+  } catch (error) {
+    item.error = String(error.message || error);
+    result.legacyShellMenuActionSmoke.failures.push(`${action}: ${item.error}`);
+    result.failures.push(`${action}: ${item.error}`);
+  }
+  result.legacyShellMenuActionSmoke.clickedControls.push(item);
   result.clickedControls.push(item);
   return item.clicked;
 }
@@ -505,10 +611,19 @@ async function screenshot(page, name) {
     await click(page, "move color white", '[data-testid="sgf-move-color-white"]');
     await selectOption(page, "provider source fox", '[data-testid="provider-source-select"]', "fox");
     await fill(page, "provider source input", '[data-testid="provider-source-input"]', "chessid 123456");
-    await selectOption(page, "preferences board theme", '[data-testid="preferences-board-theme"]', "high-contrast");
-    await click(page, "preferences candidates toggle", '[data-testid="preferences-toggle-candidates"]');
-    await click(page, "runtime assets refresh", '[data-testid="engine-runtime-assets-refresh"]');
-    await screenshot(page, "after-clicks");
+	    await selectOption(page, "preferences board theme", '[data-testid="preferences-board-theme"]', "high-contrast");
+	    await click(page, "preferences candidates toggle", '[data-testid="preferences-toggle-candidates"]');
+	    await click(page, "runtime assets refresh", '[data-testid="engine-runtime-assets-refresh"]');
+	    await clickMenuAction(page, "View", "Candidates", "candidates", "#legacy-menu-target-candidates");
+	    await clickMenuAction(page, "View", "Ownership", "ownership", "#legacy-menu-target-ownership");
+	    await clickMenuAction(page, "View", "Policy", "policy", "#legacy-menu-target-policy");
+	    await clickMenuAction(page, "Engine", "Profiles", "profiles", "#legacy-menu-target-profiles");
+	    await clickMenuAction(page, "Engine", "Assets", "assets", "#legacy-menu-target-assets");
+	    await clickMenuAction(page, "Tools", "Providers", "providers", "#legacy-menu-target-providers");
+	    await clickMenuAction(page, "Tools", "Preferences", "preferences", "#legacy-menu-target-preferences");
+	    await clickMenuAction(page, "Help", "Backend status", "backend-status", "#legacy-menu-target-backend-status");
+	    if (result.legacyShellMenuActionSmoke.failures.length) result.legacyShellMenuActionSmoke.status = "fail";
+	    await screenshot(page, "after-clicks");
   } catch (error) {
     result.status = "fail";
     result.failures.push(String(error.message || error));

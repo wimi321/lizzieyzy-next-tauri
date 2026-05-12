@@ -66,6 +66,18 @@ type ReviewWorkflowStatus = {
   staleAnalysisPrevented: boolean;
 };
 type PendingPreferencesSave = { version: number; preferences: AppPreferences };
+type NativeSgfDialogAction = "none" | "open" | "save" | "save-as";
+type NativeSgfDialogStatus = "idle" | "opening" | "saving" | "cancelled" | "opened" | "saved" | "error" | "readback-error";
+type NativeSgfDialogWorkflow = {
+  action: NativeSgfDialogAction;
+  status: NativeSgfDialogStatus;
+  source: "native-dialog" | "native-backend" | "browser-fallback" | "unknown";
+  path: string | null;
+  message: string;
+  readbackVerified: boolean;
+  reparseVerified: boolean;
+  dirtyAfter: boolean;
+};
 type AppendSgfMove = (sgfText: string, parentNodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
 type EditSgfMove = (sgfText: string, nodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
 type DeleteSgfNode = (sgfText: string, nodeId: string) => Promise<unknown>;
@@ -98,6 +110,16 @@ const initialReviewWorkflowStatus: ReviewWorkflowStatus = {
   cacheRestoreVerified: false,
   engineFailureVerified: false,
   staleAnalysisPrevented: false
+};
+const initialNativeSgfDialogWorkflow: NativeSgfDialogWorkflow = {
+  action: "none",
+  status: "idle",
+  source: "unknown",
+  path: null,
+  message: "Native SGF dialog workflow idle.",
+  readbackVerified: false,
+  reparseVerified: false,
+  dirtyAfter: false
 };
 
 export function App() {
@@ -134,6 +156,7 @@ export function App() {
   const [isNodeReordering, setIsNodeReordering] = useState(false);
   const [editColor, setEditColor] = useState<PlayerColor>("black");
   const [sgfMoveEditMode, setSgfMoveEditMode] = useState<SgfMoveEditMode>("append");
+  const [nativeSgfDialogWorkflow, setNativeSgfDialogWorkflow] = useState<NativeSgfDialogWorkflow>(initialNativeSgfDialogWorkflow);
   const [treeNodePositionOverride, setTreeNodePositionOverride] = useState<PositionDto | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
   const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
@@ -210,6 +233,10 @@ export function App() {
   const maxMove = Math.max(positions.at(-1)?.move_number ?? 0, 1);
   const documentName = useMemo(() => currentFilePath ? fileNameFromPath(currentFilePath) : fallbackFileName ?? "Untitled SGF", [currentFilePath, fallbackFileName]);
   const saveFileName = documentName.toLowerCase().endsWith(".sgf") ? documentName : `${documentName}.sgf`;
+  const nativeSgfDialogDataPath = useMemo(
+    () => nativeSgfDialogWorkflow.path ? fileNameFromPath(nativeSgfDialogWorkflow.path) : "",
+    [nativeSgfDialogWorkflow.path]
+  );
   const selectedSgfNode = useMemo(
     () => selectedSgfNodeId ? sgfTree?.nodes.find((node) => node.id === selectedSgfNodeId) ?? null : null,
     [selectedSgfNodeId, sgfTree]
@@ -369,10 +396,30 @@ export function App() {
   async function handleOpenSgfDocument() {
     if (dirty && !window.confirm("Discard unsaved SGF changes and open another file?")) return;
     let sgfTreeRequest: number | null = null;
+    setNativeSgfDialogWorkflow({
+      action: "open",
+      status: "opening",
+      source: tauriRuntimeObserved ? "native-dialog" : "browser-fallback",
+      path: currentFilePath,
+      message: "Opening SGF through native dialog...",
+      readbackVerified: false,
+      reparseVerified: false,
+      dirtyAfter: dirty
+    });
     try {
       const document = await openSgfDocument();
       if (!document) {
         setMessage("Native Open is unavailable here. Use Import SGF in browser preview.");
+        setNativeSgfDialogWorkflow({
+          action: "open",
+          status: "cancelled",
+          source: tauriRuntimeObserved ? "native-dialog" : "browser-fallback",
+          path: currentFilePath,
+          message: "Open cancelled or unavailable; current SGF was not replaced.",
+          readbackVerified: false,
+          reparseVerified: false,
+          dirtyAfter: dirty
+        });
         return;
       }
       setSgfText(document.sgfText);
@@ -394,10 +441,31 @@ export function App() {
       clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(openedMessage);
+      setNativeSgfDialogWorkflow({
+        action: "open",
+        status: "opened",
+        source: "native-dialog",
+        path: document.path,
+        message: openedMessage,
+        readbackVerified: true,
+        reparseVerified: true,
+        dirtyAfter: false
+      });
       await checkAnalysisCacheForGame(document.sgfText, document.path, parsed, replayed, openedMessage, tree);
     } catch (error) {
       failSgfTreeLoad(error, sgfTreeRequest);
-      setMessage(`Open failed: ${errorMessage(error)}`);
+      const message = `Open failed: ${errorMessage(error)}`;
+      setMessage(message);
+      setNativeSgfDialogWorkflow({
+        action: "open",
+        status: "error",
+        source: tauriRuntimeObserved ? "native-dialog" : "browser-fallback",
+        path: currentFilePath,
+        message,
+        readbackVerified: false,
+        reparseVerified: false,
+        dirtyAfter: dirty
+      });
     } finally {
       finishSgfTreeLoad(sgfTreeRequest);
     }
@@ -406,10 +474,32 @@ export function App() {
   async function handleSaveSgfDocument(saveAs = false) {
     let sgfTreeRequest: number | null = null;
     let savedPath: string | null = null;
+    const action: NativeSgfDialogAction = saveAs ? "save-as" : "save";
+    const saveSource = nativeSaveWorkflowSource(saveAs, currentFilePath, tauriRuntimeObserved);
+    setNativeSgfDialogWorkflow({
+      action,
+      status: "saving",
+      source: saveSource,
+      path: saveAs ? null : currentFilePath,
+      message: saveAs ? "Saving SGF through native Save As dialog..." : "Saving SGF...",
+      readbackVerified: false,
+      reparseVerified: false,
+      dirtyAfter: dirty
+    });
     try {
       const saved = await saveSgfDocument(saveAs ? null : currentFilePath, sgfText, saveFileName);
       if (!saved) {
         setMessage("Save cancelled.");
+        setNativeSgfDialogWorkflow({
+          action,
+          status: "cancelled",
+          source: saveSource,
+          path: currentFilePath,
+          message: "Save cancelled; current SGF remains dirty state unchanged.",
+          readbackVerified: false,
+          reparseVerified: false,
+          dirtyAfter: dirty
+        });
         return;
       }
       savedPath = saved.path;
@@ -418,6 +508,16 @@ export function App() {
         setCurrentFilePath(saved.path);
         setDirty(false);
         setMessage(`Saved ${saveFileName}.`);
+        setNativeSgfDialogWorkflow({
+          action,
+          status: "saved",
+          source: saveSource,
+          path: saved.path,
+          message: `Saved ${saveFileName}.`,
+          readbackVerified: saved.sgfText === sgfText,
+          reparseVerified: false,
+          dirtyAfter: false
+        });
         return;
       }
 
@@ -439,12 +539,33 @@ export function App() {
       clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       setMessage(savedMessage);
+      setNativeSgfDialogWorkflow({
+        action,
+        status: "saved",
+        source: saveSource,
+        path: saved.path,
+        message: savedMessage,
+        readbackVerified: saved.sgfText === sgfText,
+        reparseVerified: true,
+        dirtyAfter: false
+      });
       await checkAnalysisCacheForGame(saved.sgfText, saved.path, parsed, replayed, savedMessage, tree);
     } catch (error) {
       if (sgfTreeRequest !== null) {
         failSgfTreeLoad(error, sgfTreeRequest);
       }
-      setMessage(savedPath ? `Saved ${fileNameFromPath(savedPath)}, but reload failed: ${errorMessage(error)}` : `Save failed: ${errorMessage(error)}`);
+      const message = savedPath ? `Saved ${fileNameFromPath(savedPath)}, but reload failed: ${errorMessage(error)}` : `Save failed: ${errorMessage(error)}`;
+      setMessage(message);
+      setNativeSgfDialogWorkflow({
+        action,
+        status: savedPath ? "readback-error" : "error",
+        source: saveSource,
+        path: savedPath,
+        message,
+        readbackVerified: false,
+        reparseVerified: false,
+        dirtyAfter: dirty
+      });
     } finally {
       finishSgfTreeLoad(sgfTreeRequest);
     }
@@ -1893,6 +2014,13 @@ export function App() {
             data-sgf-current-move={currentMove}
             data-sgf-max-move={maxMove}
             data-sgf-dirty={String(dirty)}
+            data-native-dialog-action={nativeSgfDialogWorkflow.action}
+            data-native-dialog-status={nativeSgfDialogWorkflow.status}
+            data-native-dialog-source={nativeSgfDialogWorkflow.source}
+            data-native-dialog-path={nativeSgfDialogDataPath}
+            data-native-dialog-readback-verified={String(nativeSgfDialogWorkflow.readbackVerified)}
+            data-native-dialog-reparse-verified={String(nativeSgfDialogWorkflow.reparseVerified)}
+            data-native-dialog-dirty-after={String(nativeSgfDialogWorkflow.dirtyAfter)}
           >
             <strong data-testid="runtime-source" data-runtime-source={runtimeSource}>
               {tauriRuntimeObserved ? "Tauri runtime" : "Browser preview"}
@@ -1902,6 +2030,18 @@ export function App() {
             </span>
             <span data-testid="sgf-workflow-state" data-sgf-workflow-state={sgfWorkflowState}>
               {sgfWorkflowLabel}
+            </span>
+            <span
+              data-testid="native-dialog-sgf-workflow-state"
+              data-native-dialog-action={nativeSgfDialogWorkflow.action}
+              data-native-dialog-status={nativeSgfDialogWorkflow.status}
+              data-native-dialog-source={nativeSgfDialogWorkflow.source}
+              data-native-dialog-path={nativeSgfDialogDataPath}
+              data-native-dialog-readback-verified={String(nativeSgfDialogWorkflow.readbackVerified)}
+              data-native-dialog-reparse-verified={String(nativeSgfDialogWorkflow.reparseVerified)}
+              data-native-dialog-dirty-after={String(nativeSgfDialogWorkflow.dirtyAfter)}
+            >
+              {nativeSgfDialogWorkflow.message}
             </span>
           </section>
           <EngineSetupPanel
@@ -2067,6 +2207,15 @@ function isUnknownRecord(value: unknown): value is Record<string, unknown> {
 
 function colorLabel(color: PlayerColor): string {
   return color === "black" ? "Black" : "White";
+}
+
+function nativeSaveWorkflowSource(
+  saveAs: boolean,
+  currentFilePath: string | null,
+  tauriRuntimeObserved: boolean
+): NativeSgfDialogWorkflow["source"] {
+  if (!tauriRuntimeObserved) return "browser-fallback";
+  return saveAs || !currentFilePath ? "native-dialog" : "native-backend";
 }
 
 function errorMessage(error: unknown): string {

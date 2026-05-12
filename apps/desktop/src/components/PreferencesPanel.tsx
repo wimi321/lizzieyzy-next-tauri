@@ -128,15 +128,71 @@ export function PreferencesPanel({
         ) : null}
         {legacyConfigApplyResult ? (
           <div className="migration-result" data-testid="legacy-config-apply-status">
-            <strong>Applied</strong>
+            <strong>{legacyConfigApplyResult.status === "failed" ? "Apply failed" : "Applied"}</strong>
             <span>
-              Preferences {legacyConfigApplyResult.preferencesWritten ? "written" : "unchanged"}; engine profiles {legacyConfigApplyResult.engineProfilesWritten ? "written" : "unchanged"}.
+              Preferences {migrationWriteStatus(legacyConfigApplyResult, legacyConfigApplyResult.preferencesWritten)}; engine profiles {migrationWriteStatus(legacyConfigApplyResult, legacyConfigApplyResult.engineProfilesWritten)}.
             </span>
+          </div>
+        ) : null}
+        {legacyConfigApplyResult ? (
+          <div className="migration-result" data-testid="legacy-config-safety-status">
+            <strong>Migration safety</strong>
+            <span>{migrationSafetySummary(legacyConfigApplyResult)}</span>
+            {legacyConfigApplyResult.errorMessage ? <span role="alert">{legacyConfigApplyResult.errorMessage}</span> : null}
+          </div>
+        ) : null}
+        {legacyConfigApplyResult?.writtenPathLabels.length ? (
+          <div className="migration-result" data-testid="legacy-config-written-path-labels">
+            <strong>Written targets</strong>
+            <ul>
+              {legacyConfigApplyResult.writtenPathLabels.map((label) => <li key={label}>{label}</li>)}
+            </ul>
+          </div>
+        ) : null}
+        {legacyConfigApplyResult?.rollbackPaths.length ? (
+          <div className="migration-result" data-testid="legacy-config-rollback-paths">
+            <strong>Rollback paths</strong>
+            <ul>
+              {legacyConfigApplyResult.rollbackPaths.map((path) => <li key={path}>{path}</li>)}
+            </ul>
+          </div>
+        ) : null}
+        {legacyConfigApplyResult?.rollbackErrors.length ? (
+          <div className="migration-result" data-testid="legacy-config-rollback-errors">
+            <strong>Rollback errors</strong>
+            <ul>
+              {legacyConfigApplyResult.rollbackErrors.map((error) => <li key={error}>{error}</li>)}
+            </ul>
           </div>
         ) : null}
       </section>
     </section>
   );
+}
+
+function migrationSafetySummary(result: LegacyConfigMigrationApplyDto): string {
+  const status = result.status === "failed" ? "failed" : "applied";
+  const transactional = result.transactional ? "transactional" : "not transactional";
+  const errorProtection = result.noWriteOnError ? "error protection enabled" : "writes may occur before error";
+  const rollback = result.rollbackPerformed
+    ? result.rollbackSucceeded
+      ? "rollback succeeded"
+      : "rollback failed"
+    : "rollback not performed";
+  return `${status}; ${transactional}; ${errorProtection}; ${rollback}.`;
+}
+
+function migrationWriteStatus(result: LegacyConfigMigrationApplyDto, writeTouched: boolean): string {
+  if (result.status !== "failed") {
+    return writeTouched ? "written" : "unchanged";
+  }
+  if (!writeTouched) {
+    return "unchanged";
+  }
+  if (result.rollbackPerformed && result.rollbackSucceeded) {
+    return "written then rolled back";
+  }
+  return result.rollbackPerformed ? "write attempted; rollback failed" : "write attempted";
 }
 
 function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {

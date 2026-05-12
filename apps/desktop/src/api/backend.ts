@@ -80,8 +80,17 @@ export type LegacyConfigMigrationPreviewDto = {
 
 export type LegacyConfigMigrationApplyDto = {
   sourcePath: string;
+  status: "applied" | "failed" | string;
+  errorMessage: string | null;
   preferencesWritten: boolean;
   engineProfilesWritten: boolean;
+  writtenPathLabels: string[];
+  transactional: boolean;
+  noWriteOnError: boolean;
+  rollbackPerformed: boolean;
+  rollbackSucceeded: boolean;
+  rollbackPaths: string[];
+  rollbackErrors: string[];
   writtenPaths: string[];
   migratedFields: string[];
   warnings: string[];

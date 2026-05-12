@@ -80,6 +80,17 @@ PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
     "offline_not_counted_as_external_live",
     "external_account_scope",
 ]
+MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE = "docs/qa/multiplatform-packaging-smoke.json"
+MULTIPLATFORM_PACKAGING_SMOKE_SCHEMA = "lizzieyzy.multiplatform-packaging-smoke.v1"
+PACKAGING_PLATFORMS = ["macos", "windows", "linux"]
+MULTIPLATFORM_PACKAGING_SMOKE_REQUIRED_CHECKS = [
+    "macos_artifacts",
+    "windows_artifacts",
+    "linux_artifacts",
+    "signing_recorded",
+    "dev_server_absent",
+    "checksums",
+]
 TAURI_COMMANDS = [
     "update_sgf_node_comment",
     "append_sgf_move",
@@ -379,10 +390,7 @@ class UserFlowSmoke:
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
-        self.pending(
-            "multiplatform_packaging_smoke",
-            "TODO gate: validate macOS/Windows/Linux packaging in platform-specific build environments",
-        )
+        self.check_multiplatform_packaging_smoke_evidence()
 
     def check_tauri_runtime_ui_smoke_evidence(self) -> None:
         evidence_path = self.path(TAURI_RUNTIME_UI_SMOKE_EVIDENCE)
@@ -492,6 +500,30 @@ class UserFlowSmoke:
         self.pass_(
             "provider_live_smoke",
             f"macOS scoped controlled-network Tauri provider smoke evidence passes with {len(PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_multiplatform_packaging_smoke_evidence(self) -> None:
+        evidence_path = self.path(MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "multiplatform_packaging_smoke",
+                f"TODO gate: run scripts/smoke_multiplatform_packaging.py and record {MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_multiplatform_packaging_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "multiplatform_packaging_smoke",
+                f"{MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE} is present but not valid scoped packaging PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "multiplatform_packaging_smoke",
+            f"scoped macOS/Windows/Linux packaging smoke evidence passes with {len(MULTIPLATFORM_PACKAGING_SMOKE_REQUIRED_CHECKS)} required checks",
         )
 
     def run(self) -> list[SmokeResult]:
@@ -723,6 +755,159 @@ def validate_provider_live_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_offline_not_counted_as_external_live(check_by_name.get("offline_not_counted_as_external_live")))
     failures.extend(validate_external_account_scope(check_by_name.get("external_account_scope")))
     return failures
+
+
+def validate_multiplatform_packaging_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != MULTIPLATFORM_PACKAGING_SMOKE_SCHEMA:
+        failures.append(f"schema must be {MULTIPLATFORM_PACKAGING_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        return failures
+    check_by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in MULTIPLATFORM_PACKAGING_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in MULTIPLATFORM_PACKAGING_SMOKE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    for platform in PACKAGING_PLATFORMS:
+        failures.extend(validate_packaging_platform_artifacts(check_by_name.get(f"{platform}_artifacts"), platform))
+    failures.extend(validate_packaging_signing_recorded(check_by_name.get("signing_recorded")))
+    failures.extend(validate_packaging_dev_server_absent(check_by_name.get("dev_server_absent")))
+    failures.extend(validate_packaging_checksums(check_by_name.get("checksums")))
+    return failures
+
+
+def validate_packaging_platform_artifacts(check: Any, platform: str) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return [f"{platform}_artifacts evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("platform") != platform:
+        failures.append(f"{platform}_artifacts.platform must be {platform}")
+    artifacts = evidence.get("artifacts")
+    if not isinstance(artifacts, list) or not artifacts:
+        failures.append(f"{platform}_artifacts.artifacts must be a non-empty list")
+    else:
+        present_count = 0
+        for index, artifact in enumerate(artifacts):
+            if not isinstance(artifact, dict):
+                failures.append(f"{platform}_artifacts.artifacts[{index}] must be an object")
+                continue
+            if artifact.get("artifactPresent") is not True:
+                continue
+            present_count += 1
+            artifact_path = first_present(artifact, "path", "name", "fileName", "file_name")
+            if not isinstance(artifact_path, str) or not artifact_path:
+                failures.append(f"{platform}_artifacts.artifacts[{index}] with artifactPresent true must include path/name")
+            size = first_present(artifact, "sizeBytes", "size_bytes")
+            if not positive_number(size):
+                failures.append(f"{platform}_artifacts.artifacts[{index}] with artifactPresent true must include positive sizeBytes")
+            checksum = artifact.get("sha256")
+            if not is_sha256_hex(checksum):
+                failures.append(f"{platform}_artifacts.artifacts[{index}] with artifactPresent true must include 64-character hex sha256")
+        if present_count < 1:
+            failures.append(f"{platform}_artifacts.artifacts must include at least one artifactPresent true entry")
+    signing = evidence.get("signing")
+    if isinstance(signing, dict):
+        failures.extend(validate_packaging_signing_state(signing, f"{platform}_artifacts.signing"))
+    else:
+        failures.append(f"{platform}_artifacts.signing must be an object")
+    return failures
+
+
+def validate_packaging_signing_recorded(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["signing_recorded evidence must be an object"]
+    failures: list[str] = []
+    for platform in PACKAGING_PLATFORMS:
+        signing = evidence.get(platform)
+        if not isinstance(signing, dict):
+            failures.append(f"signing_recorded.{platform} must be an object")
+            continue
+        failures.extend(validate_packaging_signing_state(signing, f"signing_recorded.{platform}"))
+    if evidence.get("officialSigningCovered") is not False:
+        failures.append("signing_recorded.officialSigningCovered must be false")
+    return failures
+
+
+def validate_packaging_signing_state(signing: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if signing.get("checked") is not True:
+        failures.append(f"{label}.checked must be true")
+    status = signing.get("status")
+    if not isinstance(status, str) or not status:
+        failures.append(f"{label}.status must be non-empty")
+    if signing.get("productionSigned") is not False:
+        failures.append(f"{label}.productionSigned must be false")
+    if signing.get("officialReleaseSigned") is True:
+        failures.append(f"{label}.officialReleaseSigned must not be true")
+    return failures
+
+
+def validate_packaging_dev_server_absent(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["dev_server_absent evidence must be an object"]
+    failures: list[str] = []
+    for platform in PACKAGING_PLATFORMS:
+        if evidence.get(platform) is not True:
+            failures.append(f"dev_server_absent.{platform} must be true")
+    if evidence.get("viteDevServerReferenced") is not False:
+        failures.append("dev_server_absent.viteDevServerReferenced must be false")
+    return failures
+
+
+def validate_packaging_checksums(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["checksums evidence must be an object"]
+    entries = evidence.get("entries")
+    if not isinstance(entries, list) or not entries:
+        return ["checksums.entries must be a non-empty list"]
+    failures: list[str] = []
+    platforms_with_checksum: set[str] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            failures.append(f"checksums.entries[{index}] must be an object")
+            continue
+        platform = entry.get("platform")
+        if platform in PACKAGING_PLATFORMS:
+            if entry.get("artifactPresent") is True:
+                platforms_with_checksum.add(platform)
+            else:
+                failures.append(f"checksums.entries[{index}].artifactPresent must be true")
+        else:
+            failures.append(f"checksums.entries[{index}].platform must be macos/windows/linux")
+        algorithm = str(entry.get("algorithm", "")).lower()
+        if algorithm != "sha256":
+            failures.append(f"checksums.entries[{index}].algorithm must be sha256")
+        value = entry.get("value")
+        if not is_sha256_hex(value):
+            failures.append(f"checksums.entries[{index}].value must be a 64-character hex sha256")
+    missing_platforms = [platform for platform in PACKAGING_PLATFORMS if platform not in platforms_with_checksum]
+    if missing_platforms:
+        failures.append("checksums missing platforms: " + ", ".join(missing_platforms))
+    return failures
+
+
+def is_sha256_hex(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"[0-9a-fA-F]{64}", value))
 
 
 def validate_provider_runtime_started(check: Any) -> list[str]:

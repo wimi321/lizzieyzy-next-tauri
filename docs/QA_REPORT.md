@@ -43,6 +43,14 @@ docs/qa/provider-live-smoke-macos.json
 
 The repository gate expects schema `lizzieyzy.provider-live-smoke.v1`, status `pass`, platform `macos`, and passing semantic checks for Tauri runtime startup, controlled-network Yike fetch, controlled-network Fox fetch, typed provider failure modes, controlled HTTP request observation, explicit non-offline-parser-only evidence, and explicit external account scope limits. CI validates the committed JSON only; this scoped evidence does not cover real Fox/Yike services, account login state, anti-bot stability, or service schema drift.
 
+To collect scoped multiplatform packaging smoke evidence, run the packaging smoke runner and record:
+
+```sh
+docs/qa/multiplatform-packaging-smoke.json
+```
+
+The repository gate expects schema `lizzieyzy.multiplatform-packaging-smoke.v1`, status `pass`, macOS/Windows/Linux artifact checks, signing-state records, dev-server-absence checks, and SHA-256 checksums. CI validates the committed JSON only; this scoped evidence records packaging smoke state and does not claim official signing, notarized release distribution, updater readiness, or full legacy parity.
+
 Covered checks:
 
 | Area | Status | Evidence |
@@ -61,19 +69,20 @@ Covered checks:
 | macOS live KataGo smoke evidence | Scoped evidence gate recorded | `smoke_user_flows.py` marks `katago_live_smoke` PASS only when both evidence files pass: `docs/qa/katago-live-smoke-macos.json` for real CLI `katago analysis`, and `docs/qa/katago-tauri-runtime-smoke-macos.json` for the Tauri runtime path with startup, assets, analyze-once, analyze-game, failure-mode, and confirmed start/cancel checks. |
 | macOS scoped readboard runtime evidence | Scoped evidence gate recorded | `smoke_user_flows.py` marks `readboard_live_smoke` PASS only when `docs/qa/readboard-tauri-runtime-smoke-macos.json` validates the scoped Tauri runtime probe/protocol evidence, including snapshot/change semantics, and explicitly records that OCR and external client/window capture are not covered. |
 | macOS scoped provider controlled-network evidence | Scoped evidence gate recorded | `smoke_user_flows.py` marks `provider_live_smoke` PASS only when `docs/qa/provider-live-smoke-macos.json` validates controlled-network Yike/Fox runtime fetches, typed failure modes, and explicit external account/service scope exclusions. |
+| Multiplatform packaging smoke evidence | Scoped evidence gate recorded | `smoke_user_flows.py` marks `multiplatform_packaging_smoke` PASS only when `docs/qa/multiplatform-packaging-smoke.json` validates scoped macOS/Windows/Linux artifact, signing-state, dev-server-absence, and checksum evidence. This is not official signing, notarization, release publication, updater readiness, or full legacy parity proof. |
 
 Current repository-local alpha gate result:
 
 ```text
 python3 scripts/smoke_user_flows.py --verbose
-User-flow smoke: 25 passed, 0 failed, 1 pending.
+User-flow smoke: 26 passed, 0 failed, 0 pending.
 ```
 
-With the native SGF save/read-back, existing-move-edit, macOS local Tauri runtime UI smoke, macOS live KataGo smoke, scoped macOS readboard runtime evidence, and scoped macOS provider controlled-network evidence included, repository-local read-back refresh, edit-existing-move surface evidence, scoped macOS save/reopen runtime evidence, real KataGo CLI evidence, Tauri runtime KataGo evidence, scoped readboard probe/protocol evidence, and controlled-network provider fetch evidence are complete for their current gates. This is still not a 100% or release-ready gate because multiplatform packaging, native file-dialog/manual release, OCR readboard capture, real external client/window capture, real Fox/Yike service/account parity, and broader legacy parity remain pending.
+With the native SGF save/read-back, existing-move-edit, macOS local Tauri runtime UI smoke, macOS live KataGo smoke, scoped macOS readboard runtime evidence, scoped macOS provider controlled-network evidence, and scoped multiplatform packaging smoke evidence included, repository-local read-back refresh, edit-existing-move surface evidence, scoped macOS save/reopen runtime evidence, real KataGo CLI evidence, Tauri runtime KataGo evidence, scoped readboard probe/protocol evidence, controlled-network provider fetch evidence, and scoped artifact/signing-state/dev-server/checksum packaging evidence are complete for their current gates. This is still not a 100% or release-ready gate because native file-dialog/manual release, OCR readboard capture, real external client/window capture, real Fox/Yike service/account parity, official signing/notarization/release publication/updater readiness, and broader legacy parity remain pending.
 
 ## Deferred Runtime Gates
 
-These are not marked complete by the smoke skeleton:
+These are the scoped/runtime gates and the remaining evidence boundaries:
 
 | Gate | Status | Required evidence before completion |
 | --- | --- | --- |
@@ -82,10 +91,10 @@ These are not marked complete by the smoke skeleton:
 | KataGo analysis flow | Scoped macOS evidence recorded | `docs/qa/katago-live-smoke-macos.json` and `docs/qa/katago-tauri-runtime-smoke-macos.json` were produced with a real KataGo binary, model, and config. The CLI evidence covers version probe plus one-position and batch `katago analysis`; the Tauri runtime evidence covers real desktop backend startup, assets, analyze-once, analyze-game, missing-asset failure mode, and confirmed start/cancel. Cache-hit and broader review workflow evidence still need desktop workflow coverage. |
 | Readboard sidecar flow | Scoped macOS evidence recorded | `docs/qa/readboard-tauri-runtime-smoke-macos.json` records scoped macOS Tauri runtime evidence for sidecar probe ready/unavailable states, protocol-line sync with snapshot/move/stone semantics, target-state-change sync with distinct before/after snapshots and stable board size, and unsupported OCR boundary behavior. This gate is deliberately scoped: it does not prove OCR, real external client/window capture, or cross-platform packaging. |
 | Fox/Yike provider flow | Scoped controlled-network evidence recorded | `docs/qa/provider-live-smoke-macos.json` records scoped macOS Tauri runtime evidence for controlled-network Yike/Fox fetches, request observation, and typed provider failure modes. Real Fox/Yike service coverage, account/session login state, anti-bot stability, rate-limit/session-expiry behavior, and service schema drift remain pending and must not be inferred from controlled-network evidence. |
-| Platform packaging smoke | Pending | Per-OS build/install/launch evidence, signing/notarization status where applicable, and installed-app smoke results. |
+| Platform packaging smoke | Scoped evidence recorded | `docs/qa/multiplatform-packaging-smoke.json` records scoped macOS/Windows/Linux packaging smoke evidence for artifacts, signing-state recording, dev-server absence, and SHA-256 checksums. This gate does not prove official signing, notarization, release publication, updater readiness, store distribution, or full release parity. |
 
 ## Current QA Position
 
 Passing `scripts/smoke_user_flows.py` means the repository still has the local fixture and command surface needed for SGF comment editing, node property editing, append move/pass, delete selected non-root node/subtree, and variation reorder foundations. It does not prove that a user can complete those flows in the native desktop UI, save them, reopen the file, and get identical board/tree state.
 
-As of this gate, `scripts/smoke_user_flows.py --verbose` reports `25 passed, 0 failed, 1 pending`, and `ui_tauri_runtime_smoke` passes from committed macOS local runtime evidence with two-launch save/reopen semantics. `katago_live_smoke` also passes from paired macOS CLI and Tauri runtime evidence. `readboard_live_smoke` passes from scoped macOS Tauri runtime evidence for probe/protocol behavior. `provider_live_smoke` passes from scoped macOS controlled-network provider evidence. Repository-local native SGF save/read-back refresh, edit-existing-move surface evidence, scoped macOS save/reopen runtime evidence, scoped macOS KataGo runtime evidence, scoped readboard runtime evidence, and scoped provider controlled-network evidence are complete for their current gates. OCR readboard capture, real external client/window capture, real Fox/Yike service/account coverage, anti-bot stability, service schema drift, and cross-platform packaging remain outside that scoped proof. Do not claim Fox/Yike full parity, full readboard parity, production installer, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime checks above are recorded with environment details.
+As of this gate, `scripts/smoke_user_flows.py --verbose` reports `26 passed, 0 failed, 0 pending`, and `ui_tauri_runtime_smoke` passes from committed macOS local runtime evidence with two-launch save/reopen semantics. `katago_live_smoke` also passes from paired macOS CLI and Tauri runtime evidence. `readboard_live_smoke` passes from scoped macOS Tauri runtime evidence for probe/protocol behavior. `provider_live_smoke` passes from scoped macOS controlled-network provider evidence. `multiplatform_packaging_smoke` passes from scoped macOS/Windows/Linux artifact, signing-state, dev-server-absence, and checksum evidence. Repository-local native SGF save/read-back refresh, edit-existing-move surface evidence, scoped macOS save/reopen runtime evidence, scoped macOS KataGo runtime evidence, scoped readboard runtime evidence, scoped provider controlled-network evidence, and scoped packaging smoke evidence are complete for their current gates. OCR readboard capture, real external client/window capture, real Fox/Yike service/account coverage, anti-bot stability, service schema drift, official signing/notarization/release publication/updater readiness, and full production distribution remain outside that scoped proof. Do not claim Fox/Yike full parity, full readboard parity, formal production release, full LegacyShell UI parity, or full legacy parity until the corresponding desktop/runtime/release checks above are recorded with environment details.

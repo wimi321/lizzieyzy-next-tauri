@@ -1,0 +1,348 @@
+{
+  "artifactRoots": [
+    "github-actions-artifact://25704738537"
+  ],
+  "artifacts": [
+    {
+      "arch": "x64",
+      "artifactName": "lizzieyzy-next-desktop",
+      "artifactPresent": true,
+      "command": "npm run tauri:build -- --ci --no-sign",
+      "devServerAbsent": true,
+      "name": "lizzieyzy-next-desktop",
+      "os": "linux",
+      "path": "github-actions-artifact://25704738537/release-dry-run-Linux/target/release/lizzieyzy-next-desktop",
+      "platform": "linux",
+      "relativePath": "github-actions-artifact://25704738537/release-dry-run-Linux/target/release/lizzieyzy-next-desktop",
+      "sha256": "7250f626c52730cbdfccad8900cc8f75d566997b3586650e0a2ec63a29d34ae9",
+      "signing": {
+        "checked": true,
+        "notarized": false,
+        "note": "linux packaging smoke does not prove signed production release assets.",
+        "officialReleaseSigned": false,
+        "productionReleaseSigned": false,
+        "productionSigned": false,
+        "signed": false,
+        "state": "unsigned_ci_or_dry_run",
+        "status": "unsigned_ci_or_dry_run"
+      },
+      "sizeBytes": 22713920,
+      "source": "github-actions-artifact://25704738537"
+    },
+    {
+      "arch": "universal-or-runner",
+      "artifactName": "lizzieyzy-next-desktop",
+      "artifactPresent": true,
+      "command": "npm run tauri:build -- --ci --no-sign",
+      "devServerAbsent": true,
+      "name": "lizzieyzy-next-desktop",
+      "os": "macos",
+      "path": "github-actions-artifact://25704738537/release-dry-run-macOS/target/release/lizzieyzy-next-desktop",
+      "platform": "macos",
+      "relativePath": "github-actions-artifact://25704738537/release-dry-run-macOS/target/release/lizzieyzy-next-desktop",
+      "sha256": "be786c55c3a5f93d0b207866240ffd98482c759483dedc399b56dd99af5a8573",
+      "signing": {
+        "checked": true,
+        "notarized": false,
+        "note": "macos packaging smoke does not prove signed production release assets.",
+        "officialReleaseSigned": false,
+        "productionReleaseSigned": false,
+        "productionSigned": false,
+        "signed": false,
+        "state": "unsigned_ci_or_dry_run",
+        "status": "unsigned_ci_or_dry_run"
+      },
+      "sizeBytes": 16918320,
+      "source": "github-actions-artifact://25704738537"
+    },
+    {
+      "arch": "x64",
+      "artifactName": "lizzieyzy-next-desktop.exe",
+      "artifactPresent": true,
+      "command": "npm run tauri:build -- --ci --no-sign",
+      "devServerAbsent": true,
+      "name": "lizzieyzy-next-desktop.exe",
+      "os": "windows",
+      "path": "github-actions-artifact://25704738537/release-dry-run-Windows/target/release/lizzieyzy-next-desktop.exe",
+      "platform": "windows",
+      "relativePath": "github-actions-artifact://25704738537/release-dry-run-Windows/target/release/lizzieyzy-next-desktop.exe",
+      "sha256": "274009a54508795e1da002cbb2335a174a2f3c7f1d9a59b8d3feb341862ee341",
+      "signing": {
+        "checked": true,
+        "notarized": false,
+        "note": "windows packaging smoke does not prove signed production release assets.",
+        "officialReleaseSigned": false,
+        "productionReleaseSigned": false,
+        "productionSigned": false,
+        "signed": false,
+        "state": "unsigned_ci_or_dry_run",
+        "status": "unsigned_ci_or_dry_run"
+      },
+      "sizeBytes": 17083392,
+      "source": "github-actions-artifact://25704738537"
+    }
+  ],
+  "checks": [
+    {
+      "details": {
+        "artifacts": [
+          {
+            "arch": "universal-or-runner",
+            "artifactName": "lizzieyzy-next-desktop",
+            "artifactPresent": true,
+            "command": "npm run tauri:build -- --ci --no-sign",
+            "devServerAbsent": true,
+            "name": "lizzieyzy-next-desktop",
+            "os": "macos",
+            "path": "github-actions-artifact://25704738537/release-dry-run-macOS/target/release/lizzieyzy-next-desktop",
+            "platform": "macos",
+            "relativePath": "github-actions-artifact://25704738537/release-dry-run-macOS/target/release/lizzieyzy-next-desktop",
+            "sha256": "be786c55c3a5f93d0b207866240ffd98482c759483dedc399b56dd99af5a8573",
+            "signing": {
+              "checked": true,
+              "notarized": false,
+              "note": "macos packaging smoke does not prove signed production release assets.",
+              "officialReleaseSigned": false,
+              "productionReleaseSigned": false,
+              "productionSigned": false,
+              "signed": false,
+              "state": "unsigned_ci_or_dry_run",
+              "status": "unsigned_ci_or_dry_run"
+            },
+            "sizeBytes": 16918320,
+            "source": "github-actions-artifact://25704738537"
+          }
+        ],
+        "platform": "macos",
+        "signing": {
+          "checked": true,
+          "notarized": false,
+          "note": "macos packaging smoke does not prove signed production release assets.",
+          "officialReleaseSigned": false,
+          "productionReleaseSigned": false,
+          "productionSigned": false,
+          "signed": false,
+          "state": "unsigned_ci_or_dry_run",
+          "status": "unsigned_ci_or_dry_run"
+        }
+      },
+      "name": "macos_artifacts",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "artifacts": [
+          {
+            "arch": "x64",
+            "artifactName": "lizzieyzy-next-desktop.exe",
+            "artifactPresent": true,
+            "command": "npm run tauri:build -- --ci --no-sign",
+            "devServerAbsent": true,
+            "name": "lizzieyzy-next-desktop.exe",
+            "os": "windows",
+            "path": "github-actions-artifact://25704738537/release-dry-run-Windows/target/release/lizzieyzy-next-desktop.exe",
+            "platform": "windows",
+            "relativePath": "github-actions-artifact://25704738537/release-dry-run-Windows/target/release/lizzieyzy-next-desktop.exe",
+            "sha256": "274009a54508795e1da002cbb2335a174a2f3c7f1d9a59b8d3feb341862ee341",
+            "signing": {
+              "checked": true,
+              "notarized": false,
+              "note": "windows packaging smoke does not prove signed production release assets.",
+              "officialReleaseSigned": false,
+              "productionReleaseSigned": false,
+              "productionSigned": false,
+              "signed": false,
+              "state": "unsigned_ci_or_dry_run",
+              "status": "unsigned_ci_or_dry_run"
+            },
+            "sizeBytes": 17083392,
+            "source": "github-actions-artifact://25704738537"
+          }
+        ],
+        "platform": "windows",
+        "signing": {
+          "checked": true,
+          "notarized": false,
+          "note": "windows packaging smoke does not prove signed production release assets.",
+          "officialReleaseSigned": false,
+          "productionReleaseSigned": false,
+          "productionSigned": false,
+          "signed": false,
+          "state": "unsigned_ci_or_dry_run",
+          "status": "unsigned_ci_or_dry_run"
+        }
+      },
+      "name": "windows_artifacts",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "artifacts": [
+          {
+            "arch": "x64",
+            "artifactName": "lizzieyzy-next-desktop",
+            "artifactPresent": true,
+            "command": "npm run tauri:build -- --ci --no-sign",
+            "devServerAbsent": true,
+            "name": "lizzieyzy-next-desktop",
+            "os": "linux",
+            "path": "github-actions-artifact://25704738537/release-dry-run-Linux/target/release/lizzieyzy-next-desktop",
+            "platform": "linux",
+            "relativePath": "github-actions-artifact://25704738537/release-dry-run-Linux/target/release/lizzieyzy-next-desktop",
+            "sha256": "7250f626c52730cbdfccad8900cc8f75d566997b3586650e0a2ec63a29d34ae9",
+            "signing": {
+              "checked": true,
+              "notarized": false,
+              "note": "linux packaging smoke does not prove signed production release assets.",
+              "officialReleaseSigned": false,
+              "productionReleaseSigned": false,
+              "productionSigned": false,
+              "signed": false,
+              "state": "unsigned_ci_or_dry_run",
+              "status": "unsigned_ci_or_dry_run"
+            },
+            "sizeBytes": 22713920,
+            "source": "github-actions-artifact://25704738537"
+          }
+        ],
+        "platform": "linux",
+        "signing": {
+          "checked": true,
+          "notarized": false,
+          "note": "linux packaging smoke does not prove signed production release assets.",
+          "officialReleaseSigned": false,
+          "productionReleaseSigned": false,
+          "productionSigned": false,
+          "signed": false,
+          "state": "unsigned_ci_or_dry_run",
+          "status": "unsigned_ci_or_dry_run"
+        }
+      },
+      "name": "linux_artifacts",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "linux": {
+          "checked": true,
+          "notarized": false,
+          "note": "linux packaging smoke does not prove signed production release assets.",
+          "officialReleaseSigned": false,
+          "productionReleaseSigned": false,
+          "productionSigned": false,
+          "signed": false,
+          "state": "unsigned_ci_or_dry_run",
+          "status": "unsigned_ci_or_dry_run"
+        },
+        "macos": {
+          "checked": true,
+          "notarized": false,
+          "note": "macos packaging smoke does not prove signed production release assets.",
+          "officialReleaseSigned": false,
+          "productionReleaseSigned": false,
+          "productionSigned": false,
+          "signed": false,
+          "state": "unsigned_ci_or_dry_run",
+          "status": "unsigned_ci_or_dry_run"
+        },
+        "officialSigningCovered": false,
+        "windows": {
+          "checked": true,
+          "notarized": false,
+          "note": "windows packaging smoke does not prove signed production release assets.",
+          "officialReleaseSigned": false,
+          "productionReleaseSigned": false,
+          "productionSigned": false,
+          "signed": false,
+          "state": "unsigned_ci_or_dry_run",
+          "status": "unsigned_ci_or_dry_run"
+        }
+      },
+      "name": "signing_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "linux": true,
+        "macos": true,
+        "viteDevServerReferenced": false,
+        "windows": true
+      },
+      "name": "dev_server_absent",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "entries": [
+          {
+            "algorithm": "sha256",
+            "artifactName": "lizzieyzy-next-desktop",
+            "artifactPresent": true,
+            "platform": "macos",
+            "source": "github-actions-artifact://25704738537",
+            "value": "be786c55c3a5f93d0b207866240ffd98482c759483dedc399b56dd99af5a8573"
+          },
+          {
+            "algorithm": "sha256",
+            "artifactName": "lizzieyzy-next-desktop.exe",
+            "artifactPresent": true,
+            "platform": "windows",
+            "source": "github-actions-artifact://25704738537",
+            "value": "274009a54508795e1da002cbb2335a174a2f3c7f1d9a59b8d3feb341862ee341"
+          },
+          {
+            "algorithm": "sha256",
+            "artifactName": "lizzieyzy-next-desktop",
+            "artifactPresent": true,
+            "platform": "linux",
+            "source": "github-actions-artifact://25704738537",
+            "value": "7250f626c52730cbdfccad8900cc8f75d566997b3586650e0a2ec63a29d34ae9"
+          }
+        ]
+      },
+      "name": "checksums",
+      "status": "pass"
+    }
+  ],
+  "generatedBy": "scripts/smoke_multiplatform_packaging.py",
+  "hostPlatform": "darwin",
+  "limitations": [
+    "This evidence records CI/dry-run packaging shape and artifact checksums when artifacts are available.",
+    "It does not prove signed, notarized, or production-distributed release assets.",
+    "Missing local artifacts are recorded as artifactPresent=false and use workflow-contract checksums rather than inferred file checksums."
+  ],
+  "name": "multiplatform_packaging_smoke",
+  "schema": "lizzieyzy.multiplatform-packaging-smoke.v1",
+  "source": "https://github.com/wimi321/lizzieyzy-next-tauri/actions/runs/25704738537",
+  "status": "pass",
+  "workflowContract": {
+    "dryRunWorkflow": {
+      "errors": [],
+      "matrixPlatforms": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "path": ".github/workflows/release-dry-run.yml"
+    },
+    "releaseWorkflow": {
+      "errors": [],
+      "matrixPlatforms": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "path": ".github/workflows/release.yml"
+    },
+    "tauriConfig": {
+      "bundleActive": true,
+      "devServerAbsentInReleaseWorkflow": true,
+      "frontendDist": "../dist",
+      "identifier": "org.lizzieyzy.next",
+      "path": "apps/desktop/src-tauri/tauri.conf.json",
+      "productName": "LizzieYzy Next",
+      "version": "0.1.0"
+    },
+    "valid": true
+  }
+}

@@ -31,10 +31,11 @@ CI should not run the GUI runtime collector. `scripts/smoke_user_flows.py` valid
 CI should not run the live KataGo collectors either. `scripts/smoke_user_flows.py` validates committed `docs/qa/katago-live-smoke-macos.json` and `docs/qa/katago-tauri-runtime-smoke-macos.json`; the collectors require a real local KataGo binary, model, config, and, for the Tauri runtime smoke, a GUI-capable macOS runtime.
 CI should not run the readboard GUI/runtime collector. `scripts/smoke_user_flows.py` validates committed `docs/qa/readboard-tauri-runtime-smoke-macos.json` when present; the scoped gate requires macOS Tauri runtime startup, sidecar probe ready/unavailable states, protocol-line sync with `snapshotId`, board size, non-negative move number, stone count, and player-to-play, target-state-change sync with distinct before/after snapshots, changed stone count or move number, stable board size, explicit unsupported OCR boundary evidence with an image/OCR message, and explicit `external_client_not_covered` fields for OCR and external client/window capture.
 CI should not run the provider GUI/runtime collector. `scripts/smoke_user_flows.py` validates committed `docs/qa/provider-live-smoke-macos.json` when present; the scoped gate requires macOS Tauri runtime startup, controlled-network Yike and Fox fetches, typed provider failure modes, controlled HTTP request observation, explicit non-offline-parser-only evidence, and explicit scope fields showing real account login state, anti-bot stability, and service schema drift are not covered.
+CI should not run platform packaging builds inside the repository smoke gate. `scripts/smoke_user_flows.py` validates committed `docs/qa/multiplatform-packaging-smoke.json` when present; the scoped gate requires macOS, Windows, and Linux artifact records, signing-state records, dev-server-absence checks, and SHA-256 checksums. This is not official signing/notarization or release publication proof.
 
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` currently reports `25 passed, 0 failed, 1 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped macOS two-launch save/reopen runtime evidence, scoped macOS live KataGo evidence, scoped macOS readboard runtime evidence, and scoped macOS provider controlled-network evidence are complete for their current gates.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `26 passed, 0 failed, 0 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped macOS two-launch save/reopen runtime evidence, scoped macOS live KataGo evidence, scoped macOS readboard runtime evidence, scoped macOS provider controlled-network evidence, and scoped multiplatform packaging smoke evidence are complete for their current gates.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
 - The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
 - The static `sgf_existing_move_edit_surface` and `edit-existing-move` checks pass for repository-local existing-move edit surface evidence: existing SGF node edits are exposed through the command-backed edit surface and covered by repository-local wiring evidence. This is not real desktop GUI smoke proof.
@@ -43,8 +44,9 @@ Current alpha-gate status for the repository-local smoke gate:
 - `docs/qa/katago-tauri-runtime-smoke-macos.json` is the macOS Tauri runtime KataGo evidence target from `scripts/smoke_tauri_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-tauri-runtime-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, assets, analyze-once, analyze-game, and start/cancel.
 - `docs/qa/readboard-tauri-runtime-smoke-macos.json` is the scoped macOS Tauri runtime readboard evidence target from the readboard runtime smoke runner. The repository gate requires schema `lizzieyzy.readboard-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, sidecar probe ready/unavailable states, protocol-line sync with snapshot id, board size, move number, stone count, and player-to-play, target-state-change sync with distinct before/after snapshot ids, changed stone count or move number, and stable board size, unsupported OCR boundary behavior, and explicit markers that OCR and external client/window capture are not covered.
 - `docs/qa/provider-live-smoke-macos.json` is the scoped macOS controlled-network Tauri provider evidence target from the provider runtime smoke runner. The repository gate requires schema `lizzieyzy.provider-live-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, controlled-network Yike fetch, controlled-network Fox fetch, typed failure modes, controlled request observation, offline parser exclusion, and explicit external account/service scope limits.
-- The remaining repository smoke pending item is multiplatform packaging smoke until platform-specific evidence exists. Even with scoped provider evidence recorded, real Fox/Yike service coverage, account/session login state, anti-bot stability, service schema drift, and cross-platform packaging remain outside that proof.
-- This status must be recorded as incomplete in release notes and handoff material until the pending runtime/external gates are closed with evidence.
+- `docs/qa/multiplatform-packaging-smoke.json` is the scoped packaging evidence target from the multiplatform packaging smoke runner. The repository gate requires schema `lizzieyzy.multiplatform-packaging-smoke.v1`, status `pass`, and passing checks for macOS, Windows, and Linux artifacts, signing-state recording, dev-server absence, and SHA-256 checksums.
+- The repository smoke gate has no pending items after scoped packaging evidence is recorded. Official signing/notarization, release publication, updater readiness, store distribution, platform-specific installed-app release smoke, and full legacy parity remain outside that proof.
+- This status must be recorded with the scoped evidence boundaries in release notes and handoff material; do not present it as formal release publication or full parity.
 
 Frontend build:
 
@@ -126,6 +128,14 @@ python3 scripts/smoke_user_flows.py --verbose
 ```
 
 Pass: `docs/qa/provider-live-smoke-macos.json` is sanitized, has schema `lizzieyzy.provider-live-smoke.v1`, status `pass`, platform `macos`, and includes `runtime_started`, `yike_controlled_fetch`, `fox_controlled_fetch`, `provider_failure_modes`, `controlled_network_observed`, `offline_not_counted_as_external_live`, and `external_account_scope`. The Yike check must use `networkMode: controlled_network`, a 2xx/3xx HTTP status, validated payload, non-negative result count, and `fixtureParserOnly: false`; the Fox check must use `networkMode: controlled_network`, a 2xx/3xx HTTP status, imported payload, positive move count, and `directHttpWarning: true`. This is scoped controlled-network Tauri provider evidence; it is not real Fox/Yike service parity, account login proof, anti-bot stability proof, or service schema drift proof.
+
+For scoped multiplatform packaging smoke evidence, run the packaging smoke collector and then:
+
+```bash
+python3 scripts/smoke_user_flows.py --verbose
+```
+
+Pass: `docs/qa/multiplatform-packaging-smoke.json` is sanitized, has schema `lizzieyzy.multiplatform-packaging-smoke.v1`, status `pass`, and includes `macos_artifacts`, `windows_artifacts`, `linux_artifacts`, `signing_recorded`, `dev_server_absent`, and `checksums`. Each platform must record at least one artifact and signing state; `dev_server_absent` must be true for macOS, Windows, and Linux; checksums must include SHA-256 values for all three platforms. This is scoped packaging smoke evidence; it is not official signing/notarization proof, release publication proof, updater readiness proof, or full legacy parity.
 
 ### Required User-Facing Retest Before Local Release
 
@@ -283,6 +293,7 @@ When production packaging becomes in scope, verify:
 - App identifier remains `org.lizzieyzy.next`.
 - Frontend output is built from `apps/desktop/dist`.
 - Required icons and metadata are present.
+- `docs/qa/multiplatform-packaging-smoke.json` validates through `python3 scripts/smoke_user_flows.py --verbose` for scoped artifact/signing-state/dev-server/checksum evidence.
 - `python3 scripts/validate_release_assets.py --verbose` passes.
 - `.github/workflows/release-dry-run.yml` passes on macOS, Linux, and Windows.
 - `.github/workflows/release.yml` is validated by `python3 scripts/validate_release_workflow.py --verbose`.

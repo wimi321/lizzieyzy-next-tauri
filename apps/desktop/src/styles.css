@@ -1189,6 +1189,23 @@ button.path-picker-button {
   transition: width 160ms ease;
 }
 
+.analysis-stale-guard {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 1px solid #dbe5f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysis-stale-guard.is-active {
+  border-color: #fecaca;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .message {
   align-self: center;
   line-height: 1.4;

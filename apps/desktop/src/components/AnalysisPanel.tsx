@@ -14,6 +14,10 @@ type Props = {
   reviewSource?: string;
   reviewPhase?: string;
   cacheRestoreVerified?: boolean;
+  staleAnalysisPrevented?: boolean;
+  analysisInvalidated?: boolean;
+  invalidationReason?: string;
+  activeJobId?: string | null;
 };
 
 export function AnalysisPanel({
@@ -26,7 +30,11 @@ export function AnalysisPanel({
   onSelectProblem,
   reviewSource = "none",
   reviewPhase = "idle",
-  cacheRestoreVerified = false
+  cacheRestoreVerified = false,
+  staleAnalysisPrevented = false,
+  analysisInvalidated = false,
+  invalidationReason = "",
+  activeJobId = null
 }: Props) {
   const hasOwnership = (frame?.ownership?.length ?? 0) >= boardSize * boardSize;
   const topPolicy = getTopPolicyPoints(frame?.policy, boardSize, 5);
@@ -39,6 +47,9 @@ export function AnalysisPanel({
     data-review-source={reviewSource}
     data-review-phase={reviewPhase}
     data-cache-restore-verified={String(cacheRestoreVerified)}
+    data-stale-analysis-prevented={String(staleAnalysisPrevented)}
+    data-analysis-invalidated={String(analysisInvalidated)}
+    data-active-job-id={activeJobId ?? ""}
     data-current-move={currentMove}
     data-candidate-count={frame?.candidates.length ?? 0}
     data-winrate-black={frame?.winrate_black ?? ""}
@@ -57,6 +68,20 @@ export function AnalysisPanel({
           : reviewPhase === "running" || reviewPhase === "starting"
             ? "Review analysis is updating this position."
             : "Review data is shown from the current workspace state."}
+      </p>
+      <p
+        className={`analysis-stale-guard${staleAnalysisPrevented || analysisInvalidated ? " is-active" : ""}`}
+        data-testid="analysis-stale-guard-status"
+        data-stale-analysis-prevented={String(staleAnalysisPrevented)}
+        data-analysis-invalidated={String(analysisInvalidated)}
+        data-active-job-id={activeJobId ?? ""}
+        data-invalidation-reason={invalidationReason}
+      >
+        {staleAnalysisPrevented
+          ? "Stale KataGo result blocked after SGF changed."
+          : analysisInvalidated
+            ? "Analysis cleared after SGF changed; run review again for this workspace."
+            : "Stale guard ready for current SGF."}
       </p>
       {frame ? <div
         className="metric-grid"

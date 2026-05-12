@@ -64,6 +64,9 @@ type ReviewWorkflowStatus = {
   cacheRestoreVerified: boolean;
   engineFailureVerified: boolean;
   staleAnalysisPrevented: boolean;
+  analysisInvalidated: boolean;
+  invalidationReason: string;
+  analysisEditVersion: number | null;
 };
 type PendingPreferencesSave = { version: number; preferences: AppPreferences };
 type NativeSgfDialogAction = "none" | "open" | "save" | "save-as";
@@ -109,7 +112,10 @@ const initialReviewWorkflowStatus: ReviewWorkflowStatus = {
   restartAfterCancelVerified: false,
   cacheRestoreVerified: false,
   engineFailureVerified: false,
-  staleAnalysisPrevented: false
+  staleAnalysisPrevented: false,
+  analysisInvalidated: false,
+  invalidationReason: "",
+  analysisEditVersion: null
 };
 const initialNativeSgfDialogWorkflow: NativeSgfDialogWorkflow = {
   action: "none",
@@ -167,6 +173,8 @@ export function App() {
   const [isLegacyConfigMigrating, setIsLegacyConfigMigrating] = useState(false);
   const [reviewWorkflowStatus, setReviewWorkflowStatus] = useState<ReviewWorkflowStatus>(() => initialReviewWorkflowStatus);
   const activeJobIdRef = useRef<string | null>(null);
+  const activeAnalysisEditVersionRef = useRef<number | null>(null);
+  const activeAnalysisSessionTokenRef = useRef<string | null>(null);
   const analysisSessionCounterRef = useRef(0);
   const startingAnalysisRef = useRef(false);
   const userChangedPreferencesRef = useRef(false);
@@ -424,6 +432,7 @@ export function App() {
       }
       setSgfText(document.sgfText);
       sgfTextEditVersionRef.current += 1;
+      invalidateAnalysisForSgfChange("Opened a different SGF document.");
       setCurrentFilePath(document.path);
       setFallbackFileName(null);
       setDirty(false);
@@ -530,6 +539,7 @@ export function App() {
       const savedMessage = `Saved and reloaded ${fileNameFromPath(saved.path)}: ${parsed.summary.move_count} moves.`;
       setSgfText(saved.sgfText);
       sgfTextEditVersionRef.current += 1;
+      invalidateAnalysisForSgfChange("Reloaded SGF from the saved file.");
       setGame(parsed);
       setPositions(replayed);
       setCurrentMove(targetMove);
@@ -625,6 +635,8 @@ export function App() {
     const targetTurn = currentMove;
     const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
     const sessionToken = nextAnalysisSessionToken();
+    const analysisEditVersion = beginAnalysisEditGuard(sessionToken);
+    const sourceText = sgfText;
     setIsKataGoRunning(true);
     setReviewWorkflowStatus({
       ...initialReviewWorkflowStatus,
@@ -632,19 +644,33 @@ export function App() {
       source: "katago",
       message: `Running KataGo for move ${targetTurn}.`,
       sessionToken,
-      currentTurn: targetTurn
+      currentTurn: targetTurn,
+      analysisEditVersion
     });
     setMessage(`Running KataGo analysis for move ${targetTurn}...`);
     const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText), parseSgfTree(sgfText)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sourceText), replaySgfPositions(sourceText), parseSgfTree(sourceText)]);
+      if (!isActiveAnalysisRun(analysisEditVersion, sessionToken) || !isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        markStaleAnalysisPrevented(`one-shot-${sessionToken}`, undefined, true, analysisEditVersion, sessionToken);
+        return;
+      }
       const turn = clampMoveNumberToPositions(replayed, Math.min(targetTurn, replayed.at(-1)?.move_number ?? parsed.moves.length));
-      const frame = await analyzeKataGoOnce(profile, sgfText, turn, visits);
+      const frame = await analyzeKataGoOnce(profile, sourceText, turn, visits);
+      if (!isActiveAnalysisRun(analysisEditVersion, sessionToken) || !isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        markStaleAnalysisPrevented(`one-shot-${sessionToken}`, undefined, true, analysisEditVersion, sessionToken);
+        return;
+      }
       const mergedFrames = mergeAnalysisFrame(frames, frame);
+      const classified = await classifyProblems(mergedFrames);
+      if (!isActiveAnalysisRun(analysisEditVersion, sessionToken) || !isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        markStaleAnalysisPrevented(`one-shot-${sessionToken}`, undefined, true, analysisEditVersion, sessionToken);
+        return;
+      }
       setGame(parsed);
       setPositions(replayed);
       setFrames(mergedFrames);
-      setProblems(await classifyProblems(mergedFrames));
+      setProblems(classified);
       setCurrentMove(frame.turn);
       setSelectedCandidateIndex(null);
       clearTreeNodePositionOverride();
@@ -657,10 +683,21 @@ export function App() {
         completed: 1,
         expected: 1,
         currentTurn: frame.turn,
-        progressVerified: true
+        progressVerified: true,
+        analysisEditVersion
       }));
       setMessage(`KataGo analysis completed for move ${frame.turn} with ${frame.visits} visits.`);
     } catch (error) {
+      if (!isActiveAnalysisRun(analysisEditVersion, sessionToken) || !isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        markStaleAnalysisPrevented(
+          `one-shot-${sessionToken}`,
+          "Ignored one-shot KataGo error after SGF changed or a newer analysis started.",
+          false,
+          analysisEditVersion,
+          sessionToken
+        );
+        return;
+      }
       failSgfTreeLoad(error, sgfTreeRequest);
       const message = engineFailureMessage(error);
       setReviewWorkflowStatus((status) => ({
@@ -672,7 +709,11 @@ export function App() {
       }));
       setMessage(message);
     } finally {
-      setIsKataGoRunning(false);
+      if (isActiveAnalysisRun(analysisEditVersion, sessionToken)) {
+        activeAnalysisEditVersionRef.current = null;
+        activeAnalysisSessionTokenRef.current = null;
+        setIsKataGoRunning(false);
+      }
       finishSgfTreeLoad(sgfTreeRequest);
     }
   }
@@ -682,6 +723,9 @@ export function App() {
     const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
     const previousWasCancelled = reviewWorkflowStatus.phase === "cancelled";
     const sessionToken = nextAnalysisSessionToken();
+    const analysisEditVersion = beginAnalysisEditGuard(sessionToken);
+    const sourceText = sgfText;
+    const sourceFilePath = currentFilePath;
     startingAnalysisRef.current = true;
     pendingAnalysisProgressRef.current.clear();
     pendingAnalysisTerminalEventsRef.current.clear();
@@ -693,17 +737,26 @@ export function App() {
       source: "katago",
       message: "Starting full-game KataGo review.",
       sessionToken,
-      restartAfterCancelVerified: previousWasCancelled
+      restartAfterCancelVerified: previousWasCancelled,
+      analysisEditVersion
     });
     setMessage("Starting full-game KataGo analysis...");
     let cleanup: (() => void) | null = null;
     const sgfTreeRequest = beginSgfTreeLoad();
     try {
-      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sgfText), replaySgfPositions(sgfText), parseSgfTree(sgfText)]);
+      const [parsed, replayed, tree] = await Promise.all([parseSgfSummary(sourceText), replaySgfPositions(sourceText), parseSgfTree(sourceText)]);
+      if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        markStaleAnalysisPrevented(`startup-${sessionToken}`, undefined, true, analysisEditVersion, sessionToken);
+        return;
+      }
       clearTreeNodePositionOverride();
       applySgfTree(tree, replayed.at(-1)?.move_number ?? parsed.moves.length, sgfTreeRequest);
       cleanup = await listenToKataGoAnalysisEvents({
         onProgress: (payload) => {
+          if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
+            return;
+          }
           if (startingAnalysisRef.current && activeJobIdRef.current === null) {
             pendingAnalysisProgressRef.current.set(payload.job_id, {
               jobId: payload.job_id,
@@ -714,8 +767,8 @@ export function App() {
             });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) {
-            markStaleAnalysisPrevented(payload.job_id);
+          if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
             return;
           }
           const progress = {
@@ -730,23 +783,31 @@ export function App() {
           setMessage(`Analyzing move ${payload.turn}: ${payload.completed}/${payload.expected} positions complete.`);
         },
         onComplete: (payload) => {
+          if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
+            return;
+          }
           if (startingAnalysisRef.current && activeJobIdRef.current === null) {
             pendingAnalysisTerminalEventsRef.current.set(payload.job_id, { kind: "complete", frames: payload.frames });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) {
-            markStaleAnalysisPrevented(payload.job_id);
+          if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
             return;
           }
-          void finishCompletedAnalysis(payload.job_id, payload.frames, parsed, replayed);
+          void finishCompletedAnalysis(payload.job_id, payload.frames, parsed, replayed, sourceText, sourceFilePath, analysisEditVersion);
         },
         onError: (payload) => {
+          if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
+            return;
+          }
           if (startingAnalysisRef.current && activeJobIdRef.current === null) {
             pendingAnalysisTerminalEventsRef.current.set(payload.job_id, { kind: "error", message: payload.message });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) {
-            markStaleAnalysisPrevented(payload.job_id);
+          if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
             return;
           }
           finishStoppedAnalysis(payload.job_id);
@@ -762,12 +823,16 @@ export function App() {
           setMessage(message);
         },
         onCancelled: (payload) => {
+          if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
+            return;
+          }
           if (startingAnalysisRef.current && activeJobIdRef.current === null) {
             pendingAnalysisTerminalEventsRef.current.set(payload.job_id, { kind: "cancelled", message: payload.message });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) {
-            markStaleAnalysisPrevented(payload.job_id);
+          if (!isCurrentAnalysisJob(payload.job_id, analysisEditVersion)) {
+            markStaleAnalysisPrevented(payload.job_id, undefined, true, analysisEditVersion, sessionToken);
             return;
           }
           finishStoppedAnalysis(payload.job_id);
@@ -785,26 +850,41 @@ export function App() {
       });
       cleanupAnalysisListeners();
       analysisCleanupRef.current = cleanup;
-      const jobId = await startKataGoGameAnalysis(profile, sgfText, visits);
+      if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        markStaleAnalysisPrevented(`startup-${sessionToken}`, undefined, true, analysisEditVersion, sessionToken);
+        return;
+      }
+      const jobId = await startKataGoGameAnalysis(profile, sourceText, visits);
+      if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+        void cancelKataGoAnalysis(jobId).catch(() => {
+          // The UI has already moved to a newer SGF; best-effort backend cancellation is enough here.
+        });
+        markStaleAnalysisPrevented(jobId, undefined, true, analysisEditVersion, sessionToken);
+        return;
+      }
       const pendingTerminalEvent = pendingAnalysisTerminalEventsRef.current.get(jobId);
       const pendingProgress = pendingAnalysisProgressRef.current.get(jobId);
       const hasStalePendingEvent = [...pendingAnalysisProgressRef.current.keys(), ...pendingAnalysisTerminalEventsRef.current.keys()].some((pendingJobId) => pendingJobId !== jobId);
       startingAnalysisRef.current = false;
       pendingAnalysisProgressRef.current.clear();
       pendingAnalysisTerminalEventsRef.current.clear();
-      if (hasStalePendingEvent) markStaleAnalysisPrevented("pending-startup-event");
-      if (pendingTerminalEvent) {
-        await finishPendingAnalysisTerminalEvent(jobId, pendingTerminalEvent, parsed, replayed);
-        return;
+      if (hasStalePendingEvent) {
+        markStaleAnalysisPrevented("pending-startup-event", "Ignored startup event from a different KataGo job.", false, analysisEditVersion, sessionToken);
       }
       activeJobIdRef.current = jobId;
+      activeAnalysisEditVersionRef.current = analysisEditVersion;
       setActiveJobId(jobId);
+      if (pendingTerminalEvent) {
+        await finishPendingAnalysisTerminalEvent(jobId, pendingTerminalEvent, parsed, replayed, sourceText, sourceFilePath, analysisEditVersion, sessionToken);
+        return;
+      }
       setReviewWorkflowStatus((status) => ({
         ...status,
         phase: pendingProgress ? "running" : "starting",
         source: "katago",
         activeJobId: jobId,
-        message: `Full-game KataGo analysis started (${jobId}).`
+        message: `Full-game KataGo analysis started (${jobId}).`,
+        analysisEditVersion
       }));
       if (pendingProgress) {
         setAnalysisProgress(pendingProgress);
@@ -815,10 +895,22 @@ export function App() {
       failSgfTreeLoad(error, sgfTreeRequest);
       cleanup?.();
       if (analysisCleanupRef.current === cleanup) analysisCleanupRef.current = null;
+      if (!isActiveAnalysisRun(analysisEditVersion, sessionToken)) {
+        markStaleAnalysisPrevented(
+          `startup-${sessionToken}`,
+          "Ignored full-game startup failure after SGF changed or a newer analysis started.",
+          false,
+          analysisEditVersion,
+          sessionToken
+        );
+        return;
+      }
       startingAnalysisRef.current = false;
       pendingAnalysisProgressRef.current.clear();
       pendingAnalysisTerminalEventsRef.current.clear();
       activeJobIdRef.current = null;
+      activeAnalysisEditVersionRef.current = null;
+      activeAnalysisSessionTokenRef.current = null;
       setActiveJobId(null);
       setAnalysisProgress(null);
       setIsKataGoRunning(false);
@@ -888,6 +980,7 @@ export function App() {
       const importedMessage = `Imported ${file.name}: ${parsed.summary.move_count} moves.`;
       setSgfText(text);
       sgfTextEditVersionRef.current += 1;
+      invalidateAnalysisForSgfChange("Imported a different SGF file.");
       setCurrentFilePath(null);
       setFallbackFileName(file.name);
       setDirty(false);
@@ -919,6 +1012,7 @@ export function App() {
       const targetMove = replayed.at(-1)?.move_number ?? parsed.moves.length;
       setSgfText(result.sgf_text);
       sgfTextEditVersionRef.current += 1;
+      invalidateAnalysisForSgfChange("Imported provider SGF into the workspace.");
       setCurrentFilePath(null);
       setFallbackFileName(providerDocumentName(result));
       setDirty(false);
@@ -949,6 +1043,7 @@ export function App() {
       const sampleMessage = `Sample SGF restored: ${parsed.summary.move_count} moves.`;
       setSgfText(demoSgf);
       sgfTextEditVersionRef.current += 1;
+      invalidateAnalysisForSgfChange("Loaded the sample SGF.");
       setCurrentFilePath(null);
       setFallbackFileName("sample.sgf");
       setDirty(false);
@@ -1022,8 +1117,7 @@ export function App() {
       sgfTextEditVersionRef.current += 1;
       setSgfText(updatedSgfText);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Saved a node comment into the SGF.");
       const updatedTree = await parseSgfTree(updatedSgfText);
       const selectedNode = applySgfTreeSelectedNode(updatedTree, nodeId, sgfTreeRequest)
         ?? selectSgfTreeNodeForMove(updatedTree, currentMove);
@@ -1066,8 +1160,7 @@ export function App() {
       sgfTextEditVersionRef.current += 1;
       setSgfText(result.sgf_text);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Saved SGF node properties.");
 
       const [parsed, replayed, updatedTree] = await Promise.all([
         parseSgfSummary(result.sgf_text),
@@ -1129,8 +1222,7 @@ export function App() {
       sgfTextEditVersionRef.current += 1;
       setSgfText(result.sgf_text);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Saved SGF annotations.");
 
       const [parsed, replayed, updatedTree] = await Promise.all([
         parseSgfSummary(result.sgf_text),
@@ -1197,8 +1289,7 @@ export function App() {
       sgfTextEditVersionRef.current += 1;
       setSgfText(result.sgfText);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Appended a move to the SGF.");
 
       const [parsed, replayed, updatedTree] = await Promise.all([
         parseSgfSummary(result.sgfText),
@@ -1275,8 +1366,7 @@ export function App() {
       const appliedVersion = sgfTextEditVersionRef.current;
       setSgfText(result.sgfText);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Edited an existing SGF move.");
 
       const [parsed, replayed, updatedTree] = await Promise.all([
         parseSgfSummary(result.sgfText),
@@ -1366,8 +1456,7 @@ export function App() {
       const appliedVersion = sgfTextEditVersionRef.current;
       setSgfText(result.sgfText);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Deleted an SGF node.");
 
       const [parsed, replayed, updatedTree] = await Promise.all([
         parseSgfSummary(result.sgfText),
@@ -1456,8 +1545,7 @@ export function App() {
       const appliedVersion = sgfTextEditVersionRef.current;
       setSgfText(result.sgfText);
       setDirty(true);
-      clearReviewData();
-      resetAnalysisCacheState();
+      invalidateAnalysisForSgfChange("Reordered SGF variations.");
 
       const [parsed, replayed, updatedTree] = await Promise.all([
         parseSgfSummary(result.sgfText),
@@ -1579,6 +1667,52 @@ export function App() {
     return `review-session-${analysisSessionCounterRef.current}`;
   }
 
+  function beginAnalysisEditGuard(sessionToken: string): number {
+    const editVersion = sgfTextEditVersionRef.current;
+    activeAnalysisEditVersionRef.current = editVersion;
+    activeAnalysisSessionTokenRef.current = sessionToken;
+    return editVersion;
+  }
+
+  function isAnalysisEditVersionCurrent(editVersion: number | null): boolean {
+    return editVersion === null || sgfTextEditVersionRef.current === editVersion;
+  }
+
+  function isActiveAnalysisRun(editVersion: number, sessionToken: string): boolean {
+    return activeAnalysisEditVersionRef.current === editVersion && activeAnalysisSessionTokenRef.current === sessionToken;
+  }
+
+  function invalidateAnalysisForSgfChange(reason: string) {
+    const jobId = activeJobIdRef.current;
+    const wasStarting = startingAnalysisRef.current;
+    const hadAnalysisGuard = activeAnalysisEditVersionRef.current !== null || isKataGoRunning;
+    if (jobId) {
+      void cancelKataGoAnalysis(jobId).catch(() => {
+        // The stale guard still releases the UI even if the backend job is already gone.
+      });
+    }
+    cleanupAnalysisListeners();
+    activeJobIdRef.current = null;
+    activeAnalysisEditVersionRef.current = null;
+    activeAnalysisSessionTokenRef.current = null;
+    startingAnalysisRef.current = false;
+    pendingAnalysisProgressRef.current.clear();
+    pendingAnalysisTerminalEventsRef.current.clear();
+    setActiveJobId(null);
+    setIsKataGoRunning(false);
+    setAnalysisProgress(null);
+    clearReviewData();
+    resetAnalysisCacheState();
+    setReviewWorkflowStatus((status) => ({
+      ...initialReviewWorkflowStatus,
+      sessionToken: status.sessionToken,
+      staleAnalysisPrevented: status.staleAnalysisPrevented || Boolean(jobId || wasStarting || hadAnalysisGuard),
+      analysisInvalidated: true,
+      invalidationReason: reason,
+      message: `${reason} Review/cache data cleared; run KataGo again for the current SGF.`
+    }));
+  }
+
   function setReviewWorkflowProgress(progress: AnalysisProgress) {
     setReviewWorkflowStatus((status) => ({
       ...status,
@@ -1593,14 +1727,44 @@ export function App() {
     }));
   }
 
-  function markStaleAnalysisPrevented(jobId: string) {
+  function markStaleAnalysisPrevented(
+    jobId: string,
+    reason = "SGF changed while KataGo analysis was running.",
+    releaseCurrentAnalysis = true,
+    editVersion: number | null = null,
+    sessionToken: string | null = null
+  ) {
+    const ownsCurrentVersion = editVersion === null || activeAnalysisEditVersionRef.current === editVersion;
+    const ownsCurrentSession = sessionToken === null || activeAnalysisSessionTokenRef.current === sessionToken;
+    const canReleaseCurrent = releaseCurrentAnalysis
+      && ownsCurrentVersion
+      && ownsCurrentSession
+      && (activeJobIdRef.current === jobId || activeJobIdRef.current === null);
+    if (canReleaseCurrent) {
+      activeJobIdRef.current = null;
+      activeAnalysisEditVersionRef.current = null;
+      activeAnalysisSessionTokenRef.current = null;
+      startingAnalysisRef.current = false;
+      pendingAnalysisProgressRef.current.clear();
+      pendingAnalysisTerminalEventsRef.current.clear();
+      setActiveJobId(null);
+      setIsKataGoRunning(false);
+      setAnalysisProgress(null);
+      cleanupAnalysisListeners();
+    }
     setReviewWorkflowStatus((status) => ({
       ...status,
+      phase: canReleaseCurrent ? "cancelled" : status.phase,
+      source: canReleaseCurrent ? "katago" : status.source,
+      activeJobId: canReleaseCurrent ? null : status.activeJobId,
       staleAnalysisPrevented: true,
+      analysisInvalidated: canReleaseCurrent ? true : status.analysisInvalidated,
+      invalidationReason: canReleaseCurrent || !status.invalidationReason ? reason : status.invalidationReason,
       message: status.phase === "running" || status.phase === "starting"
-        ? `${status.message} Ignored stale event from ${jobId}.`
-        : `Ignored stale analysis event from ${jobId}.`
+        ? `${status.message} Ignored stale event from ${jobId}: ${reason}`
+        : `Ignored stale analysis event from ${jobId}: ${reason}`
     }));
+    if (canReleaseCurrent) setMessage(`Ignored stale KataGo analysis event from ${jobId}; ${reason}`);
   }
 
   function cleanupAnalysisListeners() {
@@ -1608,13 +1772,26 @@ export function App() {
     analysisCleanupRef.current = null;
   }
 
-  function isCurrentAnalysisJob(jobId: string): boolean {
-    return activeJobIdRef.current === jobId;
+  function isCurrentAnalysisJob(jobId: string, editVersion = activeAnalysisEditVersionRef.current): boolean {
+    return activeJobIdRef.current === jobId && isAnalysisEditVersionCurrent(editVersion);
   }
 
-  async function finishPendingAnalysisTerminalEvent(jobId: string, event: PendingAnalysisTerminalEvent, parsed: GameDto, replayed: PositionDto[]) {
+  async function finishPendingAnalysisTerminalEvent(
+    jobId: string,
+    event: PendingAnalysisTerminalEvent,
+    parsed: GameDto,
+    replayed: PositionDto[],
+    sourceText: string,
+    sourceFilePath: string | null,
+    analysisEditVersion: number,
+    sessionToken: string
+  ) {
+    if (!isAnalysisEditVersionCurrent(analysisEditVersion)) {
+      markStaleAnalysisPrevented(jobId, undefined, true, analysisEditVersion, sessionToken);
+      return;
+    }
     if (event.kind === "complete") {
-      await finishCompletedAnalysis(jobId, event.frames, parsed, replayed);
+      await finishCompletedAnalysis(jobId, event.frames, parsed, replayed, sourceText, sourceFilePath, analysisEditVersion);
       return;
     }
     finishStoppedAnalysis(jobId);
@@ -1644,10 +1821,26 @@ export function App() {
     setMessage(message);
   }
 
-  async function finishCompletedAnalysis(jobId: string, result: AnalysisFrameDto[], parsed: GameDto, replayed: PositionDto[]) {
+  async function finishCompletedAnalysis(
+    jobId: string,
+    result: AnalysisFrameDto[],
+    parsed: GameDto,
+    replayed: PositionDto[],
+    sourceText: string,
+    sourceFilePath: string | null,
+    analysisEditVersion: number
+  ) {
+    if (!isCurrentAnalysisJob(jobId, analysisEditVersion)) {
+      markStaleAnalysisPrevented(jobId, undefined, true, analysisEditVersion);
+      return;
+    }
     const lastAnalyzedMove = result.at(-1)?.turn ?? replayed.at(-1)?.move_number ?? parsed.moves.length;
     const shownMove = clampMoveNumberToPositions(replayed, lastAnalyzedMove);
     const classified = await classifyProblems(result);
+    if (!isCurrentAnalysisJob(jobId, analysisEditVersion)) {
+      markStaleAnalysisPrevented(jobId, undefined, true, analysisEditVersion);
+      return;
+    }
     setGame(parsed);
     setPositions(replayed);
     setFrames(result);
@@ -1656,8 +1849,12 @@ export function App() {
     setSelectedCandidateIndex(null);
     clearTreeNodePositionOverride();
     setAnalysisProgress((progress) => progress ? { ...progress, completed: progress.expected || result.length, expected: progress.expected || result.length } : progress);
+    const cacheMessage = await saveAnalysisCacheForGame(sourceText, sourceFilePath, parsed, result, classified, "katago", analysisEditVersion);
+    if (!isCurrentAnalysisJob(jobId, analysisEditVersion)) {
+      markStaleAnalysisPrevented(jobId, undefined, true, analysisEditVersion);
+      return;
+    }
     finishStoppedAnalysis(jobId);
-    const cacheMessage = await saveAnalysisCacheForGame(sgfText, currentFilePath, parsed, result, classified, "katago");
     setReviewWorkflowStatus((status) => ({
       ...status,
       phase: "completed",
@@ -1667,7 +1864,8 @@ export function App() {
       completed: result.length,
       expected: Math.max(status.expected, result.length),
       currentTurn: shownMove,
-      progressVerified: true
+      progressVerified: true,
+      analysisEditVersion
     }));
     setMessage(`Full-game KataGo analysis completed with ${result.length} frames. Showing move ${shownMove}.${cacheMessage}`);
   }
@@ -1675,6 +1873,8 @@ export function App() {
   function finishStoppedAnalysis(jobId: string) {
     if (activeJobIdRef.current !== null && activeJobIdRef.current !== jobId) return;
     activeJobIdRef.current = null;
+    activeAnalysisEditVersionRef.current = null;
+    activeAnalysisSessionTokenRef.current = null;
     setActiveJobId(null);
     setIsKataGoRunning(false);
     cleanupAnalysisListeners();
@@ -1771,16 +1971,23 @@ export function App() {
     parsed: GameDto,
     analysisFrames: AnalysisFrameDto[],
     analysisProblems: ProblemMarkerDto[],
-    engineKind: CacheEngineKind
+    engineKind: CacheEngineKind,
+    expectedEditVersion: number | null = null
   ): Promise<string> {
     if (!preferences.autoSaveAnalysis) {
       setCacheStatus("idle");
       return " Cache auto-save is off.";
     }
+    if (!isAnalysisEditVersionCurrent(expectedEditVersion)) {
+      return " Cache save skipped because the SGF changed.";
+    }
     setCacheStatus("saving");
     setCacheError(null);
     try {
       const key = currentCacheKey ?? await computeGameCacheKey(text, filePath);
+      if (!isAnalysisEditVersionCurrent(expectedEditVersion)) {
+        return " Cache save skipped because the SGF changed.";
+      }
       setCurrentCacheKey(key);
       const payload = { frames: analysisFrames, problems: analysisProblems } as unknown as JsonValue;
       const saved = await saveAnalysisCache({
@@ -1793,6 +2000,9 @@ export function App() {
         analyzedMoveCount: countAnalyzedMoves(analysisFrames, parsed.summary.move_count),
         payload
       });
+      if (!isAnalysisEditVersionCurrent(expectedEditVersion)) {
+        return " Cache save skipped because the SGF changed.";
+      }
       const record: AnalysisCacheRecord = {
         id: saved.id,
         gameKey: saved.gameKey,
@@ -1947,6 +2157,10 @@ export function App() {
             reviewSource={reviewWorkflowStatus.source}
             reviewPhase={reviewWorkflowStatus.phase}
             cacheRestoreVerified={reviewWorkflowStatus.cacheRestoreVerified}
+            staleAnalysisPrevented={reviewWorkflowStatus.staleAnalysisPrevented}
+            analysisInvalidated={reviewWorkflowStatus.analysisInvalidated}
+            invalidationReason={reviewWorkflowStatus.invalidationReason}
+            activeJobId={reviewWorkflowStatus.activeJobId}
           />
           <SgfTreePanelWithMoveEdit
             tree={sgfTree}
@@ -2093,8 +2307,7 @@ export function App() {
         setSgfText(value);
         setDirty(true);
         clearTreeNodePositionOverride();
-        clearReviewData();
-        resetAnalysisCacheState();
+        invalidateAnalysisForSgfChange("SGF source text was edited.");
         setIsSgfTreeLoading(false);
         setSgfTree(null);
         setSelectedSgfNodeId(null);

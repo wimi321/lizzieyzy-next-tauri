@@ -70,6 +70,23 @@ export type UpdateSgfNodePropertiesResult = {
   node_id: string;
 };
 
+export type LegacyConfigMigrationPreviewDto = {
+  sourcePath: string;
+  preferences: unknown | null;
+  engineProfiles: unknown | null;
+  migratedFields: string[];
+  warnings: string[];
+};
+
+export type LegacyConfigMigrationApplyDto = {
+  sourcePath: string;
+  preferencesWritten: boolean;
+  engineProfilesWritten: boolean;
+  writtenPaths: string[];
+  migratedFields: string[];
+  warnings: string[];
+};
+
 export type AnalysisProgressPayload = {
   job_id: string;
   completed: number;
@@ -323,6 +340,20 @@ export async function reorderSgfVariation(sgfText: string, nodeId: string, targe
     throw new Error("真实 SGF variation reordering requires Tauri backend. Browser preview cannot reorder SGF variations.");
   }
   return await invoke<ReorderSgfVariationResult>("reorder_sgf_variation", { sgfText, nodeId, targetIndex });
+}
+
+export async function previewLegacyConfigMigration(path: string): Promise<LegacyConfigMigrationPreviewDto> {
+  if (!isTauriRuntime()) {
+    throw new Error("Legacy Java/Swing config migration preview requires the Tauri desktop backend.");
+  }
+  return await invoke<LegacyConfigMigrationPreviewDto>("preview_legacy_config_migration", { path });
+}
+
+export async function applyLegacyConfigMigration(path: string): Promise<LegacyConfigMigrationApplyDto> {
+  if (!isTauriRuntime()) {
+    throw new Error("Legacy Java/Swing config migration apply requires the Tauri desktop backend.");
+  }
+  return await invoke<LegacyConfigMigrationApplyDto>("apply_legacy_config_migration", { path });
 }
 
 export async function replaySgfPositionAtNode(sgfText: string, nodeId: string): Promise<PositionDto> {

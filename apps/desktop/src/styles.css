@@ -910,6 +910,54 @@ textarea {
   align-content: end;
 }
 
+.legacy-config-migration {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.legacy-config-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.legacy-config-actions button {
+  min-width: 0;
+  height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.migration-result {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.migration-result strong {
+  color: #111827;
+  font-size: 12px;
+}
+
+.migration-result ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.migration-result li,
+.migration-result span {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .toggle-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

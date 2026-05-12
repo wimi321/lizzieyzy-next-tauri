@@ -1687,6 +1687,7 @@ fn preview_legacy_config_migration_from_path(path: &Path) -> Result<LegacyConfig
     } else {
         None
     };
+    append_unsupported_legacy_warnings(&root, &mut warnings);
     if preferences.is_none() && engine_profiles.is_none() {
         warnings.push("no supported legacy config fields were found".to_string());
     }
@@ -1704,14 +1705,287 @@ fn preview_legacy_config_migration_from_path(path: &Path) -> Result<LegacyConfig
 }
 
 fn parse_legacy_config_value(contents: &str, path: &Path) -> Result<Value, String> {
-    serde_json::from_str(contents)
-        .or_else(|_| serde_json::from_str(&sanitize_jsonish_config(contents)))
-        .map_err(|err| {
+    match serde_json::from_str(contents).or_else(|_| serde_json::from_str(&sanitize_jsonish_config(contents))) {
+        Ok(value) => Ok(value),
+        Err(json_err) if looks_like_json_config(contents) => Err(format!(
+            "failed to parse legacy config {} as JSON-ish config: {json_err}",
+            path.display()
+        )),
+        Err(json_err) => parse_legacy_properties_config(contents).map_err(|properties_err| {
             format!(
-                "failed to parse legacy config {} as JSON-ish config: {err}",
+                "failed to parse legacy config {} as JSON-ish config or Java properties: {json_err}; {properties_err}",
                 path.display()
             )
-        })
+        }),
+    }
+}
+
+fn looks_like_json_config(contents: &str) -> bool {
+    contents
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .starts_with(['{', '['])
+}
+
+fn parse_legacy_properties_config(contents: &str) -> Result<Value, String> {
+    let mut map = serde_json::Map::new();
+    let mut parsed_entries = 0usize;
+
+    for (index, raw_line) in contents.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('!') {
+            continue;
+        }
+        let Some(separator) = find_legacy_property_separator(line) else {
+            return Err(format!(
+                "line {} is not a supported key=value Java properties entry",
+                index + 1
+            ));
+        };
+        let key = unescape_legacy_property(line[..separator].trim());
+        if key.is_empty() {
+            return Err(format!("line {} has an empty Java properties key", index + 1));
+        }
+        let value_start = separator + line[separator..].chars().next().map(char::len_utf8).unwrap_or(1);
+        let value = unescape_legacy_property(line[value_start..].trim());
+        insert_legacy_property_value(&mut map, &key, Value::String(value));
+        parsed_entries += 1;
+    }
+
+    if parsed_entries == 0 {
+        return Err("no Java properties entries were found".to_string());
+    }
+
+    Ok(Value::Object(map))
+}
+
+fn find_legacy_property_separator(line: &str) -> Option<usize> {
+    let mut escaped = false;
+    for (index, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '=' || ch == ':' {
+            return Some(index);
+        }
+    }
+    None
+}
+
+fn unescape_legacy_property(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            output.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => output.push('\n'),
+            Some('r') => output.push('\r'),
+            Some('t') => output.push('\t'),
+            Some(next @ ('\\' | ':' | '=' | '#' | '!' | ' ')) => output.push(next),
+            Some(next) => {
+                output.push('\\');
+                output.push(next);
+            }
+            None => output.push('\\'),
+        }
+    }
+    output
+}
+
+fn insert_legacy_property_value(map: &mut serde_json::Map<String, Value>, key: &str, value: Value) {
+    let parts = key
+        .split('.')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return;
+    }
+    insert_legacy_property_parts(map, &parts, value);
+}
+
+fn insert_legacy_property_parts(map: &mut serde_json::Map<String, Value>, parts: &[&str], value: Value) {
+    if parts.len() == 1 {
+        map.insert(parts[0].to_string(), value);
+        return;
+    }
+
+    let entry = map
+        .entry(parts[0].to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if !entry.is_object() {
+        *entry = Value::Object(serde_json::Map::new());
+    }
+    if let Value::Object(nested) = entry {
+        insert_legacy_property_parts(nested, &parts[1..], value);
+    }
+}
+
+fn append_unsupported_legacy_warnings(root: &Value, warnings: &mut Vec<String>) {
+    let Some(map) = root.as_object() else {
+        return;
+    };
+    let top_level_keys = legacy_supported_top_level_keys();
+    let nested_keys = legacy_supported_nested_keys();
+    let known_containers = legacy_known_container_keys();
+
+    for (key, value) in map {
+        if !top_level_keys.contains(key.as_str()) {
+            warnings.push(format!("unsupported legacy config key was ignored: {key}"));
+            continue;
+        }
+        if !known_containers.contains(key.as_str()) {
+            continue;
+        }
+        match value {
+            Value::Object(nested) => {
+                for nested_key in nested.keys() {
+                    if !nested_keys.contains(nested_key.as_str()) {
+                        warnings.push(format!(
+                            "unsupported legacy config key was ignored: {key}.{nested_key}"
+                        ));
+                    }
+                }
+            }
+            Value::Array(values) => {
+                for (index, nested_value) in values.iter().enumerate() {
+                    if let Some(nested) = nested_value.as_object() {
+                        for nested_key in nested.keys() {
+                            if !nested_keys.contains(nested_key.as_str()) {
+                                warnings.push(format!(
+                                    "unsupported legacy config key was ignored: {key}[{index}].{nested_key}"
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn legacy_supported_top_level_keys() -> HashSet<&'static str> {
+    [
+        "showCandidates",
+        "show-candidates",
+        "show-candidate",
+        "candidateLimit",
+        "maxAnalyzeTurns",
+        "defaultMaxVisits",
+        "maxVisits",
+        "showOwnership",
+        "showPolicy",
+        "boardTheme",
+        "theme",
+        "engineCommand",
+        "engine-command",
+        "enginePath",
+        "engine-path",
+        "katagoCommand",
+        "katago-command",
+        "katagoPath",
+        "katago-path",
+        "leelazCommand",
+        "leelaz-command",
+        "leelazPath",
+        "leelaz-path",
+        "modelPath",
+        "model-path",
+        "katagoModelPath",
+        "katago-model-path",
+        "leelazModelPath",
+        "leelaz-model-path",
+        "configPath",
+        "config-path",
+        "gtpConfig",
+        "gtp-config",
+        "katagoConfigPath",
+        "katago-config-path",
+    ]
+    .into_iter()
+    .chain(legacy_known_container_keys())
+    .collect()
+}
+
+fn legacy_supported_nested_keys() -> HashSet<&'static str> {
+    [
+        "showCandidates",
+        "show-candidates",
+        "show-candidate",
+        "candidateLimit",
+        "maxAnalyzeTurns",
+        "defaultMaxVisits",
+        "maxVisits",
+        "showOwnership",
+        "showPolicy",
+        "boardTheme",
+        "theme",
+        "engineCommand",
+        "engine-command",
+        "enginePath",
+        "engine-path",
+        "katagoCommand",
+        "katago-command",
+        "katagoPath",
+        "katago-path",
+        "leelazCommand",
+        "leelaz-command",
+        "leelazPath",
+        "leelaz-path",
+        "modelPath",
+        "model-path",
+        "katagoModelPath",
+        "katago-model-path",
+        "leelazModelPath",
+        "leelaz-model-path",
+        "configPath",
+        "config-path",
+        "gtpConfig",
+        "gtp-config",
+        "katagoConfigPath",
+        "katago-config-path",
+        "command",
+        "path",
+        "model",
+        "config",
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn legacy_known_container_keys() -> HashSet<&'static str> {
+    [
+        "ui",
+        "preferences",
+        "preference",
+        "appPreferences",
+        "app-preferences",
+        "engine",
+        "engines",
+        "engineProfile",
+        "engine-profile",
+        "engineProfiles",
+        "engine-profiles",
+        "defaultEngine",
+        "default-engine",
+        "analysisEngine",
+        "analysis-engine",
+        "katago",
+        "kataGo",
+        "leelaz",
+        "leelaZero",
+    ]
+    .into_iter()
+    .collect()
 }
 
 fn sanitize_jsonish_config(contents: &str) -> String {
@@ -3230,6 +3504,52 @@ mod tests {
     }
 
     #[test]
+    fn legacy_config_preview_reads_java_properties_and_warns_unsupported_keys() {
+        let dir = native_config_temp_dir("legacy-properties");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("lizzie.properties");
+        fs::write(
+            &legacy_path,
+            r#"
+                # Representative legacy Java properties config
+                preferences.showCandidates=false
+                preferences.candidateLimit=12
+                preferences.showOwnership=true
+                preferences.showPolicy=false
+                preferences.theme=high-contrast
+                preferences.maxVisits=1600
+                katago.command=/java/katago
+                katago.model=/java/model.bin.gz
+                katago.config=/java/analysis.cfg
+                katago.maxVisits=1600
+                unsupportedLegacyKey=ignored
+            "#,
+        )
+        .unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        let preferences = preview.preferences.unwrap();
+        let profiles = preview.engine_profiles.unwrap();
+        let profile = &profiles.profiles[0];
+        assert!(!preferences.show_candidates);
+        assert_eq!(preferences.candidate_limit, 12);
+        assert!(preferences.show_ownership);
+        assert!(!preferences.show_policy);
+        assert_eq!(preferences.board_theme, "high-contrast");
+        assert_eq!(preferences.default_max_visits, 1600);
+        assert_eq!(profile.profile.engine_path, "/java/katago");
+        assert_eq!(profile.profile.model_path.as_deref(), Some("/java/model.bin.gz"));
+        assert_eq!(profile.profile.config_path.as_deref(), Some("/java/analysis.cfg"));
+        assert_eq!(profile.max_visits, 1600);
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("unsupportedLegacyKey")));
+    }
+
+    #[test]
     fn legacy_config_ignores_unrelated_nested_generic_fields() {
         let dir = native_config_temp_dir("legacy-whitelist");
         fs::create_dir_all(&dir).unwrap();
@@ -3351,6 +3671,57 @@ mod tests {
         assert_eq!(default_profile.max_visits, 4321);
         assert_eq!(custom_profile.profile.engine_path, "/custom/engine");
         assert_eq!(custom_profile.max_visits, 99);
+    }
+
+    #[test]
+    fn legacy_config_apply_malformed_config_returns_error_without_writing() {
+        let dir = native_config_temp_dir("legacy-malformed");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("broken-config.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        let existing_preferences = AppPreferencesDto {
+            show_candidates: false,
+            candidate_limit: 3,
+            ..default_app_preferences()
+        };
+        let existing_profiles = EngineProfilesSettingsDto {
+            selected_profile_id: "custom".to_string(),
+            profiles: vec![EngineProfileRecordDto {
+                id: "custom".to_string(),
+                profile: EngineProfileDto {
+                    name: "Custom Engine".to_string(),
+                    engine_path: "/custom/engine".to_string(),
+                    model_path: None,
+                    config_path: None,
+                    working_dir: None,
+                    backend: EngineBackend::GenericGtp,
+                },
+                max_visits: 99,
+            }],
+        };
+        save_app_preferences_at_path(&preferences_path, existing_preferences.clone()).unwrap();
+        save_engine_profiles_settings_at_path(&profiles_path, existing_profiles.clone()).unwrap();
+        let before_preferences = fs::read_to_string(&preferences_path).unwrap();
+        let before_profiles = fs::read_to_string(&profiles_path).unwrap();
+        fs::write(
+            &legacy_path,
+            r#"{
+                "showCandidates": true,
+                "enginePath": "/new/katago",
+            "#,
+        )
+        .unwrap();
+
+        let error = apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path)
+            .unwrap_err();
+        let after_preferences = fs::read_to_string(&preferences_path).unwrap();
+        let after_profiles = fs::read_to_string(&profiles_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(error.contains("failed to parse legacy config"));
+        assert_eq!(after_preferences, before_preferences);
+        assert_eq!(after_profiles, before_profiles);
     }
 
     #[test]

@@ -11,9 +11,25 @@ type Props = {
   onCancelAnalysis?: () => void | Promise<void>;
   analysisProgress?: { completed: number; expected: number; turn: number; responseJsonl: string } | null;
   activeJobId?: string | null;
+  reviewWorkflow?: {
+    phase: string;
+    source: string;
+    message: string;
+    sessionToken: string;
+    activeJobId: string | null;
+    completed: number;
+    expected: number;
+    currentTurn: number | null;
+    progressVerified: boolean;
+    cancelVerified: boolean;
+    restartAfterCancelVerified: boolean;
+    cacheRestoreVerified: boolean;
+    engineFailureVerified: boolean;
+    staleAnalysisPrevented: boolean;
+  };
 };
 
-export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCancelAnalysis, analysisProgress = null, activeJobId = null }: Props) {
+export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCancelAnalysis, analysisProgress = null, activeJobId = null, reviewWorkflow }: Props) {
   const [profiles, setProfiles] = useState<EngineProfileRecordDto[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("default");
   const [profileName, setProfileName] = useState("Local KataGo");
@@ -336,12 +352,46 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         </label>
         <button data-testid="engine-run-katago" onClick={handleRun} disabled={!canRun}>{disabled ? "Running..." : "Run KataGo"}</button>
         <button data-testid="engine-analyze-game" onClick={handleAnalyzeGame} disabled={!canRun} title="Analyze every move">{disabled ? "Running..." : "Analyze game"}</button>
-        {isAnalysisActive && <button onClick={() => void onCancelAnalysis?.()} disabled={!onCancelAnalysis}>Cancel</button>}
+        {isAnalysisActive && <button data-testid="engine-cancel-analysis" onClick={() => void onCancelAnalysis?.()} disabled={!onCancelAnalysis}>Cancel</button>}
         <button data-testid="engine-save-profile" onClick={() => void handleSaveProfile()} disabled={!canSave}>Save profile</button>
         <button data-testid="engine-check-assets" onClick={() => void handleCheckAssets()} disabled={disabled}>Check assets</button>
       </div>
+      {reviewWorkflow && (
+        <section
+          className="analysis-progress"
+          aria-label="KataGo review workflow status"
+          aria-live="polite"
+          data-testid="katago-review-workflow-status"
+          data-review-phase={reviewWorkflow.phase}
+          data-review-source={reviewWorkflow.source}
+          data-review-session-token={reviewWorkflow.sessionToken}
+          data-active-job-id={reviewWorkflow.activeJobId ?? ""}
+          data-progress-verified={String(reviewWorkflow.progressVerified)}
+          data-cancel-verified={String(reviewWorkflow.cancelVerified)}
+          data-restart-after-cancel-verified={String(reviewWorkflow.restartAfterCancelVerified)}
+          data-cache-restore-verified={String(reviewWorkflow.cacheRestoreVerified)}
+          data-engine-failure-verified={String(reviewWorkflow.engineFailureVerified)}
+          data-stale-analysis-prevented={String(reviewWorkflow.staleAnalysisPrevented)}
+        >
+          <strong>{reviewStatusLabel(reviewWorkflow.phase, reviewWorkflow.source)}</strong>
+          <span>{reviewWorkflow.message}</span>
+          <span>
+            {reviewWorkflow.completed}/{reviewWorkflow.expected || "?"} positions
+            {reviewWorkflow.currentTurn !== null ? `, move ${reviewWorkflow.currentTurn}` : ""}
+            {reviewWorkflow.activeJobId ? `, job ${reviewWorkflow.activeJobId}` : ""}
+          </span>
+        </section>
+      )}
       {(isAnalysisActive || analysisProgress) && (
-        <div className="analysis-progress" aria-live="polite">
+        <div
+          className="analysis-progress"
+          aria-live="polite"
+          data-testid="katago-analysis-progress"
+          data-progress-verified={String(Boolean(analysisProgress))}
+          data-active-job-id={activeJobId ?? ""}
+          data-current-position={analysisProgress?.completed ?? 0}
+          data-expected-positions={analysisProgress?.expected ?? 0}
+        >
           <div className="analysis-progress-track">
             <span style={{ width: `${progressPercent}%` }} />
           </div>
@@ -356,6 +406,17 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       )}
     </section>
   );
+}
+
+function reviewStatusLabel(phase: string, source: string): string {
+  if (phase === "cache-restored") return "Review restored from cache";
+  if (phase === "cancelled") return "Review cancelled";
+  if (phase === "error") return "Review needs attention";
+  if (phase === "completed") return source === "fake" ? "Browser review complete" : "KataGo review complete";
+  if (phase === "running") return source === "fake" ? "Browser review running" : "KataGo review running";
+  if (phase === "cancelling") return "Cancelling review";
+  if (phase === "starting") return "Starting review";
+  return "Review ready";
 }
 
 function optionalPath(value: string): string | null {

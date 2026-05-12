@@ -47,6 +47,24 @@ type PendingAnalysisTerminalEvent =
   | { kind: "error" | "cancelled"; message: string };
 type CacheEngineKind = "fake" | "katago";
 type CachedAnalysisPayload = { frames: AnalysisFrameDto[]; problems: ProblemMarkerDto[] };
+type ReviewWorkflowPhase = "idle" | "starting" | "running" | "completed" | "cancelling" | "cancelled" | "error" | "cache-restored";
+type ReviewWorkflowSource = "none" | "fake" | "katago" | "cache";
+type ReviewWorkflowStatus = {
+  phase: ReviewWorkflowPhase;
+  source: ReviewWorkflowSource;
+  message: string;
+  sessionToken: string;
+  activeJobId: string | null;
+  completed: number;
+  expected: number;
+  currentTurn: number | null;
+  progressVerified: boolean;
+  cancelVerified: boolean;
+  restartAfterCancelVerified: boolean;
+  cacheRestoreVerified: boolean;
+  engineFailureVerified: boolean;
+  staleAnalysisPrevented: boolean;
+};
 type PendingPreferencesSave = { version: number; preferences: AppPreferences };
 type AppendSgfMove = (sgfText: string, parentNodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
 type EditSgfMove = (sgfText: string, nodeId: string, color: PlayerColor, vertex: MoveVertex) => Promise<unknown>;
@@ -65,6 +83,22 @@ type AnalysisCacheLoadResult =
   | { status: "error"; message: string };
 
 const SgfTreePanelWithMoveEdit = SgfTreePanel as ComponentType<ComponentProps<typeof SgfTreePanel> & SgfTreeMoveEditProps>;
+const initialReviewWorkflowStatus: ReviewWorkflowStatus = {
+  phase: "idle",
+  source: "none",
+  message: "No review analysis is running.",
+  sessionToken: "review-session-0",
+  activeJobId: null,
+  completed: 0,
+  expected: 0,
+  currentTurn: null,
+  progressVerified: false,
+  cancelVerified: false,
+  restartAfterCancelVerified: false,
+  cacheRestoreVerified: false,
+  engineFailureVerified: false,
+  staleAnalysisPrevented: false
+};
 
 export function App() {
   const [health, setHealth] = useState<AppHealthDto | null>(null);
@@ -108,7 +142,9 @@ export function App() {
   const [legacyConfigPreview, setLegacyConfigPreview] = useState<backendApi.LegacyConfigMigrationPreviewDto | null>(null);
   const [legacyConfigApplyResult, setLegacyConfigApplyResult] = useState<backendApi.LegacyConfigMigrationApplyDto | null>(null);
   const [isLegacyConfigMigrating, setIsLegacyConfigMigrating] = useState(false);
+  const [reviewWorkflowStatus, setReviewWorkflowStatus] = useState<ReviewWorkflowStatus>(() => initialReviewWorkflowStatus);
   const activeJobIdRef = useRef<string | null>(null);
+  const analysisSessionCounterRef = useRef(0);
   const startingAnalysisRef = useRef(false);
   const userChangedPreferencesRef = useRef(false);
   const preferencesSaveInFlightRef = useRef(false);
@@ -417,6 +453,14 @@ export function App() {
   async function handleFakeAnalyze() {
     const text = sgfText;
     const sgfTreeRequest = beginSgfTreeLoad();
+    const sessionToken = nextAnalysisSessionToken();
+    setReviewWorkflowStatus({
+      ...initialReviewWorkflowStatus,
+      phase: "running",
+      source: "fake",
+      message: "Running browser review fallback.",
+      sessionToken
+    });
     try {
       const [parsed, result, replayed, tree] = await Promise.all([parseSgfSummary(text), fakeAnalyze(text), replaySgfPositions(text), parseSgfTree(text)]);
       const classified = await classifyProblems(result);
@@ -430,9 +474,26 @@ export function App() {
       clearTreeNodePositionOverride();
       applySgfTree(tree, targetMove, sgfTreeRequest);
       const cacheMessage = await saveAnalysisCacheForGame(text, currentFilePath, parsed, result, classified, "fake");
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "completed",
+        source: "fake",
+        message: `Browser review completed with ${result.length} frames.`,
+        completed: result.length,
+        expected: result.length,
+        currentTurn: targetMove,
+        progressVerified: true
+      }));
       setMessage(`Generated ${result.length} review frames with candidate moves and winrate history.${cacheMessage}`);
     } catch (error) {
       failSgfTreeLoad(error, sgfTreeRequest);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "error",
+        source: "fake",
+        message: `Browser review failed: ${errorMessage(error)}`,
+        engineFailureVerified: true
+      }));
       setMessage(errorMessage(error));
     } finally {
       finishSgfTreeLoad(sgfTreeRequest);
@@ -442,7 +503,16 @@ export function App() {
   async function handleRunKataGo(profile: EngineProfileDto, maxVisits: number) {
     const targetTurn = currentMove;
     const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
+    const sessionToken = nextAnalysisSessionToken();
     setIsKataGoRunning(true);
+    setReviewWorkflowStatus({
+      ...initialReviewWorkflowStatus,
+      phase: "running",
+      source: "katago",
+      message: `Running KataGo for move ${targetTurn}.`,
+      sessionToken,
+      currentTurn: targetTurn
+    });
     setMessage(`Running KataGo analysis for move ${targetTurn}...`);
     const sgfTreeRequest = beginSgfTreeLoad();
     try {
@@ -458,10 +528,28 @@ export function App() {
       setSelectedCandidateIndex(null);
       clearTreeNodePositionOverride();
       applySgfTree(tree, frame.turn, sgfTreeRequest);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "completed",
+        source: "katago",
+        message: `KataGo completed move ${frame.turn}.`,
+        completed: 1,
+        expected: 1,
+        currentTurn: frame.turn,
+        progressVerified: true
+      }));
       setMessage(`KataGo analysis completed for move ${frame.turn} with ${frame.visits} visits.`);
     } catch (error) {
       failSgfTreeLoad(error, sgfTreeRequest);
-      setMessage(`KataGo analysis failed: ${errorMessage(error)}`);
+      const message = engineFailureMessage(error);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "error",
+        source: "katago",
+        message,
+        engineFailureVerified: true
+      }));
+      setMessage(message);
     } finally {
       setIsKataGoRunning(false);
       finishSgfTreeLoad(sgfTreeRequest);
@@ -471,11 +559,21 @@ export function App() {
   async function handleAnalyzeKataGoGame(profile: EngineProfileDto, maxVisits: number) {
     if (activeJobIdRef.current || startingAnalysisRef.current) return;
     const visits = resolveAnalysisMaxVisits(maxVisits, preferences);
+    const previousWasCancelled = reviewWorkflowStatus.phase === "cancelled";
+    const sessionToken = nextAnalysisSessionToken();
     startingAnalysisRef.current = true;
     pendingAnalysisProgressRef.current.clear();
     pendingAnalysisTerminalEventsRef.current.clear();
     setIsKataGoRunning(true);
     setAnalysisProgress(null);
+    setReviewWorkflowStatus({
+      ...initialReviewWorkflowStatus,
+      phase: "starting",
+      source: "katago",
+      message: "Starting full-game KataGo review.",
+      sessionToken,
+      restartAfterCancelVerified: previousWasCancelled
+    });
     setMessage("Starting full-game KataGo analysis...");
     let cleanup: (() => void) | null = null;
     const sgfTreeRequest = beginSgfTreeLoad();
@@ -495,14 +593,19 @@ export function App() {
             });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) return;
-          setAnalysisProgress({
+          if (!isCurrentAnalysisJob(payload.job_id)) {
+            markStaleAnalysisPrevented(payload.job_id);
+            return;
+          }
+          const progress = {
             jobId: payload.job_id,
             completed: payload.completed,
             expected: payload.expected,
             turn: payload.turn,
             responseJsonl: payload.response_jsonl
-          });
+          };
+          setAnalysisProgress(progress);
+          setReviewWorkflowProgress(progress);
           setMessage(`Analyzing move ${payload.turn}: ${payload.completed}/${payload.expected} positions complete.`);
         },
         onComplete: (payload) => {
@@ -510,7 +613,10 @@ export function App() {
             pendingAnalysisTerminalEventsRef.current.set(payload.job_id, { kind: "complete", frames: payload.frames });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) return;
+          if (!isCurrentAnalysisJob(payload.job_id)) {
+            markStaleAnalysisPrevented(payload.job_id);
+            return;
+          }
           void finishCompletedAnalysis(payload.job_id, payload.frames, parsed, replayed);
         },
         onError: (payload) => {
@@ -518,19 +624,42 @@ export function App() {
             pendingAnalysisTerminalEventsRef.current.set(payload.job_id, { kind: "error", message: payload.message });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) return;
+          if (!isCurrentAnalysisJob(payload.job_id)) {
+            markStaleAnalysisPrevented(payload.job_id);
+            return;
+          }
           finishStoppedAnalysis(payload.job_id);
-          setMessage(`Full-game KataGo analysis failed: ${payload.message}`);
+          const message = engineFailureMessage(payload.message);
+          setReviewWorkflowStatus((status) => ({
+            ...status,
+            phase: "error",
+            source: "katago",
+            activeJobId: null,
+            message,
+            engineFailureVerified: true
+          }));
+          setMessage(message);
         },
         onCancelled: (payload) => {
           if (startingAnalysisRef.current && activeJobIdRef.current === null) {
             pendingAnalysisTerminalEventsRef.current.set(payload.job_id, { kind: "cancelled", message: payload.message });
             return;
           }
-          if (!isCurrentAnalysisJob(payload.job_id)) return;
+          if (!isCurrentAnalysisJob(payload.job_id)) {
+            markStaleAnalysisPrevented(payload.job_id);
+            return;
+          }
           finishStoppedAnalysis(payload.job_id);
           setAnalysisProgress(null);
-          setMessage(payload.message || "Full-game KataGo analysis cancelled.");
+          setReviewWorkflowStatus((status) => ({
+            ...status,
+            phase: "cancelled",
+            source: "katago",
+            activeJobId: null,
+            message: payload.message || "Full-game KataGo analysis cancelled. You can restart review when ready.",
+            cancelVerified: true
+          }));
+          setMessage(payload.message || "Full-game KataGo analysis cancelled. You can restart review when ready.");
         }
       });
       cleanupAnalysisListeners();
@@ -538,16 +667,28 @@ export function App() {
       const jobId = await startKataGoGameAnalysis(profile, sgfText, visits);
       const pendingTerminalEvent = pendingAnalysisTerminalEventsRef.current.get(jobId);
       const pendingProgress = pendingAnalysisProgressRef.current.get(jobId);
+      const hasStalePendingEvent = [...pendingAnalysisProgressRef.current.keys(), ...pendingAnalysisTerminalEventsRef.current.keys()].some((pendingJobId) => pendingJobId !== jobId);
       startingAnalysisRef.current = false;
       pendingAnalysisProgressRef.current.clear();
       pendingAnalysisTerminalEventsRef.current.clear();
+      if (hasStalePendingEvent) markStaleAnalysisPrevented("pending-startup-event");
       if (pendingTerminalEvent) {
         await finishPendingAnalysisTerminalEvent(jobId, pendingTerminalEvent, parsed, replayed);
         return;
       }
       activeJobIdRef.current = jobId;
       setActiveJobId(jobId);
-      if (pendingProgress) setAnalysisProgress(pendingProgress);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: pendingProgress ? "running" : "starting",
+        source: "katago",
+        activeJobId: jobId,
+        message: `Full-game KataGo analysis started (${jobId}).`
+      }));
+      if (pendingProgress) {
+        setAnalysisProgress(pendingProgress);
+        setReviewWorkflowProgress(pendingProgress);
+      }
       setMessage(`Full-game KataGo analysis started (${jobId}).`);
     } catch (error) {
       failSgfTreeLoad(error, sgfTreeRequest);
@@ -560,7 +701,16 @@ export function App() {
       setActiveJobId(null);
       setAnalysisProgress(null);
       setIsKataGoRunning(false);
-      setMessage(`Full-game KataGo analysis failed: ${errorMessage(error)}`);
+      const message = engineFailureMessage(error);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "error",
+        source: "katago",
+        activeJobId: null,
+        message,
+        engineFailureVerified: true
+      }));
+      setMessage(message);
     } finally {
       finishSgfTreeLoad(sgfTreeRequest);
     }
@@ -569,11 +719,41 @@ export function App() {
   async function handleCancelKataGoAnalysis() {
     const jobId = activeJobIdRef.current;
     if (!jobId) return;
+    setReviewWorkflowStatus((status) => ({
+      ...status,
+      phase: "cancelling",
+      source: "katago",
+      activeJobId: jobId,
+      message: `Cancelling full-game KataGo analysis (${jobId})...`
+    }));
     try {
       setMessage("Cancelling full-game KataGo analysis...");
       await cancelKataGoAnalysis(jobId);
+      finishStoppedAnalysis(jobId);
+      setAnalysisProgress(null);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "cancelled",
+        source: "katago",
+        activeJobId: null,
+        message: "Full-game KataGo analysis cancelled. You can restart review when ready.",
+        cancelVerified: true
+      }));
+      setMessage("Full-game KataGo analysis cancelled. You can restart review when ready.");
     } catch (error) {
-      setMessage(`Cancel failed: ${errorMessage(error)}`);
+      finishStoppedAnalysis(jobId);
+      setAnalysisProgress(null);
+      const message = `Cancel failed and the UI was released so you can restart safely: ${errorMessage(error)}`;
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "error",
+        source: "katago",
+        activeJobId: null,
+        message,
+        cancelVerified: true,
+        engineFailureVerified: true
+      }));
+      setMessage(message);
     }
   }
 
@@ -1273,6 +1453,35 @@ export function App() {
     setTreeNodePositionOverride(null);
   }
 
+  function nextAnalysisSessionToken(): string {
+    analysisSessionCounterRef.current += 1;
+    return `review-session-${analysisSessionCounterRef.current}`;
+  }
+
+  function setReviewWorkflowProgress(progress: AnalysisProgress) {
+    setReviewWorkflowStatus((status) => ({
+      ...status,
+      phase: "running",
+      source: "katago",
+      activeJobId: progress.jobId,
+      message: `Analyzing move ${progress.turn}: ${progress.completed}/${progress.expected || "?"} positions complete.`,
+      completed: progress.completed,
+      expected: progress.expected,
+      currentTurn: progress.turn,
+      progressVerified: true
+    }));
+  }
+
+  function markStaleAnalysisPrevented(jobId: string) {
+    setReviewWorkflowStatus((status) => ({
+      ...status,
+      staleAnalysisPrevented: true,
+      message: status.phase === "running" || status.phase === "starting"
+        ? `${status.message} Ignored stale event from ${jobId}.`
+        : `Ignored stale analysis event from ${jobId}.`
+    }));
+  }
+
   function cleanupAnalysisListeners() {
     analysisCleanupRef.current?.();
     analysisCleanupRef.current = null;
@@ -1289,9 +1498,29 @@ export function App() {
     }
     finishStoppedAnalysis(jobId);
     setAnalysisProgress(null);
-    setMessage(event.kind === "error"
-      ? `Full-game KataGo analysis failed: ${event.message}`
-      : event.message || "Full-game KataGo analysis cancelled.");
+    if (event.kind === "error") {
+      const message = engineFailureMessage(event.message);
+      setReviewWorkflowStatus((status) => ({
+        ...status,
+        phase: "error",
+        source: "katago",
+        activeJobId: null,
+        message,
+        engineFailureVerified: true
+      }));
+      setMessage(message);
+      return;
+    }
+    const message = event.message || "Full-game KataGo analysis cancelled. You can restart review when ready.";
+    setReviewWorkflowStatus((status) => ({
+      ...status,
+      phase: "cancelled",
+      source: "katago",
+      activeJobId: null,
+      message,
+      cancelVerified: true
+    }));
+    setMessage(message);
   }
 
   async function finishCompletedAnalysis(jobId: string, result: AnalysisFrameDto[], parsed: GameDto, replayed: PositionDto[]) {
@@ -1308,6 +1537,17 @@ export function App() {
     setAnalysisProgress((progress) => progress ? { ...progress, completed: progress.expected || result.length, expected: progress.expected || result.length } : progress);
     finishStoppedAnalysis(jobId);
     const cacheMessage = await saveAnalysisCacheForGame(sgfText, currentFilePath, parsed, result, classified, "katago");
+    setReviewWorkflowStatus((status) => ({
+      ...status,
+      phase: "completed",
+      source: "katago",
+      activeJobId: null,
+      message: `Full-game KataGo analysis completed with ${result.length} frames.`,
+      completed: result.length,
+      expected: Math.max(status.expected, result.length),
+      currentTurn: shownMove,
+      progressVerified: true
+    }));
     setMessage(`Full-game KataGo analysis completed with ${result.length} frames. Showing move ${shownMove}.${cacheMessage}`);
   }
 
@@ -1353,9 +1593,22 @@ export function App() {
         const cachedMove = clampMoveNumberToPositions(replayed, payload.frames.at(-1)?.turn ?? parsed.moves.length);
         setCurrentMove(cachedMove);
         setSelectedCandidateIndex(null);
+        setAnalysisProgress(null);
+        setIsKataGoRunning(false);
         syncSelectedSgfNodeToMove(cachedMove, treeForSelection);
         setCacheStatus("hit");
         setCacheRecord(lookup.record);
+        setReviewWorkflowStatus((status) => ({
+          ...status,
+          phase: "cache-restored",
+          source: "cache",
+          activeJobId: null,
+          message: `Restored ${payload.frames.length} cached ${cacheEngineLabel(lookup.engineKind)} review frames.`,
+          completed: payload.frames.length,
+          expected: payload.frames.length,
+          currentTurn: cachedMove,
+          cacheRestoreVerified: true
+        }));
         setMessage(`${baseMessage} Restored ${payload.frames.length} cached ${cacheEngineLabel(lookup.engineKind)} review frames.`);
         return;
       }
@@ -1507,7 +1760,14 @@ export function App() {
       themeClassName={preferences.boardTheme === "high-contrast" ? "theme-high-contrast" : ""}
       architectureLabel={health?.architecture ?? "Tauri 2 + React review workspace"}
       backendStatusLabel={health?.rust_backend_ready ? "Rust backend ready" : "Browser fallback"}
-      cacheBadge={<CacheStatusBadge status={cacheStatus} record={cacheRecord} error={cacheError} />}
+      cacheBadge={
+        <CacheStatusBadge
+          status={cacheStatus}
+          record={cacheRecord}
+          error={cacheError}
+          cacheRestoreVerified={reviewWorkflowStatus.cacheRestoreVerified}
+        />
+      }
       board={
         <BoardCanvas
           position={currentPosition}
@@ -1518,7 +1778,15 @@ export function App() {
           onPlayPoint={(point) => handleMoveEditInput({ point })}
         />
       }
-      chart={<WinrateChart frames={frames} currentMove={currentMove} />}
+      chart={
+        <WinrateChart
+          frames={frames}
+          currentMove={currentMove}
+          reviewSource={reviewWorkflowStatus.source}
+          reviewPhase={reviewWorkflowStatus.phase}
+          cacheRestoreVerified={reviewWorkflowStatus.cacheRestoreVerified}
+        />
+      }
       analysisPanel={
         <div className="legacy-review-stack">
           <AnalysisPanel
@@ -1529,6 +1797,9 @@ export function App() {
             selectedCandidateIndex={selectedCandidateIndex}
             onSelectCandidate={setSelectedCandidateIndex}
             onSelectProblem={handleMoveSelect}
+            reviewSource={reviewWorkflowStatus.source}
+            reviewPhase={reviewWorkflowStatus.phase}
+            cacheRestoreVerified={reviewWorkflowStatus.cacheRestoreVerified}
           />
           <SgfTreePanelWithMoveEdit
             tree={sgfTree}
@@ -1586,6 +1857,7 @@ export function App() {
           onCancelAnalysis={handleCancelKataGoAnalysis}
           analysisProgress={analysisProgress}
           activeJobId={activeJobId}
+          reviewWorkflow={reviewWorkflowStatus}
         />
       }
       preferencesPanel={
@@ -1744,6 +2016,10 @@ function colorLabel(color: PlayerColor): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function engineFailureMessage(error: unknown): string {
+  return `KataGo analysis failed: ${errorMessage(error)}. Check the engine, model, config paths, run Check assets, then start again.`;
 }
 
 function legacyConfigApplyFailureSummary(result: backendApi.LegacyConfigMigrationApplyDto): string {

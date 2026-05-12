@@ -177,6 +177,43 @@ KATAGO_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
     "katago_analyze_game",
     "katago_start_cancel",
 ]
+KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE = "docs/qa/katago-review-workflow-ux-smoke-macos.json"
+KATAGO_REVIEW_WORKFLOW_UX_SMOKE_SCHEMA = "lizzieyzy.katago-review-workflow-ux-smoke.v1"
+KATAGO_REVIEW_WORKFLOW_UX_COLLECTION_METHODS = {
+    "source_static_plus_stubbed_ui_flow",
+    "source_static_plus_stubbed_katago_review_ui_flow",
+}
+KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_CHECKS = [
+    "progress_verified",
+    "cancel_verified",
+    "restart_after_cancel_verified",
+    "cache_restore_verified",
+    "engine_failure_verified",
+    "stale_analysis_prevented",
+    "source_facts_validated",
+    "scope_boundaries",
+]
+KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_TRUE_FIELDS = [
+    "progressVerified",
+    "cancelVerified",
+    "restartAfterCancelVerified",
+    "cacheRestoreVerified",
+    "engineFailureVerified",
+    "staleAnalysisPrevented",
+    "sourceFactsValidated",
+]
+KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS = [
+    "liveKataGoObserved",
+    "fullLegacyAnalysisParity",
+    "fullLegacyParity",
+    "releasePublished",
+    "productionSigned",
+    "notarized",
+    "providerParityCovered",
+    "readboardParityCovered",
+    "ocrExternalCaptureCovered",
+    "windowsLinuxCovered",
+]
 READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE = "docs/qa/readboard-tauri-runtime-smoke-macos.json"
 READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.readboard-tauri-runtime-smoke.v1"
 READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
@@ -903,6 +940,7 @@ class UserFlowSmoke:
         self.check_installed_macos_app_smoke_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
+        self.check_katago_review_workflow_ux_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
@@ -1138,6 +1176,44 @@ class UserFlowSmoke:
         self.pass_(
             "katago_live_smoke",
             "macOS live KataGo CLI and Tauri runtime smoke evidence both pass",
+        )
+
+    def check_katago_review_workflow_ux_smoke_evidence(self) -> None:
+        source_failures = validate_katago_review_workflow_ux_source_facts(self.root)
+        if source_failures:
+            if all(failure.startswith("missing source file(s):") for failure in source_failures):
+                self.pending(
+                    "katago_review_workflow_ux_smoke",
+                    "TODO gate: validate scoped KataGo review workflow UX source facts before accepting evidence: "
+                    + "; ".join(source_failures),
+                )
+                return
+            self.fail(
+                "katago_review_workflow_ux_smoke",
+                "KataGo review workflow UX source facts are broken: " + "; ".join(source_failures),
+            )
+            return
+        evidence_path = self.path(KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "katago_review_workflow_ux_smoke",
+                f"TODO gate: record scoped KataGo review workflow UX resilience evidence at {KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_katago_review_workflow_ux_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "katago_review_workflow_ux_smoke",
+                f"{KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE} is present but not valid scoped KataGo review workflow UX resilience PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "katago_review_workflow_ux_smoke",
+            "scoped KataGo review workflow UX resilience evidence passes with progress, cancel/restart, cache restore, failure, stale-guard, and boundary checks",
         )
 
     def check_readboard_live_smoke_evidence(self) -> None:
@@ -2474,6 +2550,203 @@ def validate_katago_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_katago_runtime_analysis(check_by_name.get("katago_analyze_once"), "katago_analyze_once"))
     failures.extend(validate_katago_runtime_analysis(check_by_name.get("katago_analyze_game"), "katago_analyze_game"))
     failures.extend(validate_katago_runtime_cancel(check_by_name.get("katago_start_cancel")))
+    return failures
+
+
+def validate_katago_review_workflow_ux_source_facts(root: Path) -> list[str]:
+    app_path = root / APP_SOURCE
+    engine_panel_path = root / ENGINE_SETUP_PANEL_SOURCE
+    backend_path = root / BACKEND_SOURCE
+    missing = [
+        label
+        for label, path in (
+            ("App source", app_path),
+            ("EngineSetupPanel source", engine_panel_path),
+            ("backend source", backend_path),
+        )
+        if not path.is_file()
+    ]
+    if missing:
+        return ["missing source file(s): " + ", ".join(missing)]
+    app_text = app_path.read_text(encoding="utf-8")
+    engine_text = engine_panel_path.read_text(encoding="utf-8")
+    backend_text = backend_path.read_text(encoding="utf-8")
+    return [
+        *missing_required_tokens(
+            app_text,
+            "App KataGo review workflow",
+            [
+                "handleAnalyzeKataGoGame",
+                "listenToKataGoAnalysisEvents",
+                "setAnalysisProgress",
+                "payload.job_id",
+                "completed",
+                "expected",
+                "payload.turn",
+                "activeJobIdRef",
+                "setActiveJobId",
+                "Full-game KataGo analysis started",
+                "handleCancelKataGoAnalysis",
+                "cancelKataGoAnalysis",
+                "Full-game KataGo analysis cancelled",
+                "finishStoppedAnalysis",
+                "finishCompletedAnalysis",
+                "KataGo analysis failed",
+                "saveAnalysisCacheForGame",
+                "checkAnalysisCacheForGame",
+                "loadPreferredAnalysisCache",
+                "Restored",
+                "isCurrentAnalysisJob",
+                "pendingAnalysisProgressRef",
+                "pendingAnalysisTerminalEventsRef",
+                "activeJobIdRef.current === jobId",
+                "computeGameCacheKey",
+            ],
+        ),
+        *missing_required_tokens(
+            engine_text,
+            "EngineSetupPanel KataGo review UX",
+            [
+                "analysisProgress",
+                "activeJobId",
+                "progressLabel",
+                "completed",
+                "expected",
+                "turn",
+                "analysis-progress",
+                "progressPercent",
+                "Analyze game",
+                "Cancel",
+                "onCancelAnalysis",
+            ],
+        ),
+        *missing_required_tokens(
+            backend_text,
+            "backend KataGo review workflow",
+            [
+                "startKataGoGameAnalysis",
+                "katago_start_analyze_game",
+                "cancelKataGoAnalysis",
+                "katago_cancel_analysis",
+                "listenToKataGoAnalysisEvents",
+                "katago://analysis-progress",
+                "katago://analysis-complete",
+                "katago://analysis-error",
+                "katago://analysis-cancelled",
+            ],
+        ),
+    ]
+
+
+def validate_katago_review_workflow_ux_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != KATAGO_REVIEW_WORKFLOW_UX_SMOKE_SCHEMA:
+        failures.append(f"schema must be {KATAGO_REVIEW_WORKFLOW_UX_SMOKE_SCHEMA}")
+    if evidence.get("name") != "scoped_katago_review_workflow_ux_resilience":
+        failures.append("name must be scoped_katago_review_workflow_ux_resilience")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("collectionMethod") not in KATAGO_REVIEW_WORKFLOW_UX_COLLECTION_METHODS:
+        failures.append("collectionMethod must be source_static_plus_stubbed_ui_flow")
+    for key in KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    runtime_metadata = evidence.get("runtimeMetadata")
+    if evidence.get("liveKataGoObserved") is True:
+        if not isinstance(runtime_metadata, dict) or not runtime_metadata:
+            failures.append("liveKataGoObserved true requires runtimeMetadata")
+        else:
+            for key in ("enginePath", "modelPath", "configPath", "katagoVersion"):
+                if not isinstance(runtime_metadata.get(key), str) or not runtime_metadata.get(key):
+                    failures.append(f"runtimeMetadata.{key} must be non-empty when liveKataGoObserved is true")
+    elif runtime_metadata not in (None, False):
+        failures.append("runtimeMetadata must be absent/null unless liveKataGoObserved is true")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+        for name in KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_CHECKS:
+            details = check_evidence(check_by_name.get(name))
+            if details is None:
+                failures.append(f"{name} evidence must be an object")
+            elif len(details) == 0:
+                failures.append(f"{name} evidence must not be empty")
+    failures.extend(validate_katago_review_workflow_ux_check_details(check_by_name))
+    failures.extend(validate_katago_review_workflow_ux_boundaries(evidence))
+    return failures
+
+
+def validate_katago_review_workflow_ux_check_details(check_by_name: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    expected_flags = {
+        "progress_verified": "progressVerified",
+        "cancel_verified": "cancelVerified",
+        "restart_after_cancel_verified": "restartAfterCancelVerified",
+        "cache_restore_verified": "cacheRestoreVerified",
+        "engine_failure_verified": "engineFailureVerified",
+        "stale_analysis_prevented": "staleAnalysisPrevented",
+        "source_facts_validated": "sourceFactsValidated",
+    }
+    for check_name, flag in expected_flags.items():
+        details = check_evidence(check_by_name.get(check_name))
+        if not isinstance(details, dict):
+            continue
+        if details.get(flag) is not True:
+            failures.append(f"{check_name}.{flag} must be true")
+    progress = check_evidence(check_by_name.get("progress_verified"))
+    if isinstance(progress, dict):
+        for key in ("jobIdVisible", "currentVisible", "totalVisible", "sessionVisible"):
+            if progress.get(key) is not True:
+                failures.append(f"progress_verified.{key} must be true")
+    stale = check_evidence(check_by_name.get("stale_analysis_prevented"))
+    if isinstance(stale, dict) and not any(stale.get(key) is True for key in ("jobIdGuard", "generationGuard", "hashGuard")):
+        failures.append("stale_analysis_prevented must include jobIdGuard, generationGuard, or hashGuard")
+    return failures
+
+
+def validate_katago_review_workflow_ux_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+        boundaries = {}
+    for key in KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS:
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    source_evidence = evidence.get("sourceEvidence")
+    if isinstance(source_evidence, dict):
+        referenced = source_evidence.get("referencedEvidence")
+        if isinstance(referenced, list):
+            live_refs = {KATAGO_LIVE_SMOKE_EVIDENCE, KATAGO_TAURI_RUNTIME_SMOKE_EVIDENCE}
+            if any(ref in live_refs for ref in referenced) and evidence.get("liveKataGoObserved") is True:
+                failures.append("existing live evidence must not be reused to claim new live review workflow behavior")
+        if source_evidence.get("existingLiveEvidenceUsedForNewLiveBehavior") is True:
+            failures.append("existing live evidence must not be used for new live behavior claims")
     return failures
 
 

@@ -11,16 +11,43 @@ type Props = {
   selectedCandidateIndex: number | null;
   onSelectCandidate: (index: number) => void;
   onSelectProblem: (moveNumber: number) => void;
+  reviewSource?: string;
+  reviewPhase?: string;
+  cacheRestoreVerified?: boolean;
 };
 
-export function AnalysisPanel({ frame, problems, boardSize, currentMove, selectedCandidateIndex, onSelectCandidate, onSelectProblem }: Props) {
+export function AnalysisPanel({
+  frame,
+  problems,
+  boardSize,
+  currentMove,
+  selectedCandidateIndex,
+  onSelectCandidate,
+  onSelectProblem,
+  reviewSource = "none",
+  reviewPhase = "idle",
+  cacheRestoreVerified = false
+}: Props) {
   const hasOwnership = (frame?.ownership?.length ?? 0) >= boardSize * boardSize;
   const topPolicy = getTopPolicyPoints(frame?.policy, boardSize, 5);
   const hasPolicy = topPolicy.length > 0;
 
-  return <aside className="analysis-panel">
+  return <aside
+    className="analysis-panel"
+    data-testid="analysis-panel"
+    data-review-source={reviewSource}
+    data-review-phase={reviewPhase}
+    data-cache-restore-verified={String(cacheRestoreVerified)}
+  >
     <section>
       <h2>Position</h2>
+      <p className="muted" data-testid="analysis-source-status">
+        {reviewSource === "cache"
+          ? "Showing restored cache review data; no live engine is running."
+          : reviewPhase === "running" || reviewPhase === "starting"
+            ? "Review analysis is updating this position."
+            : "Review data is shown from the current workspace state."}
+      </p>
       {frame ? <div className="metric-grid">
         <span>Visits</span><strong>{frame.visits.toLocaleString()}</strong>
         <span>Black winrate</span><strong>{(frame.winrate_black * 100).toFixed(1)}%</strong>

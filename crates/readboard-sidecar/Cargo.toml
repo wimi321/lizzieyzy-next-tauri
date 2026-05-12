@@ -8,7 +8,9 @@ rust-version.workspace = true
 
 [dependencies]
 app-model = { path = "../app-model" }
+base64 = "0.22"
 go-core = { path = "../go-core" }
+image = { version = "0.25", default-features = false, features = ["png"] }
 serde.workspace = true
 thiserror.workspace = true
 

@@ -871,6 +871,65 @@ struct InstalledAppSgfWorkflowBoundariesDto {
     full_legacy_parity: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct ReadboardExternalCaptureRequestDto {
+    #[serde(alias = "source", alias = "captureSource")]
+    capture_source: String,
+    #[serde(default, alias = "imagePath", alias = "image_path")]
+    image_path: Option<String>,
+    #[serde(default, alias = "timeoutMs", alias = "timeout_ms")]
+    timeout_ms: Option<u64>,
+    #[serde(default, alias = "sourceMetadata", alias = "source_metadata")]
+    metadata: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardExternalCaptureResultDto {
+    schema: String,
+    status: String,
+    recoverable: bool,
+    operator_initiated: bool,
+    user_selection_required: bool,
+    source: String,
+    capture_source: String,
+    source_metadata: BTreeMap<String, String>,
+    sanitized_path: Option<String>,
+    sha256: Option<String>,
+    hash: Option<String>,
+    snapshot_id: Option<String>,
+    snapshot_hash: Option<String>,
+    size: Option<u64>,
+    position: Option<PositionDto>,
+    decode: ReadboardExternalCaptureDecodeDto,
+    snapshot: Option<ReadboardExternalCaptureSnapshotDto>,
+    board_replacement: String,
+    warnings: Vec<String>,
+    message: Option<String>,
+    error_message: Option<String>,
+    metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardExternalCaptureDecodeDto {
+    attempted: bool,
+    status: String,
+    board_size: Option<u8>,
+    stone_count: Option<usize>,
+    black_stones: Option<usize>,
+    white_stones: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardExternalCaptureSnapshotDto {
+    snapshot_id: String,
+    position_move_number: u32,
+    to_play: String,
+    warnings: Vec<String>,
+}
+
 #[tauri::command]
 fn health() -> AppHealthDto {
     AppHealthDto {
@@ -1402,6 +1461,583 @@ fn readboard_sidecar_sync_snapshot(
     readboard_sidecar::sync_snapshot_image(&request)
         .map(|outcome| outcome.into_dto())
         .map_err(readboard_error)
+}
+
+#[tauri::command]
+fn readboard_external_capture(
+    request: ReadboardExternalCaptureRequestDto,
+) -> Result<ReadboardExternalCaptureResultDto, ProviderError> {
+    readboard_external_capture_with_runner(request, run_macos_interactive_screencapture)
+}
+
+fn readboard_external_capture_with_runner(
+    request: ReadboardExternalCaptureRequestDto,
+    screencapture_runner: fn(Duration) -> ReadboardCaptureFileOutcome,
+) -> Result<ReadboardExternalCaptureResultDto, ProviderError> {
+    let capture_source = request.capture_source.trim().to_ascii_lowercase();
+    if capture_source.is_empty() {
+        return Err(invalid_request(
+            "readboard_external_capture requires a non-empty source or captureSource",
+        ));
+    }
+    let metadata = request.metadata.unwrap_or_default();
+    let timeout = Duration::from_millis(request.timeout_ms.unwrap_or(120_000).clamp(1_000, 300_000));
+    match capture_source.as_str() {
+        "local_image" | "image_path" => {
+            let path = request
+                .image_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    invalid_request("readboard_external_capture local_image requires imagePath")
+                })?;
+            Ok(readboard_external_capture_decode_path(
+                Path::new(path),
+                "local_image",
+                false,
+                false,
+                metadata,
+            ))
+        }
+        "screen"
+        | "window"
+        | "macos_interactive_screencapture"
+        | "interactive_screencapture"
+        | "external_window_capture" => {
+            #[cfg(not(target_os = "macos"))]
+            {
+                Ok(readboard_external_capture_status(
+                    "unsupported_platform",
+                    true,
+                    true,
+                    true,
+                    "macos_interactive_screencapture",
+                    metadata,
+                    Some("interactive screencapture is only supported on macOS".to_string()),
+                ))
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let source = normalize_capture_source(&capture_source);
+                match screencapture_runner(timeout) {
+                    ReadboardCaptureFileOutcome::Captured { path } => Ok(
+                        readboard_external_capture_decode_path(&path, source, true, true, metadata),
+                    ),
+                    ReadboardCaptureFileOutcome::Cancelled { message } => {
+                        Ok(readboard_external_capture_status(
+                            "cancelled",
+                            true,
+                            true,
+                            true,
+                            source,
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::PermissionDenied { message } => {
+                        Ok(readboard_external_capture_status(
+                            "permission_denied",
+                            true,
+                            true,
+                            true,
+                            source,
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::Timeout { message } => {
+                        Ok(readboard_external_capture_status(
+                            "timeout",
+                            true,
+                            true,
+                            true,
+                            source,
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::Unsupported { message } => {
+                        Ok(readboard_external_capture_status(
+                            "unsupported_platform",
+                            true,
+                            true,
+                            true,
+                            source,
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                }
+            }
+        }
+        other => Err(invalid_request(format!(
+            "readboard_external_capture unsupported captureSource `{other}`"
+        ))),
+    }
+}
+
+enum ReadboardCaptureFileOutcome {
+    Captured { path: PathBuf },
+    Cancelled { message: String },
+    PermissionDenied { message: String },
+    Timeout { message: String },
+    Unsupported { message: String },
+}
+
+#[cfg(target_os = "macos")]
+fn run_macos_interactive_screencapture(timeout: Duration) -> ReadboardCaptureFileOutcome {
+    let path = std::env::temp_dir().join(format!("readboard-external-capture-{}.png", Uuid::new_v4()));
+    let mut child = match Command::new("screencapture")
+        .arg("-i")
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) => {
+            return ReadboardCaptureFileOutcome::Unsupported {
+                message: format!("failed to start macOS screencapture: {err}"),
+            };
+        }
+    };
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child.wait_with_output();
+                let stderr = output
+                    .as_ref()
+                    .ok()
+                    .map(|output| String::from_utf8_lossy(&output.stderr).to_string())
+                    .unwrap_or_default();
+                let success = output.as_ref().is_ok_and(|output| output.status.success())
+                    && fs::metadata(&path)
+                        .map(|metadata| metadata.len() > 0)
+                        .unwrap_or(false);
+                if success {
+                    return ReadboardCaptureFileOutcome::Captured { path };
+                }
+                let _ = fs::remove_file(&path);
+                if stderr.to_ascii_lowercase().contains("permission")
+                    || stderr.to_ascii_lowercase().contains("not authorized")
+                {
+                    return ReadboardCaptureFileOutcome::PermissionDenied {
+                        message: sanitize_capture_error(
+                            &stderr,
+                            "macOS screen recording permission was denied",
+                        ),
+                    };
+                }
+                return ReadboardCaptureFileOutcome::Cancelled {
+                    message: sanitize_capture_error(&stderr, "operator cancelled interactive screencapture"),
+                };
+            }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait_with_output();
+                let _ = fs::remove_file(&path);
+                return ReadboardCaptureFileOutcome::Timeout {
+                    message: format!(
+                        "interactive screencapture timed out after {}ms",
+                        timeout.as_millis()
+                    ),
+                };
+            }
+            Err(err) => {
+                let _ = child.kill();
+                let _ = fs::remove_file(&path);
+                return ReadboardCaptureFileOutcome::Cancelled {
+                    message: format!("failed while waiting for screencapture: {err}"),
+                };
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_macos_interactive_screencapture(_timeout: Duration) -> ReadboardCaptureFileOutcome {
+    match std::env::var("LIZZIEYZY_READBOARD_CAPTURE_TEST_STATUS")
+        .unwrap_or_default()
+        .as_str()
+    {
+        "captured" => ReadboardCaptureFileOutcome::Captured {
+            path: std::env::temp_dir().join("readboard-external-capture-test.png"),
+        },
+        "cancelled" => ReadboardCaptureFileOutcome::Cancelled {
+            message: "operator cancelled interactive screencapture".to_string(),
+        },
+        "permission_denied" => ReadboardCaptureFileOutcome::PermissionDenied {
+            message: "macOS screen recording permission was denied".to_string(),
+        },
+        "timeout" => ReadboardCaptureFileOutcome::Timeout {
+            message: "interactive screencapture timed out".to_string(),
+        },
+        _ => ReadboardCaptureFileOutcome::Unsupported {
+            message: "interactive screencapture is only supported on macOS".to_string(),
+        },
+    }
+}
+
+fn readboard_external_capture_decode_path(
+    path: &Path,
+    capture_source: &str,
+    operator_initiated: bool,
+    user_selection_required: bool,
+    metadata: BTreeMap<String, String>,
+) -> ReadboardExternalCaptureResultDto {
+    let sanitized_path = sanitize_capture_path(path);
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return readboard_external_capture_status(
+                "decode_error",
+                true,
+                operator_initiated,
+                user_selection_required,
+                capture_source,
+                metadata,
+                Some(sanitize_capture_message(&format!(
+                    "failed to read selected image `{sanitized_path}`: {err}"
+                ))),
+            );
+        }
+    };
+    let sha256 = sha256_hex(&bytes);
+    let size = bytes.len() as u64;
+    let request = ReadboardSidecarSyncSnapshotRequest {
+        sgf_text: None,
+        snapshot_id: Some("external-capture-preview".to_string()),
+        image_path: Some(path.display().to_string()),
+        image_base64: None,
+        endpoint: None,
+        timeout_ms: None,
+        metadata: BTreeMap::new(),
+    };
+    match readboard_sidecar::sync_snapshot_image(&request) {
+        Ok(outcome) => {
+            let dto = outcome.into_dto();
+            let position = dto.position.clone();
+            let snapshot_id = Some(dto.snapshot_id.clone());
+            let snapshot_hash = position.as_ref().and_then(snapshot_position_hash);
+            let decode = dto
+                .position
+                .as_ref()
+                .map(readboard_external_capture_decode_summary)
+                .unwrap_or(ReadboardExternalCaptureDecodeDto {
+                    attempted: true,
+                    status: "decode_error".to_string(),
+                    board_size: None,
+                    stone_count: None,
+                    black_stones: None,
+                    white_stones: None,
+                });
+            let snapshot = dto
+                .position
+                .as_ref()
+                .map(|position| ReadboardExternalCaptureSnapshotDto {
+                    snapshot_id: dto.snapshot_id,
+                    position_move_number: position.move_number,
+                    to_play: format!("{:?}", position.to_play),
+                    warnings: dto.warnings.clone(),
+                });
+            ReadboardExternalCaptureResultDto {
+                schema: "lizzieyzy.readboard-external-capture.v1".to_string(),
+                status: "captured".to_string(),
+                recoverable: false,
+                operator_initiated,
+                user_selection_required,
+                source: capture_source.to_string(),
+                capture_source: capture_source.to_string(),
+                source_metadata: metadata.clone(),
+                sanitized_path: Some(sanitized_path),
+                sha256: Some(sha256.clone()),
+                hash: Some(sha256),
+                snapshot_id,
+                snapshot_hash,
+                size: Some(size),
+                position,
+                decode,
+                snapshot,
+                board_replacement: "none".to_string(),
+                warnings: dto.warnings,
+                message: None,
+                error_message: None,
+                metadata,
+            }
+        }
+        Err(err) => readboard_external_capture_status_with_file(
+            "decode_error",
+            true,
+            operator_initiated,
+            user_selection_required,
+            capture_source,
+            metadata,
+            Some(sanitize_readboard_capture_error(&err)),
+            Some(sanitized_path),
+            Some(sha256),
+            Some(size),
+        ),
+    }
+}
+
+fn readboard_external_capture_decode_summary(position: &PositionDto) -> ReadboardExternalCaptureDecodeDto {
+    let black = position
+        .stones
+        .iter()
+        .filter(|stone| stone.color == app_model::PlayerColor::Black)
+        .count();
+    let white = position
+        .stones
+        .iter()
+        .filter(|stone| stone.color == app_model::PlayerColor::White)
+        .count();
+    ReadboardExternalCaptureDecodeDto {
+        attempted: true,
+        status: "success".to_string(),
+        board_size: Some(position.board_size),
+        stone_count: Some(position.stones.len()),
+        black_stones: Some(black),
+        white_stones: Some(white),
+    }
+}
+
+fn readboard_external_capture_status(
+    status: &str,
+    recoverable: bool,
+    operator_initiated: bool,
+    user_selection_required: bool,
+    capture_source: &str,
+    metadata: BTreeMap<String, String>,
+    error_message: Option<String>,
+) -> ReadboardExternalCaptureResultDto {
+    readboard_external_capture_status_with_file(
+        status,
+        recoverable,
+        operator_initiated,
+        user_selection_required,
+        capture_source,
+        metadata,
+        error_message,
+        None,
+        None,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn readboard_external_capture_status_with_file(
+    status: &str,
+    recoverable: bool,
+    operator_initiated: bool,
+    user_selection_required: bool,
+    capture_source: &str,
+    metadata: BTreeMap<String, String>,
+    error_message: Option<String>,
+    sanitized_path: Option<String>,
+    sha256: Option<String>,
+    size: Option<u64>,
+) -> ReadboardExternalCaptureResultDto {
+    ReadboardExternalCaptureResultDto {
+        schema: "lizzieyzy.readboard-external-capture.v1".to_string(),
+        status: status.to_string(),
+        recoverable,
+        operator_initiated,
+        user_selection_required,
+        source: capture_source.to_string(),
+        capture_source: capture_source.to_string(),
+        source_metadata: metadata.clone(),
+        sanitized_path,
+        sha256: sha256.clone(),
+        hash: sha256,
+        snapshot_id: None,
+        snapshot_hash: None,
+        size,
+        position: None,
+        decode: ReadboardExternalCaptureDecodeDto {
+            attempted: matches!(status, "decode_error"),
+            status: status.to_string(),
+            board_size: None,
+            stone_count: None,
+            black_stones: None,
+            white_stones: None,
+        },
+        snapshot: None,
+        board_replacement: "none".to_string(),
+        warnings: Vec::new(),
+        message: error_message.clone(),
+        error_message,
+        metadata,
+    }
+}
+
+fn sanitize_capture_path(path: &Path) -> String {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
+    let parent = path.parent();
+    if parent == Some(std::env::temp_dir().as_path()) {
+        format!("<tmp>/{file_name}")
+    } else {
+        format!("local-image:{file_name}")
+    }
+}
+
+fn normalize_capture_source(source: &str) -> &'static str {
+    match source {
+        "screen"
+        | "window"
+        | "macos_interactive_screencapture"
+        | "interactive_screencapture"
+        | "external_window_capture" => "macos_interactive_screencapture",
+        _ => "local_image",
+    }
+}
+
+fn sanitize_readboard_capture_error(error: &readboard_sidecar::ReadboardSidecarError) -> String {
+    match error {
+        readboard_sidecar::ReadboardSidecarError::ImageRead { path, message } => {
+            let sanitized_path = sanitize_capture_path(Path::new(path));
+            format!("failed to read controlled readboard image `{sanitized_path}`: {message}")
+        }
+        _ => sanitize_capture_message(&error.to_string()),
+    }
+}
+
+fn sanitize_capture_message(message: &str) -> String {
+    let sanitized = message
+        .split_whitespace()
+        .map(|part| {
+            if part.starts_with("/Users/")
+                || part.starts_with("/private/")
+                || part.starts_with("/var/folders/")
+                || part.starts_with("/tmp/")
+                || part.starts_with('~')
+            {
+                "<path>"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if sanitized.is_empty() {
+        "capture failed".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn snapshot_position_hash(position: &PositionDto) -> Option<String> {
+    serde_json::to_vec(position).ok().map(|bytes| sha256_hex(&bytes))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = sha256_digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn sha256_digest(bytes: &[u8]) -> [u8; 32] {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ];
+    let mut h = [
+        0x6a09e667u32,
+        0xbb67ae85,
+        0x3c6ef372,
+        0xa54ff53a,
+        0x510e527f,
+        0x9b05688c,
+        0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    let bit_len = (bytes.len() as u64).wrapping_mul(8);
+    let mut padded = bytes.to_vec();
+    padded.push(0x80);
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&bit_len.to_be_bytes());
+
+    for chunk in padded.chunks_exact(64) {
+        let mut w = [0u32; 64];
+        for (index, word) in w.iter_mut().take(16).enumerate() {
+            let start = index * 4;
+            *word = u32::from_be_bytes([chunk[start], chunk[start + 1], chunk[start + 2], chunk[start + 3]]);
+        }
+        for index in 16..64 {
+            let s0 = w[index - 15].rotate_right(7) ^ w[index - 15].rotate_right(18) ^ (w[index - 15] >> 3);
+            let s1 = w[index - 2].rotate_right(17) ^ w[index - 2].rotate_right(19) ^ (w[index - 2] >> 10);
+            w[index] = w[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let mut a = h[0];
+        let mut b = h[1];
+        let mut c = h[2];
+        let mut d = h[3];
+        let mut e = h[4];
+        let mut f = h[5];
+        let mut g = h[6];
+        let mut hh = h[7];
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let temp1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[index])
+                .wrapping_add(w[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e);
+        h[5] = h[5].wrapping_add(f);
+        h[6] = h[6].wrapping_add(g);
+        h[7] = h[7].wrapping_add(hh);
+    }
+
+    let mut out = [0u8; 32];
+    for (index, word) in h.iter().enumerate() {
+        out[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    out
+}
+
+fn sanitize_capture_error(raw: &str, fallback: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        fallback.to_string()
+    } else {
+        sanitize_capture_message(trimmed)
+    }
 }
 
 #[tauri::command]
@@ -4988,6 +5624,7 @@ pub fn run() {
             provider_fetch_fox,
             readboard_sidecar_probe,
             readboard_sidecar_sync_snapshot,
+            readboard_external_capture,
             legacy_capture_external_window,
             legacy_import_capture_helper,
             replay_sgf_positions,
@@ -5052,6 +5689,15 @@ mod tests {
             .join("tests")
             .join("fixtures")
             .join("legacy-config")
+            .join(name)
+    }
+
+    fn readboard_image_fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join("tests")
+            .join("fixtures")
+            .join("readboard-images")
             .join(name)
     }
 
@@ -7457,6 +8103,211 @@ mod tests {
 
         assert_eq!(sync_error.kind, ProviderErrorKind::InvalidRequest);
         assert!(sync_error.message.contains("requires image_path"));
+    }
+
+    #[test]
+    fn readboard_external_capture_local_image_returns_sanitized_decode_preview() {
+        let path = readboard_image_fixture("controlled-19-three-stones.ppm");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "local_image".to_string(),
+            image_path: Some(path.display().to_string()),
+            timeout_ms: None,
+            metadata: Some(BTreeMap::from([("case".to_string(), "fixture".to_string())])),
+        })
+        .unwrap();
+
+        assert_eq!(result.schema, "lizzieyzy.readboard-external-capture.v1");
+        assert_eq!(result.status, "captured");
+        assert!(!result.recoverable);
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert_eq!(result.source, "local_image");
+        assert_eq!(result.capture_source, "local_image");
+        assert_eq!(
+            result.source_metadata.get("case").map(String::as_str),
+            Some("fixture")
+        );
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("local-image:controlled-19-three-stones.ppm")
+        );
+        assert_eq!(result.sha256.as_deref().unwrap().len(), 64);
+        assert_eq!(result.hash, result.sha256);
+        assert_eq!(result.snapshot_id.as_deref(), Some("external-capture-preview"));
+        assert_eq!(result.snapshot_hash.as_deref().unwrap().len(), 64);
+        assert!(result.size.unwrap() > 0);
+        assert!(result.position.is_some());
+        assert_eq!(result.position.as_ref().unwrap().board_size, 19);
+        assert_eq!(result.decode.status, "success");
+        assert_eq!(result.decode.board_size, Some(19));
+        assert_eq!(result.decode.stone_count, Some(3));
+        assert_eq!(result.decode.black_stones, Some(2));
+        assert_eq!(result.decode.white_stones, Some(1));
+        assert!(result.snapshot.is_some());
+        assert_eq!(result.board_replacement, "none");
+        assert_eq!(result.metadata.get("case").map(String::as_str), Some("fixture"));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains("/Users/"));
+        assert!(!serialized.contains("/private/"));
+        assert!(!serialized.contains("/var/folders/"));
+    }
+
+    #[test]
+    fn readboard_external_capture_frontend_style_request_aliases_screen_to_operator_capture() {
+        let value = serde_json::json!({
+            "source": "screen",
+            "timeoutMs": 1000,
+            "sourceMetadata": {
+                "ui": "frontend"
+            }
+        });
+        let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(value).unwrap();
+
+        assert_eq!(request.capture_source, "screen");
+        assert_eq!(request.timeout_ms, Some(1000));
+        assert_eq!(
+            request
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("ui"))
+                .map(String::as_str),
+            Some("frontend")
+        );
+        assert_eq!(
+            normalize_capture_source(&request.capture_source),
+            "macos_interactive_screencapture"
+        );
+    }
+
+    #[test]
+    fn readboard_external_capture_snake_case_aliases_are_accepted() {
+        let value = serde_json::json!({
+            "captureSource": "local_image",
+            "image_path": "board.png",
+            "timeout_ms": 1000,
+            "source_metadata": {
+                "style": "snake"
+            }
+        });
+        let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(value).unwrap();
+
+        assert_eq!(request.capture_source, "local_image");
+        assert_eq!(request.image_path.as_deref(), Some("board.png"));
+        assert_eq!(request.timeout_ms, Some(1000));
+        assert_eq!(
+            request
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("style"))
+                .map(String::as_str),
+            Some("snake")
+        );
+    }
+
+    #[test]
+    fn readboard_external_capture_invalid_local_image_is_decode_error_without_private_path() {
+        let path = readboard_image_fixture("invalid-image.bin");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "local_image".to_string(),
+            image_path: Some(path.display().to_string()),
+            timeout_ms: None,
+            metadata: None,
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "decode_error");
+        assert!(result.recoverable);
+        assert_eq!(result.decode.status, "decode_error");
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("local-image:invalid-image.bin")
+        );
+        assert_eq!(result.sha256.as_deref().unwrap().len(), 64);
+        assert!(result.size.unwrap() > 0);
+        assert!(result.snapshot.is_none());
+        assert!(result.position.is_none());
+        assert_eq!(result.board_replacement, "none");
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains(path.parent().unwrap().to_str().unwrap()));
+        assert!(!serialized.contains("/Users/"));
+        assert!(!serialized.contains("/private/"));
+        assert!(!serialized.contains("/var/folders/"));
+    }
+
+    #[test]
+    fn readboard_external_capture_rejects_invalid_source_and_missing_local_path() {
+        let invalid_source = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "unknown".to_string(),
+            image_path: None,
+            timeout_ms: None,
+            metadata: None,
+        })
+        .unwrap_err();
+        assert_eq!(invalid_source.kind, ProviderErrorKind::InvalidRequest);
+
+        let missing_path = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "local_image".to_string(),
+            image_path: None,
+            timeout_ms: None,
+            metadata: None,
+        })
+        .unwrap_err();
+        assert_eq!(missing_path.kind, ProviderErrorKind::InvalidRequest);
+    }
+
+    #[test]
+    fn readboard_external_capture_sha256_helper_matches_known_digest() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn readboard_external_capture_interactive_cancel_is_structured() {
+        fn fake_cancel(_timeout: Duration) -> ReadboardCaptureFileOutcome {
+            ReadboardCaptureFileOutcome::Cancelled {
+                message: "operator cancelled test capture".to_string(),
+            }
+        }
+
+        let result = readboard_external_capture_with_runner(
+            ReadboardExternalCaptureRequestDto {
+                capture_source: "window".to_string(),
+                image_path: None,
+                timeout_ms: Some(1_000),
+                metadata: None,
+            },
+            fake_cancel,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, "cancelled");
+        assert_eq!(result.source, "macos_interactive_screencapture");
+        assert!(result.recoverable);
+        assert!(result.operator_initiated);
+        assert!(result.user_selection_required);
+        assert_eq!(result.board_replacement, "none");
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn readboard_external_capture_interactive_non_macos_is_unsupported() {
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "screen".to_string(),
+            image_path: None,
+            timeout_ms: Some(1_000),
+            metadata: None,
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "unsupported_platform");
+        assert_eq!(result.source, "macos_interactive_screencapture");
+        assert!(result.recoverable);
+        assert!(result.operator_initiated);
+        assert!(result.user_selection_required);
+        assert_eq!(result.board_replacement, "none");
     }
 
     #[test]

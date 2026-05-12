@@ -59,6 +59,8 @@ DESKTOP_UI_CLICK_SMOKE_EVIDENCE = "docs/qa/desktop-ui-click-smoke-macos.json"
 DESKTOP_UI_CLICK_SMOKE_SCHEMA = "lizzieyzy.desktop-ui-click-smoke.v1"
 TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE = "docs/qa/tauri-window-runtime-smoke-macos.json"
 TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.tauri-window-runtime-smoke.v1"
+INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
+INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
 KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
 KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
 KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -646,6 +648,7 @@ class UserFlowSmoke:
         self.check_desktop_sgf_editing_ux_smoke_evidence()
         self.check_desktop_ui_click_smoke_evidence()
         self.check_tauri_window_runtime_smoke_evidence()
+        self.check_installed_macos_app_smoke_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
@@ -745,6 +748,30 @@ class UserFlowSmoke:
         self.pass_(
             "tauri_window_runtime_smoke",
             "scoped Tauri desktop window/runtime screenshot smoke evidence passes with source runtime save/reopen proof and boundary checks",
+        )
+
+    def check_installed_macos_app_smoke_evidence(self) -> None:
+        evidence_path = self.path(INSTALLED_MACOS_APP_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "installed_macos_app_smoke",
+                f"TODO gate: run Worker-1 installed macOS .app launch smoke and record {INSTALLED_MACOS_APP_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(INSTALLED_MACOS_APP_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_installed_macos_app_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "installed_macos_app_smoke",
+                f"{INSTALLED_MACOS_APP_SMOKE_EVIDENCE} is present but not valid scoped installed macOS app launch PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "installed_macos_app_smoke",
+            "scoped installed macOS .app launch smoke evidence passes with app bundle, window, screenshot, dev-server, and release-boundary checks",
         )
 
     def check_katago_live_smoke_evidence(self) -> None:
@@ -1274,6 +1301,160 @@ def validate_tauri_window_runtime_save_reopen_proof(evidence: dict[str, Any]) ->
     return [
         "save/reopen semantic proof must include valid firstLaunch, secondLaunch, saveReopenProof, reopen, and afterReopen fields"
     ]
+
+
+def validate_installed_macos_app_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != INSTALLED_MACOS_APP_SMOKE_SCHEMA:
+        failures.append(f"schema must be {INSTALLED_MACOS_APP_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("launched") is not True:
+        failures.append("launched must be true")
+    if evidence.get("windowObserved") is not True:
+        failures.append("windowObserved must be true")
+    if evidence.get("screenshotObserved") is not True:
+        failures.append("screenshotObserved must be true")
+    for key in ("devServerAbsent", "productionSigned", "notarized", "releasePublished"):
+        expected = True if key == "devServerAbsent" else False
+        if evidence.get(key) is not expected:
+            failures.append(f"{key} must be {str(expected).lower()}")
+    failures.extend(validate_installed_macos_app_bundle(evidence.get("appBundle"), evidence))
+    failures.extend(validate_installed_macos_app_artifact_paths(evidence))
+    failures.extend(validate_installed_macos_app_dev_server_boundaries(evidence))
+    failures.extend(validate_installed_macos_app_boundaries(evidence.get("boundaries")))
+    failures.extend(validate_installed_macos_app_screenshots(evidence))
+    failures.extend(validate_installed_macos_app_termination(evidence))
+    return failures
+
+
+def validate_installed_macos_app_bundle(value: Any, evidence: dict[str, Any]) -> list[str]:
+    if not isinstance(value, dict):
+        return ["appBundle must be an object"]
+    failures: list[str] = []
+    if first_present(value, "exists", "present", "bundleExists", "artifactPresent") is not True:
+        failures.append("appBundle.exists must be true")
+    path = first_present(value, "path", "bundlePath", "name", "fileName")
+    if not isinstance(path, str) or not path.strip():
+        failures.append("appBundle must include path/name metadata")
+    size = first_present(value, "sizeBytes", "size_bytes", "appSizeBytes", "app_size_bytes", "bundleSizeBytes")
+    if size is None:
+        size = first_present(evidence, "appSizeBytes", "app_size_bytes", "bundleSizeBytes")
+    if not positive_number(size):
+        failures.append("appBundle must include positive app size")
+    checksum = first_present(value, "sha256", "appSha256", "bundleSha256", "hash")
+    if checksum is None:
+        checksum = first_present(evidence, "appSha256", "app_sha256", "bundleSha256", "sha256")
+    if not is_sha256_hex(checksum):
+        failures.append("appBundle must include 64-character hex sha256")
+    return failures
+
+
+def validate_installed_macos_app_artifact_paths(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+
+    def check_path(label: str, value: Any) -> None:
+        if value is None:
+            return
+        if not isinstance(value, str) or not value.strip():
+            failures.append(f"{label} must be a stable repo-relative or non-local path")
+        elif not is_stable_artifact_path(value):
+            failures.append(f"{label} must not be a local absolute path")
+
+    check_path("appBundlePath", evidence.get("appBundlePath"))
+    app_bundle = evidence.get("appBundle")
+    if isinstance(app_bundle, dict):
+        check_path("appBundle.path", first_present(app_bundle, "path", "bundlePath"))
+    bundle = evidence.get("bundle")
+    if isinstance(bundle, dict):
+        for key in ("app", "binary", "dmg", "infoPlist"):
+            artifact = bundle.get(key)
+            if isinstance(artifact, dict):
+                check_path(f"bundle.{key}.path", artifact.get("path"))
+        dmgs = bundle.get("dmgs")
+        if isinstance(dmgs, list):
+            for index, dmg in enumerate(dmgs):
+                if isinstance(dmg, dict):
+                    check_path(f"bundle.dmgs[{index}].path", dmg.get("path"))
+    return failures
+
+
+def validate_installed_macos_app_dev_server_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    preflight = evidence.get("devServerPreflight")
+    if isinstance(preflight, dict):
+        if preflight.get("reachableBeforeLaunch") is True:
+            failures.append("devServerPreflight.reachableBeforeLaunch must be false")
+        if preflight.get("runnerStartedDevServer") is True:
+            failures.append("devServerPreflight.runnerStartedDevServer must be false")
+    if evidence.get("runnerStartedDevServer") is True:
+        failures.append("runnerStartedDevServer must be false")
+    if evidence.get("runnerStartedViteDevServer") is True:
+        failures.append("runnerStartedViteDevServer must be false")
+    boundaries = evidence.get("boundaries")
+    if isinstance(boundaries, dict) and boundaries.get("viteDevServerStarted") is True:
+        failures.append("boundaries.viteDevServerStarted must be false")
+    return failures
+
+
+def validate_installed_macos_app_boundaries(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        return ["boundaries must be an object when present"]
+    failures: list[str] = []
+    for key in ("nativeDialogClickCovered", "webviewDomClickCovered"):
+        if value.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_installed_macos_app_screenshots(evidence: dict[str, Any]) -> list[str]:
+    screenshots = first_present(evidence, "screenshots", "windowScreenshots", "appScreenshots")
+    if screenshots is None and isinstance(evidence.get("screenshot"), dict):
+        screenshots = [evidence["screenshot"]]
+    if not isinstance(screenshots, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not screenshots:
+        failures.append("screenshots must include at least one installed app screenshot")
+    for index, screenshot in enumerate(screenshots):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        sha256 = screenshot.get("sha256")
+        if not is_sha256_hex(sha256):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        label = first_present(screenshot, "label", "name", "step")
+        if not isinstance(label, str) or not label.strip():
+            failures.append(f"screenshots[{index}] must include label/name/step")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be a stable repo-relative or non-local path")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+    return failures
+
+
+def validate_installed_macos_app_termination(evidence: dict[str, Any]) -> list[str]:
+    termination = first_present(evidence, "termination", "terminate", "exit", "processExit")
+    if isinstance(termination, dict):
+        if first_present(termination, "success", "terminated", "exited", "ok") is True:
+            return []
+        status = str(first_present(termination, "status", "result") or "").lower()
+        exit_code = first_present(termination, "exitCode", "exit_code", "code")
+        if status in {"pass", "passed", "success"} and (exit_code in (None, 0)):
+            return []
+        if exit_code == 0 and first_present(termination, "forced", "forceKilled", "force_killed") is not True:
+            return []
+    if first_present(evidence, "terminated", "terminateSuccess", "exitSuccess", "exited") is True:
+        return []
+    return ["exit/terminate success must be recorded"]
 
 
 def validate_katago_live_smoke_evidence(evidence: Any) -> list[str]:

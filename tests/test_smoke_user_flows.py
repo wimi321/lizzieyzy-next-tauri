@@ -52,6 +52,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("desktop_sgf_editing_ux_smoke", pending_names)
             self.assertIn("desktop_ui_click_smoke", pending_names)
             self.assertIn("tauri_window_runtime_smoke", pending_names)
+            self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
@@ -313,6 +314,199 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("tauri_window_runtime_smoke", failures)
             self.assertIn("tauri_window_runtime_smoke", pending)
             self.assertIn(expected_detail, pending["tauri_window_runtime_smoke"])
+
+    def test_valid_installed_macos_app_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_installed_macos_app_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("installed_macos_app_smoke", pass_names)
+            self.assertNotIn("installed_macos_app_smoke", pending_names)
+
+    def test_installed_macos_app_evidence_requires_screenshot(self) -> None:
+        self.assert_invalid_installed_macos_app_evidence_pending(
+            lambda evidence: evidence.__setitem__("screenshots", []),
+            "screenshots must include at least one installed app screenshot",
+        )
+
+    def test_installed_macos_app_evidence_rejects_local_absolute_screenshot_path(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["path"] = "/Users/haoc/Documents/lizzieyzy-next/docs/qa/screenshots/installed.png"
+
+        self.assert_invalid_installed_macos_app_evidence_pending(
+            mutate,
+            "screenshots[0].path must not be a local absolute path",
+        )
+
+    def test_installed_macos_app_evidence_rejects_local_absolute_bundle_paths(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["appBundlePath"] = "/Users/haoc/Documents/lizzieyzy-next/target/release/bundle/macos/LizzieYzy.app"
+            app_bundle = evidence["appBundle"]
+            bundle = evidence["bundle"]
+            assert isinstance(app_bundle, dict)
+            assert isinstance(bundle, dict)
+            app_bundle["path"] = "/tmp/LizzieYzy.app"
+            for key in ("app", "binary", "dmg", "infoPlist"):
+                artifact = bundle[key]
+                assert isinstance(artifact, dict)
+                artifact["path"] = f"/Users/haoc/{key}"
+            dmgs = bundle["dmgs"]
+            assert isinstance(dmgs, list)
+            first_dmg = dmgs[0]
+            assert isinstance(first_dmg, dict)
+            first_dmg["path"] = "/private/tmp/LizzieYzy.dmg"
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_macos_app_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_macos_app_smoke", failures)
+            self.assertIn("installed_macos_app_smoke", pending)
+            self.assertIn("appBundlePath must not be a local absolute path", pending["installed_macos_app_smoke"])
+            self.assertIn("appBundle.path must not be a local absolute path", pending["installed_macos_app_smoke"])
+            self.assertIn("bundle.app.path must not be a local absolute path", pending["installed_macos_app_smoke"])
+            self.assertIn("bundle.binary.path must not be a local absolute path", pending["installed_macos_app_smoke"])
+            self.assertIn("bundle.dmg.path must not be a local absolute path", pending["installed_macos_app_smoke"])
+            self.assertIn("bundle.infoPlist.path must not be a local absolute path", pending["installed_macos_app_smoke"])
+            self.assertIn("bundle.dmgs[0].path must not be a local absolute path", pending["installed_macos_app_smoke"])
+
+    def test_installed_macos_app_evidence_requires_dev_server_absent(self) -> None:
+        self.assert_invalid_installed_macos_app_evidence_pending(
+            lambda evidence: evidence.__setitem__("devServerAbsent", False),
+            "devServerAbsent must be true",
+        )
+
+    def test_installed_macos_app_evidence_rejects_dev_server_preflight_contradiction(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            preflight = evidence["devServerPreflight"]
+            boundaries = evidence["boundaries"]
+            assert isinstance(preflight, dict)
+            assert isinstance(boundaries, dict)
+            preflight["reachableBeforeLaunch"] = True
+            preflight["runnerStartedDevServer"] = True
+            evidence["runnerStartedDevServer"] = True
+            evidence["runnerStartedViteDevServer"] = True
+            boundaries["viteDevServerStarted"] = True
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_macos_app_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_macos_app_smoke", failures)
+            self.assertIn("installed_macos_app_smoke", pending)
+            self.assertIn("devServerPreflight.reachableBeforeLaunch must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("devServerPreflight.runnerStartedDevServer must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("runnerStartedDevServer must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("runnerStartedViteDevServer must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("boundaries.viteDevServerStarted must be false", pending["installed_macos_app_smoke"])
+
+    def test_installed_macos_app_evidence_rejects_release_claims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["productionSigned"] = True
+            evidence["notarized"] = True
+            evidence["releasePublished"] = True
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_macos_app_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_macos_app_smoke", failures)
+            self.assertIn("installed_macos_app_smoke", pending)
+            self.assertIn("productionSigned must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("notarized must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("releasePublished must be false", pending["installed_macos_app_smoke"])
+
+    def test_installed_macos_app_evidence_rejects_native_dialog_and_webview_boundary_claims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["nativeDialogClickCovered"] = True
+            boundaries["webviewDomClickCovered"] = True
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_macos_app_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_macos_app_smoke", failures)
+            self.assertIn("installed_macos_app_smoke", pending)
+            self.assertIn("boundaries.nativeDialogClickCovered must be false", pending["installed_macos_app_smoke"])
+            self.assertIn("boundaries.webviewDomClickCovered must be false", pending["installed_macos_app_smoke"])
+
+    def test_installed_macos_app_evidence_requires_launch_and_window(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["launched"] = False
+            evidence["windowObserved"] = False
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_macos_app_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_macos_app_smoke", failures)
+            self.assertIn("installed_macos_app_smoke", pending)
+            self.assertIn("launched must be true", pending["installed_macos_app_smoke"])
+            self.assertIn("windowObserved must be true", pending["installed_macos_app_smoke"])
+
+    def assert_invalid_installed_macos_app_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_macos_app_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_macos_app_smoke", failures)
+            self.assertIn("installed_macos_app_smoke", pending)
+            self.assertIn(expected_detail, pending["installed_macos_app_smoke"])
 
     def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1201,6 +1395,13 @@ def write_valid_tauri_window_runtime_evidence(root: Path) -> None:
     )
 
 
+def write_valid_installed_macos_app_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE,
+        valid_installed_macos_app_evidence(),
+    )
+
+
 def write_valid_katago_live_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, valid_katago_live_evidence())
 
@@ -1797,6 +1998,59 @@ def valid_tauri_window_runtime_evidence() -> dict[str, object]:
             "annotationsVerified": True,
             "moveCountVerified": True,
             "boardStateVerified": True,
+        },
+    }
+
+
+def valid_installed_macos_app_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_SCHEMA,
+        "name": "installed_macos_app_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "appBundlePath": "dist/macos/LizzieYzy.app",
+        "appBundle": {
+            "exists": True,
+            "path": "dist/macos/LizzieYzy.app",
+            "sizeBytes": 123456,
+            "sha256": "d" * 64,
+        },
+        "bundle": {
+            "app": {"path": "dist/macos/LizzieYzy.app", "bytes": 123456, "sha256": "d" * 64},
+            "binary": {"path": "dist/macos/LizzieYzy.app/Contents/MacOS/lizzieyzy", "bytes": 120000, "sha256": "f" * 64},
+            "dmg": {"path": "dist/macos/LizzieYzy.dmg", "bytes": 654321, "sha256": "a" * 64},
+            "dmgs": [{"path": "dist/macos/LizzieYzy.dmg", "bytes": 654321, "sha256": "a" * 64}],
+            "infoPlist": {"path": "dist/macos/LizzieYzy.app/Contents/Info.plist"},
+        },
+        "launched": True,
+        "windowObserved": True,
+        "screenshotObserved": True,
+        "devServerAbsent": True,
+        "devServerPreflight": {
+            "reachableBeforeLaunch": False,
+            "runnerStartedDevServer": False,
+        },
+        "runnerStartedDevServer": False,
+        "runnerStartedViteDevServer": False,
+        "productionSigned": False,
+        "notarized": False,
+        "releasePublished": False,
+        "boundaries": {
+            "nativeDialogClickCovered": False,
+            "webviewDomClickCovered": False,
+            "viteDevServerStarted": False,
+        },
+        "screenshots": [
+            {
+                "label": "installed-app-window",
+                "path": "docs/qa/screenshots/installed-macos-app-window.png",
+                "sha256": "e" * 64,
+            }
+        ],
+        "termination": {
+            "status": "pass",
+            "exitCode": 0,
+            "success": True,
         },
     }
 

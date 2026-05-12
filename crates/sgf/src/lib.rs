@@ -91,6 +91,8 @@ pub enum SgfError {
     IllegalMove(String),
     #[error("invalid SGF property key: {0}")]
     InvalidPropertyKey(String),
+    #[error("invalid SGF property value for {key}: {value}")]
+    InvalidPropertyValue { key: String, value: String },
     #[error("unsupported board size: {0}")]
     UnsupportedBoardSize(u8),
 }
@@ -413,6 +415,9 @@ pub fn update_sgf_node_properties(
     }
 
     let mut document = parse_sgf(input)?;
+    for update in &updates {
+        validate_sgf_property_update_values(update, document.board_size)?;
+    }
     let root = document.root.as_mut().ok_or(SgfError::Malformed)?;
     let node = find_sgf_node_mut(root, node_id).ok_or(SgfError::NodeNotFound)?;
     for update in updates {
@@ -1617,6 +1622,52 @@ fn validate_sgf_property_key(key: &str) -> Result<(), SgfError> {
     }
 }
 
+fn validate_sgf_property_update_values(update: &SgfPropertyUpdate, board_size: u8) -> Result<(), SgfError> {
+    for value in &update.values {
+        match update.key.as_str() {
+            "TR" | "SQ" | "CR" | "MA" | "SL" => validate_markup_point_value(&update.key, value, board_size)?,
+            "LB" => validate_markup_label_value(&update.key, value, board_size)?,
+            "LN" | "AR" => validate_markup_line_value(&update.key, value, board_size)?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_markup_point_value(key: &str, value: &str, board_size: u8) -> Result<(), SgfError> {
+    parse_point(value, board_size)
+        .map(|_| ())
+        .map_err(|_| invalid_property_value(key, value))
+}
+
+fn validate_markup_label_value(key: &str, value: &str, board_size: u8) -> Result<(), SgfError> {
+    let Some((point, label)) = value.split_once(':') else {
+        return Err(invalid_property_value(key, value));
+    };
+    if label.is_empty() {
+        return Err(invalid_property_value(key, value));
+    }
+    validate_markup_point_value(key, point, board_size)
+}
+
+fn validate_markup_line_value(key: &str, value: &str, board_size: u8) -> Result<(), SgfError> {
+    let Some((from, to)) = value.split_once(':') else {
+        return Err(invalid_property_value(key, value));
+    };
+    if to.contains(':') {
+        return Err(invalid_property_value(key, value));
+    }
+    validate_markup_point_value(key, from, board_size)?;
+    validate_markup_point_value(key, to, board_size)
+}
+
+fn invalid_property_value(key: &str, value: &str) -> SgfError {
+    SgfError::InvalidPropertyValue {
+        key: key.to_string(),
+        value: value.to_string(),
+    }
+}
+
 fn set_node_property_values(node: &mut SgfNode, update: SgfPropertyUpdate) {
     if update.values.is_empty() {
         node.properties.retain(|property| property.key != update.key);
@@ -2738,6 +2789,81 @@ mod tests {
     }
 
     #[test]
+    fn updates_ff4_annotation_markup_values_and_roundtrips() {
+        let input = "(;GM[1]FF[4]SZ[9];B[aa]C[old]ZZ[keep])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let result = update_sgf_node_properties(
+            input,
+            node_id,
+            vec![
+                SgfPropertyUpdate {
+                    key: "TR".to_string(),
+                    values: vec!["aa".to_string(), "bb".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "SQ".to_string(),
+                    values: vec!["cc".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "CR".to_string(),
+                    values: vec!["dd".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "MA".to_string(),
+                    values: vec!["ee".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "SL".to_string(),
+                    values: vec!["ff".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "LB".to_string(),
+                    values: vec!["aa:A".to_string(), "bb:B".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "LN".to_string(),
+                    values: vec!["aa:bb".to_string()],
+                },
+                SgfPropertyUpdate {
+                    key: "AR".to_string(),
+                    values: vec!["cc:dd".to_string()],
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.sgf_text,
+            "(;GM[1]FF[4]SZ[9];B[aa]C[old]ZZ[keep]TR[aa][bb]SQ[cc]CR[dd]MA[ee]SL[ff]LB[aa:A][bb:B]LN[aa:bb]AR[cc:dd])"
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(serialize_sgf_document(&reparsed).unwrap(), result.sgf_text);
+        let node = &reparsed.root.as_ref().unwrap().children[0];
+        assert_eq!(
+            property_values(node, "TR").unwrap(),
+            &vec!["aa".to_string(), "bb".to_string()]
+        );
+        assert_eq!(property_values(node, "SQ").unwrap(), &vec!["cc".to_string()]);
+        assert_eq!(property_values(node, "CR").unwrap(), &vec!["dd".to_string()]);
+        assert_eq!(property_values(node, "MA").unwrap(), &vec!["ee".to_string()]);
+        assert_eq!(property_values(node, "SL").unwrap(), &vec!["ff".to_string()]);
+        assert_eq!(
+            property_values(node, "LB").unwrap(),
+            &vec!["aa:A".to_string(), "bb:B".to_string()]
+        );
+        assert_eq!(property_values(node, "LN").unwrap(), &vec!["aa:bb".to_string()]);
+        assert_eq!(property_values(node, "AR").unwrap(), &vec!["cc:dd".to_string()]);
+        assert_eq!(property_values(node, "ZZ").unwrap(), &vec!["keep".to_string()]);
+    }
+
+    #[test]
     fn updating_property_retains_unknown_sibling_property() {
         let input = "(;SZ[5]XY[root];B[aa]C[old]ZZ[keep];W[bb])";
         let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
@@ -2821,6 +2947,58 @@ mod tests {
     }
 
     #[test]
+    fn annotation_update_rejects_invalid_values_without_serializing_pollution() {
+        let input = "(;GM[1]FF[4]SZ[9];B[aa]C[old]TR[bb]LB[cc:keep]AR[dd:ee])";
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        for update in [
+            SgfPropertyUpdate {
+                key: "TR".to_string(),
+                values: vec!["a".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "SQ".to_string(),
+                values: vec!["jj".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "CR".to_string(),
+                values: vec!["a1".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "MA".to_string(),
+                values: vec!["aa:bb".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "SL".to_string(),
+                values: vec!["".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "LB".to_string(),
+                values: vec!["aa".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "LN".to_string(),
+                values: vec!["aa".to_string()],
+            },
+            SgfPropertyUpdate {
+                key: "AR".to_string(),
+                values: vec!["aa:bb:cc".to_string()],
+            },
+        ] {
+            let error = update_sgf_node_properties(input, node_id, vec![update]).unwrap_err();
+            assert!(matches!(error, SgfError::InvalidPropertyValue { .. }));
+        }
+
+        assert_eq!(serialize_sgf_document(&parse_sgf(input).unwrap()).unwrap(), input);
+    }
+
+    #[test]
     fn deletes_leaf_mainline_node_roundtrip() {
         let input = "(;SZ[5]C[root]XY[keep];B[aa]C[first];W[bb]C[leaf]ZZ[unknown])";
         let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
@@ -2850,6 +3028,51 @@ mod tests {
             .nodes
             .iter()
             .any(|node| node.comment.as_deref() == Some("leaf")));
+    }
+
+    #[test]
+    fn delete_preserves_non_target_ff4_annotations() {
+        let input = concat!(
+            "(;SZ[9]TR[aa]SQ[bb]CR[cc]MA[dd]SL[ee]LB[aa:A]LN[aa:bb]AR[cc:dd]",
+            ";B[aa]C[parent]TR[bb]",
+            "(;W[bb]C[delete me]LB[bb:X])",
+            "(;W[cc]C[keep sibling]SQ[cc]AR[aa:cc]))"
+        );
+        let tree = to_sgf_tree_dto(&parse_sgf(input).unwrap()).unwrap().unwrap();
+        let delete_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("delete me"))
+            .unwrap()
+            .id;
+
+        let result = delete_sgf_node(input, delete_id).unwrap();
+
+        assert_eq!(
+            result.sgf_text,
+            concat!(
+                "(;SZ[9]TR[aa]SQ[bb]CR[cc]MA[dd]SL[ee]LB[aa:A]LN[aa:bb]AR[cc:dd]",
+                ";B[aa]C[parent]TR[bb]",
+                ";W[cc]C[keep sibling]SQ[cc]AR[aa:cc])"
+            )
+        );
+        let reparsed = parse_sgf(&result.sgf_text).unwrap();
+        assert_eq!(serialize_sgf_document(&reparsed).unwrap(), result.sgf_text);
+        let root = reparsed.root.as_ref().unwrap();
+        assert_eq!(property_values(root, "TR").unwrap(), &vec!["aa".to_string()]);
+        assert_eq!(property_values(root, "SQ").unwrap(), &vec!["bb".to_string()]);
+        assert_eq!(property_values(root, "CR").unwrap(), &vec!["cc".to_string()]);
+        assert_eq!(property_values(root, "MA").unwrap(), &vec!["dd".to_string()]);
+        assert_eq!(property_values(root, "SL").unwrap(), &vec!["ee".to_string()]);
+        assert_eq!(property_values(root, "LB").unwrap(), &vec!["aa:A".to_string()]);
+        assert_eq!(property_values(root, "LN").unwrap(), &vec!["aa:bb".to_string()]);
+        assert_eq!(property_values(root, "AR").unwrap(), &vec!["cc:dd".to_string()]);
+        let sibling = &root.children[0].children[0];
+        assert_eq!(property_values(sibling, "SQ").unwrap(), &vec!["cc".to_string()]);
+        assert_eq!(
+            property_values(sibling, "AR").unwrap(),
+            &vec!["aa:cc".to_string()]
+        );
     }
 
     #[test]

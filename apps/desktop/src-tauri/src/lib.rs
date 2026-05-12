@@ -4167,6 +4167,34 @@ mod tests {
     }
 
     #[test]
+    fn command_rejects_invalid_sgf_annotation_value() {
+        let input = "(;SZ[9];B[aa]C[old]TR[bb])";
+        let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();
+        let node_id = tree
+            .nodes
+            .iter()
+            .find(|node| node.comment.as_deref() == Some("old"))
+            .unwrap()
+            .id;
+
+        let error = update_sgf_node_properties(
+            input.to_string(),
+            node_id,
+            vec![SgfPropertyUpdateDto {
+                key: "AR".to_string(),
+                values: vec!["aa:bb:cc".to_string()],
+            }],
+        )
+        .unwrap_err();
+
+        assert!(error.contains("invalid SGF property value for AR"));
+        assert_eq!(
+            sgf::serialize_sgf_document(&sgf::parse_sgf(input).unwrap()).unwrap(),
+            input
+        );
+    }
+
+    #[test]
     fn command_appends_sgf_move_to_leaf() {
         let input = "(;SZ[5];B[aa])";
         let tree = parse_sgf_tree(input.to_string()).unwrap().unwrap();

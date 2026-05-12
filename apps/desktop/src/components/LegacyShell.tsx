@@ -1,4 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { listenToLegacyMenuActionEvents } from "../api/backend";
+import {
+  legacyActionFromKeyboardEvent,
+  legacyActionLabel,
+  legacyActionMatrix,
+  type LegacyActionDefinition,
+  type LegacyActionId,
+  type LegacyActionSource,
+  type LegacyMenuTarget
+} from "../domain/legacyActions";
 
 type LegacyShellProps = {
   themeClassName?: string;
@@ -31,21 +41,9 @@ type LegacyShellProps = {
   onMoveChange: (moveNumber: number) => void;
 };
 
-type LegacyMenuTarget =
-  | "candidates"
-  | "ownership"
-  | "policy"
-  | "profiles"
-  | "assets"
-  | "providers"
-  | "preferences"
-  | "backend-status";
-
 type LegacyMenuItem = {
-  label: string;
-  onSelect?: () => void | Promise<void>;
+  action: LegacyActionDefinition;
   disabled?: boolean;
-  target?: LegacyMenuTarget;
 };
 
 type LegacyMenuGroup = {
@@ -56,7 +54,9 @@ type LegacyMenuGroup = {
 type LegacyMenuActionState = {
   activeTarget: LegacyMenuTarget | null;
   lastAction: string;
-  status: "idle" | "focused" | "missing";
+  lastActionId: LegacyActionId | "";
+  lastActionSource: LegacyActionSource | "";
+  status: "idle" | "dispatched" | "focused" | "missing" | "blocked" | "failed";
 };
 
 export function LegacyShell({
@@ -101,6 +101,8 @@ export function LegacyShell({
   const [menuAction, setMenuAction] = useState<LegacyMenuActionState>({
     activeTarget: null,
     lastAction: "",
+    lastActionId: "",
+    lastActionSource: "",
     status: "idle"
   });
 
@@ -138,11 +140,13 @@ export function LegacyShell({
     return true;
   }
 
-  function runMenuTargetAction(target: LegacyMenuTarget, actionLabel: string) {
+  function runMenuTargetAction(target: LegacyMenuTarget, action: LegacyActionDefinition, source: LegacyActionSource) {
     const focused = focusTarget(target);
     setMenuAction({
       activeTarget: target,
-      lastAction: actionLabel,
+      lastAction: legacyActionLabel(action.id),
+      lastActionId: action.id,
+      lastActionSource: source,
       status: focused ? "focused" : "missing"
     });
   }
@@ -204,69 +208,120 @@ export function LegacyShell({
     element.dataset.legacyMenuTargetId = menuTargetId(target);
   }
 
-  function menuActionLabel(groupLabel: string, itemLabel: string): string {
-    return `${groupLabel}:${itemLabel}`;
+  function markActionStatus(action: LegacyActionDefinition, source: LegacyActionSource, status: LegacyMenuActionState["status"]) {
+    setMenuAction({
+      activeTarget: action.target ?? null,
+      lastAction: legacyActionLabel(action.id),
+      lastActionId: action.id,
+      lastActionSource: source,
+      status
+    });
   }
 
-  const menuGroups: LegacyMenuGroup[] = [
-    {
-      label: "File",
-      items: [
-        { label: "Open", onSelect: onOpen, disabled: isBusy },
-        { label: "Save", onSelect: onSave, disabled: isBusy || !canSave },
-        { label: "Save As", onSelect: onSaveAs, disabled: isBusy },
-        { label: "Import SGF", onSelect: () => importInputRef.current?.click(), disabled: isBusy }
-      ]
-    },
-    {
-      label: "Game",
-      items: [
-        { label: "Load sample", onSelect: onLoadSample, disabled: isBusy },
-        { label: "Parse SGF", onSelect: onParseSgf, disabled: isBusy }
-      ]
-    },
-    {
-      label: "Analysis",
-      items: [
-        { label: "Run review", onSelect: onRunReview, disabled: isBusy },
-        { label: "KataGo panel", target: "profiles" }
-      ]
-    },
-    {
-      label: "View",
-      items: [
-        { label: "Candidates", target: "candidates" },
-        { label: "Ownership", target: "ownership" },
-        { label: "Policy", target: "policy" }
-      ]
-    },
-    {
-      label: "Engine",
-      items: [
-        { label: "Profiles", target: "profiles" },
-        { label: "Assets", target: "assets" }
-      ]
-    },
-    {
-      label: "Tools",
-      items: [
-        { label: "Providers", target: "providers" },
-        { label: "Preferences", target: "preferences" }
-      ]
-    },
-    {
-      label: "Help",
-      items: [
-        { label: "Backend status", target: "backend-status" }
-      ]
+  function isActionDisabled(actionId: LegacyActionId): boolean {
+    if (actionId === "file.save") return isBusy || !canSave;
+    if (
+      actionId === "file.open" ||
+      actionId === "file.saveAs" ||
+      actionId === "file.importSgf" ||
+      actionId === "game.loadSample" ||
+      actionId === "game.parseSgf" ||
+      actionId === "analysis.runReview"
+    ) {
+      return isBusy;
     }
-  ];
+    return false;
+  }
+
+  const dispatchLegacyAction = useCallback(async (actionId: LegacyActionId, source: LegacyActionSource) => {
+    const action = legacyActionMatrix.find((candidate) => candidate.id === actionId);
+    if (!action) return;
+    if (isActionDisabled(action.id)) {
+      markActionStatus(action, source, "blocked");
+      return;
+    }
+
+    try {
+      if (action.target) {
+        runMenuTargetAction(action.target, action, source);
+        return;
+      }
+
+      markActionStatus(action, source, "dispatched");
+      switch (action.id) {
+        case "file.open":
+          await onOpen();
+          return;
+        case "file.save":
+          await onSave();
+          return;
+        case "file.saveAs":
+          await onSaveAs();
+          return;
+        case "file.importSgf":
+          importInputRef.current?.click();
+          return;
+        case "game.loadSample":
+          await onLoadSample();
+          return;
+        case "game.parseSgf":
+          await onParseSgf();
+          return;
+        case "analysis.runReview":
+          await onRunReview();
+          return;
+      }
+    } catch {
+      markActionStatus(action, source, "failed");
+    }
+  }, [canSave, isBusy, onLoadSample, onOpen, onParseSgf, onRunReview, onSave, onSaveAs]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const actionId = legacyActionFromKeyboardEvent(event);
+      if (!actionId) return;
+      event.preventDefault();
+      void dispatchLegacyAction(actionId, "keyboard");
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dispatchLegacyAction]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+    let active = true;
+    listenToLegacyMenuActionEvents((actionId) => {
+      void dispatchLegacyAction(actionId, "native-menu");
+    }).then((unlisten) => {
+      if (active) {
+        cleanup = unlisten;
+      } else {
+        unlisten();
+      }
+    });
+    return () => {
+      active = false;
+      cleanup?.();
+    };
+  }, [dispatchLegacyAction]);
+
+  const menuGroups: LegacyMenuGroup[] = useMemo(() => {
+    const groups = new Map<LegacyMenuGroup["label"], LegacyMenuItem[]>();
+    for (const action of legacyActionMatrix) {
+      const items = groups.get(action.group) ?? [];
+      items.push({ action, disabled: isActionDisabled(action.id) });
+      groups.set(action.group, items);
+    }
+    return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+  }, [canSave, isBusy]);
 
   return (
     <main
       className={`app-shell legacy-shell${themeClassName ? ` ${themeClassName}` : ""}`}
       data-testid="legacy-shell"
       data-active-menu-target={menuAction.activeTarget ?? ""}
+      data-last-legacy-action={menuAction.lastActionId}
+      data-last-legacy-action-source={menuAction.lastActionSource}
       data-last-menu-action={menuAction.lastAction}
       data-menu-action-status={menuAction.status}
     >
@@ -282,22 +337,20 @@ export function LegacyShell({
               <div className="legacy-menu-popover">
                 {group.items.map((item) => (
                   <button
-                    key={item.label}
+                    key={item.action.id}
                     type="button"
                     disabled={item.disabled}
-                    data-menu-target={item.target ?? undefined}
-                    aria-controls={item.target ? menuTargetId(item.target) : undefined}
-                    data-testid={`legacy-menu-${group.label.toLowerCase()}-${item.label.toLowerCase().replaceAll(" ", "-")}`}
+                    data-legacy-action={item.action.id}
+                    data-menu-target={item.action.target ?? undefined}
+                    aria-controls={item.action.target ? menuTargetId(item.action.target) : undefined}
+                    title={item.action.shortcut}
+                    data-testid={`legacy-menu-${group.label.toLowerCase()}-${item.action.label.toLowerCase().replaceAll(" ", "-")}`}
                     onClick={(event) => {
-                      if (item.target) {
-                        runMenuTargetAction(item.target, menuActionLabel(group.label, item.label));
-                      } else {
-                        void item.onSelect?.();
-                      }
+                      void dispatchLegacyAction(item.action.id, "menu");
                       event.currentTarget.closest("details")?.removeAttribute("open");
                     }}
                   >
-                    {item.label}
+                    {item.action.label}
                   </button>
                 ))}
               </div>
@@ -314,10 +367,14 @@ export function LegacyShell({
       </span>
 
       <section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar">
-        <button type="button" data-testid="toolbar-open-sgf" onClick={() => void onOpen()} disabled={isBusy} title="Open SGF">Open</button>
-        <button type="button" data-testid="toolbar-save-sgf" onClick={() => void onSave()} disabled={isBusy || !canSave} title="Save SGF">Save</button>
-        <button type="button" data-testid="toolbar-save-as-sgf" onClick={() => void onSaveAs()} disabled={isBusy} title="Save SGF as">Save As</button>
-        <label className={`file-button legacy-tool-file${isBusy ? " file-button-disabled" : ""}`} data-testid="toolbar-import-sgf" title="Import SGF">
+        <button type="button" data-testid="toolbar-open-sgf" onClick={() => void dispatchLegacyAction("file.open", "toolbar")} disabled={isBusy} title="Open SGF">Open</button>
+        <button type="button" data-testid="toolbar-save-sgf" onClick={() => void dispatchLegacyAction("file.save", "toolbar")} disabled={isBusy || !canSave} title="Save SGF">Save</button>
+        <button type="button" data-testid="toolbar-save-as-sgf" onClick={() => void dispatchLegacyAction("file.saveAs", "toolbar")} disabled={isBusy} title="Save SGF as">Save As</button>
+        <label
+          className={`file-button legacy-tool-file${isBusy ? " file-button-disabled" : ""}`}
+          data-testid="toolbar-import-sgf"
+          title="Import SGF"
+        >
           Import
           <input ref={importInputRef} id={fileInputId} type="file" accept=".sgf,.txt,application/x-go-sgf,text/plain" disabled={isBusy} onChange={(event) => {
             void onImportFile(event.target.files?.[0] ?? null);
@@ -325,9 +382,9 @@ export function LegacyShell({
           }} />
         </label>
         <span className="legacy-toolbar-divider" aria-hidden="true" />
-        <button type="button" data-testid="toolbar-load-sample" onClick={() => void onLoadSample()} disabled={isBusy} title="Load sample game">Sample</button>
-        <button type="button" data-testid="toolbar-parse-sgf" onClick={() => void onParseSgf()} disabled={isBusy} title="Parse SGF source">Parse</button>
-        <button type="button" data-testid="toolbar-run-review" onClick={() => void onRunReview()} disabled={isBusy} title="Run review">Review</button>
+        <button type="button" data-testid="toolbar-load-sample" onClick={() => void dispatchLegacyAction("game.loadSample", "toolbar")} disabled={isBusy} title="Load sample game">Sample</button>
+        <button type="button" data-testid="toolbar-parse-sgf" onClick={() => void dispatchLegacyAction("game.parseSgf", "toolbar")} disabled={isBusy} title="Parse SGF source">Parse</button>
+        <button type="button" data-testid="toolbar-run-review" onClick={() => void dispatchLegacyAction("analysis.runReview", "toolbar")} disabled={isBusy} title="Run review">Review</button>
         <span className="legacy-toolbar-spacer" />
         <div className="legacy-document-chip" title={documentTitle}>
           <strong>{documentName}{dirty ? " *" : ""}</strong>
@@ -360,19 +417,21 @@ export function LegacyShell({
           </div>
           <textarea data-testid="sgf-source-textarea" value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
           <div className="button-row">
-            <button type="button" data-testid="sgf-source-open" onClick={() => void onOpen()} disabled={isBusy}>Open</button>
-            <button type="button" data-testid="sgf-source-save" onClick={() => void onSave()} disabled={isBusy || !canSave}>Save</button>
-            <button type="button" data-testid="sgf-source-save-as" onClick={() => void onSaveAs()} disabled={isBusy}>Save As</button>
-            <label className={`file-button${isBusy ? " file-button-disabled" : ""}`}>
+            <button type="button" data-testid="sgf-source-open" onClick={() => void dispatchLegacyAction("file.open", "toolbar")} disabled={isBusy}>Open</button>
+            <button type="button" data-testid="sgf-source-save" onClick={() => void dispatchLegacyAction("file.save", "toolbar")} disabled={isBusy || !canSave}>Save</button>
+            <button type="button" data-testid="sgf-source-save-as" onClick={() => void dispatchLegacyAction("file.saveAs", "toolbar")} disabled={isBusy}>Save As</button>
+            <label
+              className={`file-button${isBusy ? " file-button-disabled" : ""}`}
+            >
               Import SGF
               <input type="file" accept=".sgf,.txt,application/x-go-sgf,text/plain" disabled={isBusy} onChange={(event) => {
                 void onImportFile(event.target.files?.[0] ?? null);
                 event.currentTarget.value = "";
               }} />
             </label>
-            <button type="button" data-testid="sgf-source-load-sample" onClick={() => void onLoadSample()} disabled={isBusy}>Load sample</button>
-            <button type="button" data-testid="sgf-source-parse" onClick={() => void onParseSgf()} disabled={isBusy}>Parse SGF</button>
-            <button type="button" data-testid="sgf-source-run-review" onClick={() => void onRunReview()} disabled={isBusy}>Run review</button>
+            <button type="button" data-testid="sgf-source-load-sample" onClick={() => void dispatchLegacyAction("game.loadSample", "toolbar")} disabled={isBusy}>Load sample</button>
+            <button type="button" data-testid="sgf-source-parse" onClick={() => void dispatchLegacyAction("game.parseSgf", "toolbar")} disabled={isBusy}>Parse SGF</button>
+            <button type="button" data-testid="sgf-source-run-review" onClick={() => void dispatchLegacyAction("analysis.runReview", "toolbar")} disabled={isBusy}>Run review</button>
           </div>
         </section>
         {providerPanel}

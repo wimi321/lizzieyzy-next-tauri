@@ -20,6 +20,7 @@ import type {
   SgfTreeDto
 } from "../domain/types";
 import { ensureInitialPosition, replayGamePositions } from "../domain/board";
+import { normalizeLegacyActionId, type LegacyActionId } from "../domain/legacyActions";
 
 const letters = "abcdefghijklmnopqrstuvwxyz";
 const sampleGameId = "browser-sgf";
@@ -151,6 +152,18 @@ export type KataGoAnalysisEventHandlers = {
   onCancelled?: (payload: AnalysisErrorPayload) => void;
 };
 
+export type LegacyMenuActionPayload = {
+  action?: string;
+  action_id?: string;
+  actionId?: string;
+  id?: string;
+};
+
+export type NativeMenuContractDto = {
+  eventName?: string;
+  event_name?: string;
+};
+
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -278,6 +291,39 @@ export async function listenToKataGoAnalysisEvents(handlers: KataGoAnalysisEvent
   return () => {
     for (const unlisten of unlisteners) unlisten();
   };
+}
+
+export async function listenToLegacyMenuActionEvents(onAction: (action: LegacyActionId) => void): Promise<() => void> {
+  if (!isTauriRuntime()) return () => undefined;
+  const eventNames = await legacyNativeMenuEventNames();
+  const unlisteners = await Promise.all(
+    eventNames.map((eventName) =>
+      listen<string | LegacyMenuActionPayload>(eventName, (event) => {
+        const action = legacyActionFromPayload(event.payload);
+        if (action) onAction(action);
+      })
+    )
+  );
+  return () => {
+    for (const unlisten of unlisteners) unlisten();
+  };
+}
+
+async function legacyNativeMenuEventNames(): Promise<string[]> {
+  const canonicalFallback = "legacy://native-menu-action";
+  let contractEventName: string | null = null;
+  try {
+    const contract = await invoke<NativeMenuContractDto>("native_menu_contract");
+    contractEventName = stableEventName(contract.eventName ?? contract.event_name);
+  } catch {
+    contractEventName = null;
+  }
+  return uniqueStrings([
+    contractEventName,
+    canonicalFallback,
+    "legacy://menu-action",
+    "legacy-menu-action"
+  ]);
 }
 
 export async function loadEngineProfileSettings(): Promise<EngineProfileSettingsDto | null> {
@@ -817,6 +863,20 @@ function classifyProblemFrames(frames: AnalysisFrameDto[]): ProblemMarkerDto[] {
       score_loss: loss * 28,
       label: loss >= 0.12 ? "Major drop" : loss >= 0.085 ? "Mistake" : "Inaccuracy"
     }));
+}
+
+function legacyActionFromPayload(payload: string | LegacyMenuActionPayload): LegacyActionId | null {
+  if (typeof payload === "string") return normalizeLegacyActionId(payload);
+  return normalizeLegacyActionId(payload.actionId ?? payload.action_id ?? payload.action ?? payload.id);
+}
+
+function stableEventName(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
 }
 
 function clamp(value: number, min: number, max: number): number {

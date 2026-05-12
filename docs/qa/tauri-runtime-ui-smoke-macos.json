@@ -48,6 +48,52 @@
     },
     {
       "details": {
+        "added": [
+          "TR",
+          "CR",
+          "MA",
+          "SL",
+          "AR",
+          "LN"
+        ],
+        "annotations": {
+          "AR": [
+            "aa:bb"
+          ],
+          "CR": [
+            "bb"
+          ],
+          "LB": [
+            "aa:A",
+            "ee:E"
+          ],
+          "LN": [
+            "cc:dd"
+          ],
+          "MA": [
+            "cc"
+          ],
+          "SL": [
+            "dd"
+          ],
+          "SQ": [],
+          "TR": [
+            "aa"
+          ]
+        },
+        "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+        "removed": [
+          "SQ"
+        ],
+        "updated": [
+          "LB"
+        ]
+      },
+      "name": "annotation_edit",
+      "status": "pass"
+    },
+    {
+      "details": {
         "color": "white",
         "nodeId": "4a92894a-e19c-df02-2564-e027f3e1645e",
         "vertex": "0,0"
@@ -100,6 +146,7 @@
     {
       "details": {
         "afterReopen": {
+          "annotationsVerified": true,
           "boardStateVerified": true,
           "commentsVerified": true,
           "deletedTargetAbsent": true,
@@ -107,7 +154,7 @@
           "propertiesVerified": true,
           "treeOrderVerified": true
         },
-        "bytes": 254,
+        "bytes": 296,
         "path": "<tmp>/runtime-smoke.sgf",
         "readbackMatchesSaved": true,
         "readbackStatus": "matched_saved_text",
@@ -124,7 +171,7 @@
         "secondLaunch": {
           "launchIndex": 2,
           "phase": "reopen-verify",
-          "pid": 21846,
+          "pid": 48602,
           "reportPath": "<tmp>/runtime-smoke-report-b.json",
           "status": "pass",
           "stopped": true
@@ -158,6 +205,31 @@
   ],
   "expected": {
     "appendColor": "white",
+    "branchAnnotations": {
+      "AR": [
+        "aa:bb"
+      ],
+      "CR": [
+        "bb"
+      ],
+      "LB": [
+        "aa:A",
+        "ee:E"
+      ],
+      "LN": [
+        "cc:dd"
+      ],
+      "MA": [
+        "cc"
+      ],
+      "SL": [
+        "dd"
+      ],
+      "SQ": [],
+      "TR": [
+        "aa"
+      ]
+    },
     "branchComment": "runtime smoke branch persisted",
     "branchLabel": "aa:A",
     "branchName": "runtime-smoke-branch",
@@ -170,13 +242,13 @@
     "siblingCountAfterDelete": 3
   },
   "expectedReportPath": null,
-  "finishedAt": "2026-05-11T22:34:20.053Z",
+  "finishedAt": "2026-05-12T01:28:54.493Z",
   "firstLaunch": {
     "exitCode": -15,
     "expectedReportPath": null,
     "logPath": "<tmp>/tauri-dev-a.log",
     "phase": "edit-save",
-    "pid": 21560,
+    "pid": 48387,
     "report": {
       "checks": [
         {
@@ -223,6 +295,52 @@
             "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94"
           },
           "name": "property_edit",
+          "status": "pass"
+        },
+        {
+          "details": {
+            "added": [
+              "TR",
+              "CR",
+              "MA",
+              "SL",
+              "AR",
+              "LN"
+            ],
+            "annotations": {
+              "AR": [
+                "aa:bb"
+              ],
+              "CR": [
+                "bb"
+              ],
+              "LB": [
+                "aa:A",
+                "ee:E"
+              ],
+              "LN": [
+                "cc:dd"
+              ],
+              "MA": [
+                "cc"
+              ],
+              "SL": [
+                "dd"
+              ],
+              "SQ": [],
+              "TR": [
+                "aa"
+              ]
+            },
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+            "removed": [
+              "SQ"
+            ],
+            "updated": [
+              "LB"
+            ]
+          },
+          "name": "annotation_edit",
           "status": "pass"
         },
         {
@@ -278,7 +396,7 @@
         },
         {
           "details": {
-            "bytes": 254,
+            "bytes": 296,
             "path": "<tmp>/runtime-smoke.sgf",
             "readbackMatchesSaved": true,
             "readbackStatus": "matched_saved_text",
@@ -315,6 +433,31 @@
       ],
       "expected": {
         "appendColor": "white",
+        "branchAnnotations": {
+          "AR": [
+            "aa:bb"
+          ],
+          "CR": [
+            "bb"
+          ],
+          "LB": [
+            "aa:A",
+            "ee:E"
+          ],
+          "LN": [
+            "cc:dd"
+          ],
+          "MA": [
+            "cc"
+          ],
+          "SL": [
+            "dd"
+          ],
+          "SQ": [],
+          "TR": [
+            "aa"
+          ]
+        },
         "branchComment": "runtime smoke branch persisted",
         "branchLabel": "aa:A",
         "branchName": "runtime-smoke-branch",
@@ -327,14 +470,14 @@
         "siblingCountAfterDelete": 3
       },
       "expectedReportPath": null,
-      "finishedAt": "2026-05-11T22:34:20.053Z",
+      "finishedAt": "2026-05-12T01:28:54.493Z",
       "name": "ui_tauri_runtime_smoke",
       "phase": "edit-save",
       "platform": "macos",
       "reportPath": "<tmp>/runtime-smoke-report-a.json",
       "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
       "sgfPath": "<tmp>/runtime-smoke.sgf",
-      "startedAt": "2026-05-11T22:34:20.025Z",
+      "startedAt": "2026-05-12T01:28:54.458Z",
       "status": "pass",
       "steps": [
         {
@@ -404,6 +547,31 @@
         {
           "details": {
             "appendColor": "white",
+            "branchAnnotations": {
+              "AR": [
+                "aa:bb"
+              ],
+              "CR": [
+                "bb"
+              ],
+              "LB": [
+                "aa:A",
+                "ee:E"
+              ],
+              "LN": [
+                "cc:dd"
+              ],
+              "MA": [
+                "cc"
+              ],
+              "SL": [
+                "dd"
+              ],
+              "SQ": [],
+              "TR": [
+                "aa"
+              ]
+            },
             "branchComment": "runtime smoke branch persisted",
             "branchLabel": "aa:A",
             "branchName": "runtime-smoke-branch",
@@ -422,9 +590,9 @@
     },
     "reportPath": "<tmp>/runtime-smoke-report-a.json",
     "sgfPath": "<tmp>/runtime-smoke.sgf",
-    "startedAtUnix": 1778538855.884485,
+    "startedAtUnix": 1778549330.487405,
     "stopped": true,
-    "stoppedAtUnix": 1778538860.867147
+    "stoppedAtUnix": 1778549335.233737
   },
   "name": "ui_tauri_runtime_smoke_save_reopen",
   "phase": "edit-save",
@@ -443,7 +611,7 @@
     "expectedReportPath": "<tmp>/runtime-smoke-report-a.json",
     "logPath": "<tmp>/tauri-dev-b.log",
     "phase": "reopen-verify",
-    "pid": 21846,
+    "pid": 48602,
     "report": {
       "checks": [
         {
@@ -457,7 +625,7 @@
         },
         {
           "details": {
-            "bytes": 254,
+            "bytes": 296,
             "path": "<tmp>/runtime-smoke.sgf"
           },
           "name": "sgf_loaded",
@@ -466,11 +634,37 @@
         {
           "details": {
             "absentAfterReopen": true,
+            "annotationsVerified": true,
             "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
             "boardStateVerified": true,
             "comment": "runtime smoke branch persisted",
             "commentsVerified": true,
             "deletedTargetVertex": "1,0",
+            "expectedAnnotations": {
+              "AR": [
+                "aa:bb"
+              ],
+              "CR": [
+                "bb"
+              ],
+              "LB": [
+                "aa:A",
+                "ee:E"
+              ],
+              "LN": [
+                "cc:dd"
+              ],
+              "MA": [
+                "cc"
+              ],
+              "SL": [
+                "dd"
+              ],
+              "SQ": [],
+              "TR": [
+                "aa"
+              ]
+            },
             "expectedComment": "runtime smoke branch persisted",
             "expectedProperties": {
               "LB": "aa:A",
@@ -513,6 +707,31 @@
       ],
       "expected": {
         "appendColor": "white",
+        "branchAnnotations": {
+          "AR": [
+            "aa:bb"
+          ],
+          "CR": [
+            "bb"
+          ],
+          "LB": [
+            "aa:A",
+            "ee:E"
+          ],
+          "LN": [
+            "cc:dd"
+          ],
+          "MA": [
+            "cc"
+          ],
+          "SL": [
+            "dd"
+          ],
+          "SQ": [],
+          "TR": [
+            "aa"
+          ]
+        },
         "branchComment": "runtime smoke branch persisted",
         "branchLabel": "aa:A",
         "branchName": "runtime-smoke-branch",
@@ -525,14 +744,14 @@
         "siblingCountAfterDelete": 3
       },
       "expectedReportPath": "<tmp>/runtime-smoke-report-a.json",
-      "finishedAt": "2026-05-11T22:34:24.510Z",
+      "finishedAt": "2026-05-12T01:28:58.935Z",
       "name": "ui_tauri_runtime_smoke",
       "phase": "reopen-verify",
       "platform": "macos",
       "reportPath": "<tmp>/runtime-smoke-report-b.json",
       "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
       "sgfPath": "<tmp>/runtime-smoke.sgf",
-      "startedAt": "2026-05-11T22:34:24.491Z",
+      "startedAt": "2026-05-12T01:28:58.910Z",
       "status": "pass",
       "steps": [
         {
@@ -587,12 +806,12 @@
     },
     "reportPath": "<tmp>/runtime-smoke-report-b.json",
     "sgfPath": "<tmp>/runtime-smoke.sgf",
-    "startedAtUnix": 1778538860.867286,
+    "startedAtUnix": 1778549335.233846,
     "stopped": true,
-    "stoppedAtUnix": 1778538865.367191
+    "stoppedAtUnix": 1778549339.7169821
   },
   "sgfPath": "<tmp>/runtime-smoke.sgf",
-  "startedAt": "2026-05-11T22:34:20.025Z",
+  "startedAt": "2026-05-12T01:28:54.458Z",
   "status": "pass",
   "steps": [
     {
@@ -662,6 +881,31 @@
     {
       "details": {
         "appendColor": "white",
+        "branchAnnotations": {
+          "AR": [
+            "aa:bb"
+          ],
+          "CR": [
+            "bb"
+          ],
+          "LB": [
+            "aa:A",
+            "ee:E"
+          ],
+          "LN": [
+            "cc:dd"
+          ],
+          "MA": [
+            "cc"
+          ],
+          "SL": [
+            "dd"
+          ],
+          "SQ": [],
+          "TR": [
+            "aa"
+          ]
+        },
         "branchComment": "runtime smoke branch persisted",
         "branchLabel": "aa:A",
         "branchName": "runtime-smoke-branch",

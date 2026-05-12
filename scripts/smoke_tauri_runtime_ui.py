@@ -24,6 +24,7 @@ REQUIRED_CHECKS = [
     "branch_navigation",
     "comment_edit",
     "property_edit",
+    "annotation_edit",
     "append_move",
     "edit_move",
     "delete_node",
@@ -96,10 +97,60 @@ def validate_semantic_checks(checks: list[Any]) -> list[str]:
     }
     failures: list[str] = []
     failures.extend(validate_variation_reorder_evidence(check_by_name.get("variation_reorder")))
+    failures.extend(validate_annotation_edit_evidence(check_by_name.get("annotation_edit")))
     failures.extend(validate_edit_move_evidence(check_by_name.get("edit_move")))
     failures.extend(validate_delete_node_evidence(check_by_name.get("delete_node")))
     failures.extend(validate_save_readback_roundtrip_evidence(check_by_name.get("save_readback_roundtrip")))
     failures.extend(validate_board_state_evidence(check_by_name.get("board_state_verified")))
+    return failures
+
+
+def validate_annotation_edit_evidence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["annotation_edit evidence must be an object"]
+    failures: list[str] = []
+    annotations = evidence.get("annotations")
+    if not isinstance(annotations, dict):
+        failures.append("annotation_edit annotations must be an object")
+        return failures
+    expected_annotations = {
+        "TR": ["aa"],
+        "SQ": [],
+        "CR": ["bb"],
+        "MA": ["cc"],
+        "SL": ["dd"],
+        "AR": ["aa:bb"],
+        "LN": ["cc:dd"],
+    }
+    for key, expected_values in expected_annotations.items():
+        values = annotations.get(key)
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            failures.append(f"annotation_edit annotations.{key} must be a string list")
+            continue
+        if values != expected_values:
+            failures.append(f"annotation_edit annotations.{key} must equal {expected_values!r}")
+    label_values = annotations.get("LB")
+    if not isinstance(label_values, list) or any(not isinstance(value, str) for value in label_values):
+        failures.append("annotation_edit annotations.LB must be a string list")
+    else:
+        missing_labels = [value for value in ("aa:A", "ee:E") if value not in label_values]
+        if missing_labels:
+            failures.append("annotation_edit annotations.LB must include aa:A and ee:E")
+    expected_lists = {
+        "added": {"TR", "CR", "MA", "SL", "AR", "LN"},
+        "updated": {"LB"},
+        "removed": {"SQ"},
+    }
+    for field, expected_values in expected_lists.items():
+        values = evidence.get(field)
+        if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+            failures.append(f"annotation_edit {field} must be a string list")
+            continue
+        actual = set(values)
+        if actual != expected_values:
+            expected_label = ", ".join(sorted(expected_values))
+            failures.append(f"annotation_edit {field} must be exactly {expected_label}")
     return failures
 
 
@@ -536,6 +587,7 @@ def enrich_save_readback_check(evidence: dict[str, Any], second_launch: dict[str
             "treeOrderVerified": reopen_details.get("treeOrderVerified") is True,
             "commentsVerified": reopen_details.get("commentsVerified") is True,
             "propertiesVerified": reopen_details.get("propertiesVerified") is True,
+            "annotationsVerified": reopen_details.get("annotationsVerified") is True,
             "moveCountVerified": reopen_details.get("moveCountVerified") is True,
             "boardStateVerified": reopen_details.get("boardStateVerified") is True,
             "deletedTargetAbsent": reopen_details.get("absentAfterReopen") is True,

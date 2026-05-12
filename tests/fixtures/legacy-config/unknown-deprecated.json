@@ -1,0 +1,12 @@
+{
+  "deprecatedLeelaZeroTuning": true,
+  "recentFiles": ["/games/one.sgf"],
+  "katago": {
+    "command": "/known/katago",
+    "oldAnalysisThreads": 12
+  },
+  "ui": {
+    "showCandidates": true,
+    "removedStoneOpacity": 0.4
+  }
+}

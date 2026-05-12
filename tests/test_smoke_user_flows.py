@@ -60,6 +60,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
+            self.assertIn("legacy_config_corpus_migration_smoke", pending_names)
             self.assertIn("katago_live_desktop_workflow_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("readboard_image_import_smoke", pending_names)
@@ -2154,6 +2155,83 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_config_migration_surface", failures)
             self.assertIn("PreferencesPanel missing legacy-config-safety-status", failures["legacy_config_migration_surface"])
 
+    def test_valid_legacy_config_corpus_migration_evidence_passes_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_legacy_config_corpus_migration_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("legacy_config_corpus_migration_smoke", pass_names)
+            self.assertNotIn("legacy_config_corpus_migration_smoke", pending_names)
+
+    def test_legacy_config_corpus_migration_evidence_requires_fixture_classes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_legacy_config_corpus_migration_evidence()
+            evidence["fixtureClasses"] = [
+                item
+                for item in evidence["fixtureClasses"]
+                if item != "unknown-deprecated"
+            ]
+            write_json(root / smoke_user_flows.LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("legacy_config_corpus_migration_smoke", pending)
+            self.assertIn("fixtureClasses missing: unknown-deprecated", pending["legacy_config_corpus_migration_smoke"])
+
+    def test_legacy_config_corpus_migration_evidence_rejects_low_fixture_count(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_legacy_config_corpus_migration_evidence()
+            evidence["corpusFixtureCount"] = 7
+            write_json(root / smoke_user_flows.LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("legacy_config_corpus_migration_smoke", pending)
+            self.assertIn("corpus fixture count must be at least 8", pending["legacy_config_corpus_migration_smoke"])
+
+    def test_legacy_config_corpus_migration_evidence_requires_no_write_proofs(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_legacy_config_corpus_migration_evidence()
+            evidence["previewNoWrite"] = False
+            write_json(root / smoke_user_flows.LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("legacy_config_corpus_migration_smoke", pending)
+            self.assertIn("previewNoWrite must be true", pending["legacy_config_corpus_migration_smoke"])
+
+    def test_legacy_config_corpus_migration_evidence_rejects_overclaim_boundaries(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_legacy_config_corpus_migration_evidence()
+            evidence["fullHistoricalConfigParity"] = True
+            evidence["boundaries"]["fullHistoricalConfigParity"] = True
+            write_json(root / smoke_user_flows.LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("legacy_config_corpus_migration_smoke", pending)
+            self.assertIn("fullHistoricalConfigParity must be false", pending["legacy_config_corpus_migration_smoke"])
+            self.assertIn("boundaries.fullHistoricalConfigParity must be false", pending["legacy_config_corpus_migration_smoke"])
+
     def test_sgf_annotation_surface_passes_with_frontend_wiring(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2580,6 +2658,13 @@ def write_valid_katago_review_workflow_ux_evidence(root: Path) -> None:
     )
 
 
+def write_valid_legacy_config_corpus_migration_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE,
+        valid_legacy_config_corpus_migration_evidence(),
+    )
+
+
 def write_valid_katago_live_desktop_workflow_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE,
@@ -2871,6 +2956,83 @@ def valid_katago_review_workflow_ux_evidence() -> dict[str, object]:
             "referencedEvidence": [],
             "existingLiveEvidenceUsedForNewLiveBehavior": False,
         },
+    }
+
+
+def valid_legacy_config_corpus_migration_evidence() -> dict[str, object]:
+    fixture_classes = list(smoke_user_flows.LEGACY_CONFIG_CORPUS_REQUIRED_FIXTURE_CLASSES)
+    false_boundaries = {
+        key: False
+        for key in smoke_user_flows.LEGACY_CONFIG_CORPUS_REQUIRED_FALSE_FIELDS
+    }
+    required_true = {
+        key: True
+        for key in smoke_user_flows.LEGACY_CONFIG_CORPUS_REQUIRED_TRUE_FIELDS
+    }
+    return {
+        "schema": smoke_user_flows.LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_SCHEMA,
+        "name": "legacy_config_corpus_migration_smoke",
+        "status": "pass",
+        "collectionMethod": "source_static_plus_repository_fixture_corpus",
+        "corpusFixtureCount": len(fixture_classes),
+        "fixtureClasses": fixture_classes,
+        **required_true,
+        **false_boundaries,
+        "fixtures": [
+            {"name": fixture_class, "class": fixture_class, "status": "pass"}
+            for fixture_class in fixture_classes
+        ],
+        "checks": [
+            {
+                "name": "fixture_corpus_covered",
+                "status": "pass",
+                "details": {
+                    "corpusFixtureCount": len(fixture_classes),
+                    "fixtureClasses": fixture_classes,
+                },
+            },
+            {
+                "name": "preview_no_write",
+                "status": "pass",
+                "details": {"previewNoWrite": True},
+            },
+            {
+                "name": "apply_writes_intended_targets",
+                "status": "pass",
+                "details": {"applyWritesIntendedTargets": True},
+            },
+            {
+                "name": "preserves_existing_next_settings",
+                "status": "pass",
+                "details": {"preservesExistingNextSettings": True},
+            },
+            {
+                "name": "invalid_no_write",
+                "status": "pass",
+                "details": {"invalidNoWrite": True},
+            },
+            {
+                "name": "unsupported_keys_warned",
+                "status": "pass",
+                "details": {"unsupportedKeysWarned": True},
+            },
+            {
+                "name": "duplicate_conflict_deterministic",
+                "status": "pass",
+                "details": {"duplicateConflictDeterministic": True},
+            },
+            {
+                "name": "rollback_metadata_observed",
+                "status": "pass",
+                "details": {"rollbackMetadataObserved": True},
+            },
+            {
+                "name": "scope_boundaries_recorded",
+                "status": "pass",
+                "details": false_boundaries,
+            },
+        ],
+        "boundaries": false_boundaries,
     }
 
 

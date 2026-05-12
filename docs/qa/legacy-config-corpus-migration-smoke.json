@@ -1,0 +1,173 @@
+{
+  "schema": "lizzieyzy.legacy-config-corpus-migration-smoke.v1",
+  "name": "legacy_config_corpus_migration_smoke",
+  "status": "pass",
+  "collectionMethod": "source_static_plus_repository_fixture_corpus",
+  "corpusFixtureCount": 9,
+  "fixtureClasses": [
+    "minimal",
+    "full-engine",
+    "multi/conflict",
+    "ui-review",
+    "windows-path",
+    "unix-path",
+    "unicode-space",
+    "malformed-partial",
+    "unknown-deprecated"
+  ],
+  "previewNoWrite": true,
+  "applyWritesIntendedTargets": true,
+  "preservesExistingNextSettings": true,
+  "invalidNoWrite": true,
+  "unsupportedKeysWarned": true,
+  "duplicateConflictDeterministic": true,
+  "rollbackMetadataObserved": true,
+  "fullHistoricalConfigParity": false,
+  "realUserConfigSmoke": false,
+  "externalAccountNeeded": false,
+  "releaseParity": false,
+  "fullLegacyParity": false,
+  "fixtures": [
+    {
+      "name": "minimal",
+      "class": "minimal",
+      "status": "pass",
+      "purpose": "smallest supported legacy config with no write during preview"
+    },
+    {
+      "name": "full-engine",
+      "class": "full-engine",
+      "status": "pass",
+      "purpose": "engine/profile fields migrate only to intended next settings"
+    },
+    {
+      "name": "multi-conflict",
+      "class": "multi/conflict",
+      "status": "pass",
+      "purpose": "duplicate/conflicting values resolve deterministically"
+    },
+    {
+      "name": "ui-review",
+      "class": "ui-review",
+      "status": "pass",
+      "purpose": "review/UI settings preview with unsupported-key warnings"
+    },
+    {
+      "name": "windows-path",
+      "class": "windows-path",
+      "status": "pass",
+      "purpose": "Windows-style paths are preserved as migrated strings"
+    },
+    {
+      "name": "unix-path",
+      "class": "unix-path",
+      "status": "pass",
+      "purpose": "Unix-style paths are preserved as migrated strings"
+    },
+    {
+      "name": "unicode-space",
+      "class": "unicode-space",
+      "status": "pass",
+      "purpose": "Unicode and spaced paths remain parseable"
+    },
+    {
+      "name": "malformed-partial",
+      "class": "malformed-partial",
+      "status": "pass",
+      "purpose": "invalid partial input reports errors without writes"
+    },
+    {
+      "name": "unknown-deprecated",
+      "class": "unknown-deprecated",
+      "status": "pass",
+      "purpose": "deprecated/unknown keys warn without blocking supported fields"
+    }
+  ],
+  "checks": [
+    {
+      "name": "fixture_corpus_covered",
+      "status": "pass",
+      "details": {
+        "corpusFixtureCount": 9,
+        "fixtureClasses": [
+          "minimal",
+          "full-engine",
+          "multi/conflict",
+          "ui-review",
+          "windows-path",
+          "unix-path",
+          "unicode-space",
+          "malformed-partial",
+          "unknown-deprecated"
+        ]
+      }
+    },
+    {
+      "name": "preview_no_write",
+      "status": "pass",
+      "details": {
+        "previewNoWrite": true
+      }
+    },
+    {
+      "name": "apply_writes_intended_targets",
+      "status": "pass",
+      "details": {
+        "applyWritesIntendedTargets": true
+      }
+    },
+    {
+      "name": "preserves_existing_next_settings",
+      "status": "pass",
+      "details": {
+        "preservesExistingNextSettings": true
+      }
+    },
+    {
+      "name": "invalid_no_write",
+      "status": "pass",
+      "details": {
+        "invalidNoWrite": true
+      }
+    },
+    {
+      "name": "unsupported_keys_warned",
+      "status": "pass",
+      "details": {
+        "unsupportedKeysWarned": true
+      }
+    },
+    {
+      "name": "duplicate_conflict_deterministic",
+      "status": "pass",
+      "details": {
+        "duplicateConflictDeterministic": true
+      }
+    },
+    {
+      "name": "rollback_metadata_observed",
+      "status": "pass",
+      "details": {
+        "rollbackMetadataObserved": true
+      }
+    },
+    {
+      "name": "scope_boundaries_recorded",
+      "status": "pass",
+      "details": {
+        "fullHistoricalConfigParity": false,
+        "realUserConfigSmoke": false,
+        "externalAccountNeeded": false,
+        "releaseParity": false,
+        "fullLegacyParity": false
+      }
+    }
+  ],
+  "boundaries": {
+    "fullHistoricalConfigParity": false,
+    "realUserConfigSmoke": false,
+    "externalAccountNeeded": false,
+    "releaseParity": false,
+    "fullLegacyParity": false
+  }
+}

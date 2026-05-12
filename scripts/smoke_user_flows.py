@@ -261,6 +261,35 @@ KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS = [
     "ocrExternalCaptureCovered",
     "windowsLinuxCovered",
 ]
+LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE = "docs/qa/legacy-config-corpus-migration-smoke.json"
+LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_SCHEMA = "lizzieyzy.legacy-config-corpus-migration-smoke.v1"
+LEGACY_CONFIG_CORPUS_REQUIRED_FIXTURE_CLASSES = [
+    "minimal",
+    "full-engine",
+    "multi/conflict",
+    "ui-review",
+    "windows-path",
+    "unix-path",
+    "unicode-space",
+    "malformed-partial",
+    "unknown-deprecated",
+]
+LEGACY_CONFIG_CORPUS_REQUIRED_TRUE_FIELDS = [
+    "previewNoWrite",
+    "applyWritesIntendedTargets",
+    "preservesExistingNextSettings",
+    "invalidNoWrite",
+    "unsupportedKeysWarned",
+    "duplicateConflictDeterministic",
+    "rollbackMetadataObserved",
+]
+LEGACY_CONFIG_CORPUS_REQUIRED_FALSE_FIELDS = [
+    "fullHistoricalConfigParity",
+    "realUserConfigSmoke",
+    "externalAccountNeeded",
+    "releaseParity",
+    "fullLegacyParity",
+]
 KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_EVIDENCE = "docs/qa/katago-live-desktop-workflow-smoke-macos.json"
 KATAGO_LIVE_DESKTOP_WORKFLOW_SMOKE_SCHEMA = "lizzieyzy.katago-live-desktop-workflow-smoke.v1"
 KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_CHECKS = [
@@ -1048,6 +1077,7 @@ class UserFlowSmoke:
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
+        self.check_legacy_config_corpus_migration_smoke_evidence()
         self.check_katago_live_desktop_workflow_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_readboard_image_import_smoke_evidence()
@@ -1371,6 +1401,30 @@ class UserFlowSmoke:
         self.pass_(
             "katago_review_workflow_ux_smoke",
             "scoped KataGo review workflow UX resilience evidence passes with progress, cancel/restart, cache restore, failure, stale-guard, and boundary checks",
+        )
+
+    def check_legacy_config_corpus_migration_smoke_evidence(self) -> None:
+        evidence_path = self.path(LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "legacy_config_corpus_migration_smoke",
+                f"TODO gate: record scoped legacy config corpus migration evidence at {LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_legacy_config_corpus_migration_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "legacy_config_corpus_migration_smoke",
+                f"{LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_EVIDENCE} is present but not valid scoped legacy config corpus migration PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "legacy_config_corpus_migration_smoke",
+            "scoped legacy config corpus migration evidence passes with fixture coverage, no-write/apply/rollback, deterministic conflict, and boundary checks",
         )
 
     def check_katago_live_desktop_workflow_smoke_evidence(self) -> None:
@@ -3249,6 +3303,44 @@ def validate_katago_review_workflow_ux_boundaries(evidence: dict[str, Any]) -> l
                 failures.append("existing live evidence must not be reused to claim new live review workflow behavior")
         if source_evidence.get("existingLiveEvidenceUsedForNewLiveBehavior") is True:
             failures.append("existing live evidence must not be used for new live behavior claims")
+    return failures
+
+
+def validate_legacy_config_corpus_migration_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_SCHEMA:
+        failures.append(f"schema must be {LEGACY_CONFIG_CORPUS_MIGRATION_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    count = first_present(evidence, "corpusFixtureCount", "fixtureCount", "fixturesCount")
+    if not isinstance(count, int) or count < 8:
+        failures.append("corpus fixture count must be at least 8")
+    failures.extend(
+        missing_string_members(
+            first_present(evidence, "fixtureClasses", "requiredFixtureClasses", "classes"),
+            LEGACY_CONFIG_CORPUS_REQUIRED_FIXTURE_CLASSES,
+            "fixtureClasses",
+        )
+    )
+    for key in LEGACY_CONFIG_CORPUS_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+        boundaries = {}
+    for key in LEGACY_CONFIG_CORPUS_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is True:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    checks = evidence.get("checks")
+    if isinstance(checks, list):
+        for check in checks:
+            if isinstance(check, dict) and str(check.get("status", "")).lower() not in {"pass", "passed"}:
+                failures.append(f"{check.get('name', 'check')} must be pass")
     return failures
 
 

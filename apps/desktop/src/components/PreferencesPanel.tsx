@@ -37,6 +37,10 @@ export function PreferencesPanel({
   const canRunMigration = !disabled && !isLegacyConfigMigrating && legacyConfigPath.trim().length > 0;
   const migratedFields = legacyConfigApplyResult?.migratedFields ?? legacyConfigPreview?.migratedFields ?? [];
   const warnings = legacyConfigApplyResult?.warnings ?? legacyConfigPreview?.warnings ?? [];
+  const targetCategories = legacyConfigTargetCategories(legacyConfigPreview, legacyConfigApplyResult);
+  const unsupportedHints = migrationWarningHints(warnings, "unsupported");
+  const deprecatedHints = migrationWarningHints(warnings, "deprecated");
+  const skippedTargets = legacyConfigApplyResult ? migrationSkippedTargets(legacyConfigApplyResult) : [];
 
   return (
     <section className="preferences-panel" aria-label="Application preferences" data-testid="preferences-panel">
@@ -110,12 +114,37 @@ export function PreferencesPanel({
           <button type="button" data-testid="legacy-config-preview" disabled={!canRunMigration} onClick={onPreviewLegacyConfigMigration}>Preview</button>
           <button type="button" data-testid="legacy-config-apply" disabled={!canRunMigration || legacyConfigPreview === null} onClick={onApplyLegacyConfigMigration}>Apply</button>
         </div>
+        <div className="migration-result" data-testid="legacy-config-scope-boundary">
+          <strong>Scoped migration</strong>
+          <span>Supported legacy keys are mapped into Next preferences and engine profiles only. Unrelated Next settings are not automatically overwritten, and invalid config paths keep no-write protection enabled.</span>
+        </div>
+        {(legacyConfigPreview || legacyConfigApplyResult) ? (
+          <div className="migration-result" data-testid="legacy-config-target-categories">
+            <strong>Target categories</strong>
+            {targetCategories.length > 0 ? (
+              <ul>
+                {targetCategories.map((category) => <li key={category}>{category}</li>)}
+              </ul>
+            ) : <span>No writable preference or engine profile category was detected in this legacy config.</span>}
+          </div>
+        ) : null}
         {migratedFields.length > 0 ? (
           <div className="migration-result" data-testid="legacy-config-migrated-fields">
             <strong>Migrated fields</strong>
             <ul>
               {migratedFields.map((field) => <li key={field}>{field}</li>)}
             </ul>
+          </div>
+        ) : null}
+        {(legacyConfigPreview || legacyConfigApplyResult) ? (
+          <div className="migration-result" data-testid="legacy-config-unsupported-hints">
+            <strong>Unsupported/deprecated key hints</strong>
+            {unsupportedHints.length || deprecatedHints.length ? (
+              <ul>
+                {unsupportedHints.map((hint) => <li key={`unsupported-${hint}`}>Unsupported: {hint}</li>)}
+                {deprecatedHints.map((hint) => <li key={`deprecated-${hint}`}>Deprecated: {hint}</li>)}
+              </ul>
+            ) : <span>No unsupported or deprecated key hints were reported by the preview.</span>}
           </div>
         ) : null}
         {warnings.length > 0 ? (
@@ -132,6 +161,16 @@ export function PreferencesPanel({
             <span>
               Preferences {migrationWriteStatus(legacyConfigApplyResult, legacyConfigApplyResult.preferencesWritten)}; engine profiles {migrationWriteStatus(legacyConfigApplyResult, legacyConfigApplyResult.engineProfilesWritten)}.
             </span>
+          </div>
+        ) : null}
+        {legacyConfigApplyResult ? (
+          <div className="migration-result" data-testid="legacy-config-skipped-targets">
+            <strong>Skipped/no-write targets</strong>
+            {skippedTargets.length > 0 ? (
+              <ul>
+                {skippedTargets.map((target) => <li key={target}>{target}</li>)}
+              </ul>
+            ) : <span>No skipped or no-write targets were reported.</span>}
           </div>
         ) : null}
         {legacyConfigApplyResult ? (
@@ -168,6 +207,38 @@ export function PreferencesPanel({
       </section>
     </section>
   );
+}
+
+function legacyConfigTargetCategories(preview: LegacyConfigMigrationPreviewDto | null, applyResult: LegacyConfigMigrationApplyDto | null): string[] {
+  const categories: string[] = [];
+  if (preview?.preferences || applyResult?.preferencesWritten || hasMigratedField(applyResult?.migratedFields ?? preview?.migratedFields ?? [], "preference")) {
+    categories.push("preferences");
+  }
+  if (preview?.engineProfiles || applyResult?.engineProfilesWritten || hasMigratedField(applyResult?.migratedFields ?? preview?.migratedFields ?? [], "engine")) {
+    categories.push("engine profiles");
+  }
+  return categories;
+}
+
+function hasMigratedField(fields: string[], token: string): boolean {
+  return fields.some((field) => field.toLowerCase().includes(token));
+}
+
+function migrationWarningHints(warnings: string[], token: "unsupported" | "deprecated"): string[] {
+  return warnings
+    .filter((warning) => warning.toLowerCase().includes(token))
+    .map((warning) => warning.replace(/^unsupported legacy config key was ignored:\s*/i, "").trim())
+    .slice(0, 8);
+}
+
+function migrationSkippedTargets(result: LegacyConfigMigrationApplyDto): string[] {
+  const skipped: string[] = [];
+  if (!result.preferencesWritten) skipped.push(result.status === "failed" && result.noWriteOnError ? "preferences: no write retained after error" : "preferences: no supported target detected");
+  if (!result.engineProfilesWritten) skipped.push(result.status === "failed" && result.noWriteOnError ? "engine profiles: no write retained after error" : "engine profiles: no supported target detected");
+  if (result.status === "failed" && result.noWriteOnError && result.writtenPathLabels.length === 0) {
+    skipped.push("invalid config no-write: no target files were written");
+  }
+  return skipped;
 }
 
 function migrationSafetySummary(result: LegacyConfigMigrationApplyDto): string {

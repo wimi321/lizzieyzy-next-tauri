@@ -65,6 +65,7 @@ type RuntimeSmokeCheckName =
   | "arbitrary_ocr_not_covered"
   | "external_client_not_covered"
   | "readboard_external_capture_mvp"
+  | "readboard_operator_capture"
   | "backend_runtime_proof_observed"
   | "runtime_source_observed"
   | "backend_availability_observed"
@@ -122,6 +123,7 @@ type RuntimeSmokeReport = {
   katagoWorkflowCache?: KataGoWorkflowCacheEvidence;
   readboard?: ReadboardLiveSmokeEvidence;
   readboardExternalCaptureMvp?: ReadboardExternalCaptureMvpEvidence;
+  readboardOperatorCapture?: ReadboardExternalCaptureMvpEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
   installedAppRuntimeProof?: InstalledAppRuntimeProofEvidence;
@@ -129,7 +131,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -309,12 +311,14 @@ type ReadboardExternalCaptureMvpEvidence = {
     sha256: string;
   };
   captureSource?: {
-    operatorInitiated: false;
-    userSelectionRequired: false;
-    selection: null;
-    sourceKind: "local_image";
-    requestedSource: "local_image";
-    localImageProvided: true;
+    operatorInitiated: boolean;
+    userSelectionRequired: boolean;
+    selection: null | { x: number; y: number; width: number; height: number };
+    sourceKind: "local_image" | "operator_selected_file";
+    requestedSource: "local_image" | "operator_selected_file";
+    localImageProvided?: true;
+    localImageOnly?: true;
+    operatorSelectedFileProvided?: true;
     selectedScreenRegionCovered: false;
     externalScreenRegionCovered: false;
     externalWindowRegionCovered: false;
@@ -322,16 +326,27 @@ type ReadboardExternalCaptureMvpEvidence = {
     externalClientCaptureCovered: false;
   };
   previewConfirmation?: {
-    previewOnlyBeforeConfirmation: false;
+    previewOnlyBeforeConfirmation: boolean;
     boardReplacedBeforeConfirmation: false;
-    userConfirmed: false;
-    boardReplacedOnlyAfterConfirmation: false;
-    previewConfirmationObserved: false;
-    boardReplacementObserved: false;
+    userConfirmed: boolean;
+    boardReplacedOnlyAfterConfirmation: boolean;
+    previewConfirmationObserved: boolean;
+    boardReplacementObserved: boolean;
+    previewSummary?: ElementSmokeEvidence;
+    confirmationControl?: ElementSmokeEvidence;
+    statusbar?: ElementSmokeEvidence;
     fullOcrParity: false;
     fullReadboardParity: false;
     targetClientParity: false;
+    arbitraryOcrParity: false;
+    releaseParity: false;
+    localImageDecodeOnly?: true;
   };
+  previewOnlyBeforeConfirmation?: boolean;
+  boardReplacedBeforeConfirmation?: false;
+  userConfirmed?: boolean;
+  boardReplacedOnlyAfterConfirmation?: boolean;
+  localImageDecodeOnly?: true;
 };
 type ReadboardProtocolLineEvidence = {
   snapshotId: string;
@@ -536,6 +551,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "readboard-external-capture-mvp") {
       await runReadboardExternalCaptureMvpPhase(report);
+    } else if (resolvedConfig.phase === "readboard-operator-capture") {
+      await runReadboardOperatorCapturePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "katago-live-workflow-cache") {
@@ -1279,7 +1296,7 @@ async function runReadboardExternalCaptureMvpPhase(report: RuntimeSmokeReport) {
       metadata: {
         source: "runtime_smoke",
         phase: "readboard_external_capture_mvp",
-        scope: "operator_selected_local_image_capture_mvp_not_full_ocr_readboard_or_target_client_parity"
+        scope: "local_image_capture_decode_mvp_not_full_ocr_readboard_or_target_client_parity"
       }
     });
     evidence.rawBackendResult = result as Record<string, unknown>;
@@ -1296,6 +1313,7 @@ async function runReadboardExternalCaptureMvpPhase(report: RuntimeSmokeReport) {
       sourceKind: "local_image",
       requestedSource: "local_image",
       localImageProvided: true,
+      localImageOnly: true,
       selectedScreenRegionCovered: false,
       externalScreenRegionCovered: false,
       externalWindowRegionCovered: false,
@@ -1311,13 +1329,146 @@ async function runReadboardExternalCaptureMvpPhase(report: RuntimeSmokeReport) {
       boardReplacementObserved: false,
       fullOcrParity: false,
       fullReadboardParity: false,
-      targetClientParity: false
+      targetClientParity: false,
+      arbitraryOcrParity: false,
+      releaseParity: false,
+      localImageDecodeOnly: true
     };
+    evidence.previewOnlyBeforeConfirmation = false;
+    evidence.boardReplacedBeforeConfirmation = false;
+    evidence.userConfirmed = false;
+    evidence.boardReplacedOnlyAfterConfirmation = false;
+    evidence.localImageDecodeOnly = true;
     return evidence;
   });
 
   await check(report, "scope_boundaries_recorded", async () => {
-    if (!evidence.previewConfirmation) throw new Error("Readboard capture MVP boundary evidence was not recorded.");
+    if (!evidence.previewConfirmation) throw new Error("Readboard local-image capture MVP boundary evidence was not recorded.");
+    return evidence.previewConfirmation;
+  });
+}
+
+async function runReadboardOperatorCapturePhase(report: RuntimeSmokeReport) {
+  const endpoint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ENDPOINT");
+  const imagePath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH");
+  if (!imagePath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH is required for readboard-operator-capture.");
+  const evidence: ReadboardExternalCaptureMvpEvidence = {};
+  report.readboardOperatorCapture = evidence;
+
+  await check(report, "readboard_operator_capture", async () => {
+    const result = await captureReadboardExternal({
+      source: "operator_selected_file",
+      endpoint,
+      image_path: imagePath,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_operator_capture",
+        scope: "operator_selected_file_capture_mvp_not_full_ocr_readboard_or_target_client_parity"
+      }
+    });
+    evidence.rawBackendResult = result as Record<string, unknown>;
+    const status = normalizeCaptureStatus(result.status);
+    if (status !== "captured") {
+      throw new Error(`Readboard operator capture expected captured backend status, got ${String(result.status || "empty")}.`);
+    }
+    const artifact = summarizeReadboardCaptureArtifact(result, imagePath);
+    evidence.captureArtifact = artifact;
+    evidence.captureSource = {
+      operatorInitiated: true,
+      userSelectionRequired: true,
+      selection: null,
+      sourceKind: "operator_selected_file",
+      requestedSource: "operator_selected_file",
+      operatorSelectedFileProvided: true,
+      selectedScreenRegionCovered: false,
+      externalScreenRegionCovered: false,
+      externalWindowRegionCovered: false,
+      targetClientDiscoveryCovered: false,
+      externalClientCaptureCovered: false
+    };
+
+    await openProviderPanelForRuntime();
+    const readboardRoot = await waitForVisibleElement('[data-testid="controlled-board-image-import-mvp"]', "controlled readboard import surface");
+    const pathInput = await waitForVisibleElement('[data-testid="readboard-image-path-input"]', "readboard image path input");
+    setTextInputValue(pathInput, imagePath);
+    const previewButton = await waitForElementState(
+      '[data-testid="readboard-preview-image"]',
+      "readboard preview image button to become enabled",
+      (element) => element instanceof HTMLButtonElement && !element.disabled
+    ) as HTMLButtonElement;
+    previewButton.click();
+
+    const previewSummary = await waitForElementState(
+      '[data-testid="readboard-snapshot-preview-summary"]',
+      "readboard snapshot preview summary",
+      (element) => isElementVisible(element) && readboardRoot.dataset.previewHasPosition === "true"
+    );
+    const confirmation = await waitForVisibleElement('[data-testid="readboard-import-confirmation"]', "readboard import confirmation");
+    const importBeforeConfirm = await waitForVisibleElement('[data-testid="readboard-import-image-snapshot"]', "readboard import preview button") as HTMLButtonElement;
+    const rootBeforeConfirm = queryRequiredElement('[data-testid="controlled-board-image-import-mvp"]', "controlled readboard import surface before confirmation");
+    const previewOnlyBeforeConfirmation = rootBeforeConfirm.dataset.previewOnlyBeforeConfirmation === "true";
+    const boardReplacedBeforeConfirmation = rootBeforeConfirm.dataset.boardReplacedBeforeConfirmation === "true";
+    if (!importBeforeConfirm.disabled) throw new Error("Readboard import button was enabled before explicit confirmation.");
+    if (!previewOnlyBeforeConfirmation) {
+      throw new Error("Readboard UI did not expose previewOnlyBeforeConfirmation=true before user confirmation.");
+    }
+    if (boardReplacedBeforeConfirmation) {
+      throw new Error("Readboard UI must expose boardReplacedBeforeConfirmation=false.");
+    }
+
+    const checkbox = await waitForVisibleElement('[data-testid="readboard-confirm-import"]', "readboard confirm import checkbox") as HTMLInputElement;
+    if (checkbox.disabled) throw new Error("Readboard confirmation checkbox was disabled despite a valid preview.");
+    checkbox.click();
+    const rootAfterConfirm = await waitForElementState(
+      '[data-testid="controlled-board-image-import-mvp"]',
+      "readboard confirmation to be recorded",
+      (element) => element.dataset.userConfirmed === "true" && element.dataset.canImportPreview === "true"
+    );
+    const importAfterConfirm = await waitForVisibleElement('[data-testid="readboard-import-image-snapshot"]', "confirmed readboard import preview button") as HTMLButtonElement;
+    if (importAfterConfirm.disabled) throw new Error("Readboard import button remained disabled after explicit confirmation.");
+    importAfterConfirm.click();
+    const rootAfterImport = await waitForElementState(
+      '[data-testid="controlled-board-image-import-mvp"]',
+      "readboard replacement after confirmation",
+      (element) => element.dataset.boardReplacementObserved === "true" && element.dataset.boardReplacedOnlyAfterConfirmation === "true"
+    );
+    const statusbar = await waitForElementState(
+      '[data-testid="legacy-statusbar"]',
+      "readboard import statusbar confirmation",
+      (element) => normalizeText(element.textContent ?? "").toLowerCase().includes("imported readboard snapshot")
+    );
+
+    const userConfirmed = rootAfterConfirm.dataset.userConfirmed === "true";
+    const boardReplacedOnlyAfterConfirmation = rootAfterImport.dataset.boardReplacedOnlyAfterConfirmation === "true";
+    evidence.previewConfirmation = {
+      previewOnlyBeforeConfirmation,
+      boardReplacedBeforeConfirmation: false,
+      userConfirmed,
+      boardReplacedOnlyAfterConfirmation,
+      previewConfirmationObserved: true,
+      boardReplacementObserved: rootAfterImport.dataset.boardReplacementObserved === "true",
+      previewSummary: elementSmokeEvidence(previewSummary, '[data-testid="readboard-snapshot-preview-summary"]'),
+      confirmationControl: elementSmokeEvidence(confirmation, '[data-testid="readboard-import-confirmation"]'),
+      statusbar: elementSmokeEvidence(statusbar, '[data-testid="legacy-statusbar"]'),
+      fullOcrParity: false,
+      fullReadboardParity: false,
+      targetClientParity: false,
+      arbitraryOcrParity: false,
+      releaseParity: false
+    };
+    evidence.previewOnlyBeforeConfirmation = previewOnlyBeforeConfirmation;
+    evidence.boardReplacedBeforeConfirmation = false;
+    evidence.userConfirmed = userConfirmed;
+    evidence.boardReplacedOnlyAfterConfirmation = boardReplacedOnlyAfterConfirmation;
+    if (!evidence.previewConfirmation.userConfirmed || !evidence.previewConfirmation.boardReplacedOnlyAfterConfirmation) {
+      throw new Error("Readboard operator capture did not observe userConfirmed=true and boardReplacedOnlyAfterConfirmation=true.");
+    }
+    return evidence;
+  });
+
+  await check(report, "scope_boundaries_recorded", async () => {
+    if (!evidence.previewConfirmation) throw new Error("Readboard operator capture boundary evidence was not recorded.");
     return evidence.previewConfirmation;
   });
 }
@@ -2175,6 +2326,23 @@ async function clickLegacyMenuTarget(label: string, selector: string, expectedTa
   };
 }
 
+async function openProviderPanelForRuntime() {
+  try {
+    await clickLegacyMenuTarget("LegacyShell Tools/Providers", '[data-testid="legacy-menu-tools-providers"]', "providers");
+  } catch (error) {
+    const message = errorMessage(error);
+    if (!message.includes("target providers is not visible after click")) throw error;
+  }
+  const providerPanel = await waitForElement('[data-testid="provider-panel"]', "provider panel");
+  providerPanel.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+  const readboardInput = await waitForElementState(
+    '[data-testid="readboard-image-path-input"]',
+    "readboard image path input after providers navigation",
+    (element) => isElementVisible(element)
+  );
+  readboardInput.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+}
+
 async function waitForMenuTargetElement(target: string): Promise<HTMLElement> {
   const id = `legacy-menu-target-${target}`;
   const deadline = Date.now() + 1_500;
@@ -2208,6 +2376,20 @@ function queryRequiredElement(selector: string, label: string): HTMLElement {
   const element = document.querySelector(selector);
   if (!(element instanceof HTMLElement)) throw new Error(`Missing DOM target ${label} (${selector}).`);
   return element;
+}
+
+function setTextInputValue(element: HTMLElement, value: string) {
+  if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+    throw new Error("Runtime smoke can only set text on input or textarea elements.");
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+  if (descriptor?.set) {
+    descriptor.set.call(element, value);
+  } else {
+    element.value = value;
+  }
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function elementSmokeEvidence(element: HTMLElement, selector: string): ElementSmokeEvidence {
@@ -2426,6 +2608,7 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "katago-live-workflow-cache" ||
     value === "readboard-live" ||
     value === "readboard-external-capture-mvp" ||
+    value === "readboard-operator-capture" ||
     value === "provider-live" ||
     value === "webview-dom-click" ||
     value === "installed-app-runtime-proof" ||
@@ -2439,6 +2622,7 @@ function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
   return phase !== "provider-live" &&
     phase !== "readboard-live" &&
     phase !== "readboard-external-capture-mvp" &&
+    phase !== "readboard-operator-capture" &&
     phase !== "webview-dom-click" &&
     phase !== "installed-app-runtime-proof";
 }

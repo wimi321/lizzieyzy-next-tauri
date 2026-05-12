@@ -81,6 +81,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardPreviewKind, setReadboardPreviewKind] = useState<ReadboardPreviewKind>("none");
   const [readboardPreviewError, setReadboardPreviewError] = useState("");
   const [readboardImportConfirmed, setReadboardImportConfirmed] = useState(false);
+  const [readboardReplacementObserved, setReadboardReplacementObserved] = useState(false);
+  const [readboardReplacementConfirmedByUser, setReadboardReplacementConfirmedByUser] = useState(false);
   const [legacyHelperResult, setLegacyHelperResult] = useState<LegacyImportCaptureHelperResult | null>(null);
   const [providerWarnings, setProviderWarnings] = useState<string[]>([]);
   const canPreviewYike = !disabled && provider === "yike" && sourceUrl.trim().length > 0;
@@ -333,6 +335,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     try {
       const result = buildReadboardSnapshotImportResult(readboardSyncResult, optionalTrimmed(readboardEndpoint));
       await onImport(result);
+      setReadboardReplacementConfirmedByUser(readboardImportConfirmed);
+      setReadboardReplacementObserved(true);
       setReadboardImportConfirmed(false);
       setOperationStatus("readboardSync", readboardSnapshotImportStatus(result));
     } catch (error) {
@@ -384,6 +388,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     setReadboardPreviewError("");
     setReadboardPreviewKind("none");
     setReadboardImportConfirmed(false);
+    setReadboardReplacementObserved(false);
+    setReadboardReplacementConfirmedByUser(false);
     setReadboardCaptureResult(null);
   }
 
@@ -458,7 +464,23 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       <p className="provider-status" title={statuses.import}>{statuses.import}</p>
       <WarningList label="Provider warnings" warnings={providerWarnings} />
 
-      <div className="provider-readboard" data-testid="controlled-board-image-import-mvp">
+      <div
+        className="provider-readboard"
+        data-testid="controlled-board-image-import-mvp"
+        data-preview-kind={readboardPreviewKind}
+        data-preview-has-position={String(readboardSyncResult?.position != null)}
+        data-preview-confirmed={String(readboardImportConfirmed)}
+        data-user-confirmed={String(readboardImportConfirmed || readboardReplacementConfirmedByUser)}
+        data-can-import-preview={String(canImportReadboardSnapshot)}
+        data-preview-only-before-confirmation={String(readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
+        data-board-replaced-before-confirmation="false"
+        data-board-replacement-observed={String(readboardReplacementObserved)}
+        data-board-replaced-only-after-confirmation={String(readboardReplacementObserved && readboardReplacementConfirmedByUser)}
+        data-arbitrary-ocr-parity="false"
+        data-target-client-parity="false"
+        data-full-readboard-parity="false"
+        data-release-parity="false"
+      >
         <div className="provider-subheader">
           <h3>Readboard preview and controlled image import</h3>
           <span title={statuses.readboardProbe}>{statuses.readboardProbe}</span>

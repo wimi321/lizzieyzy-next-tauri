@@ -102,7 +102,7 @@ export type ReadboardSidecarSyncSnapshotResult = {
   warnings: string[];
 };
 
-export type ReadboardExternalCaptureSource = "screen" | "window" | "local_image";
+export type ReadboardExternalCaptureSource = "screen" | "window" | "local_image" | "operator_selected_file";
 
 export type ReadboardExternalCaptureStatus = "captured" | "cancelled" | "permission" | "unsupported" | "decode_error" | "error" | string;
 

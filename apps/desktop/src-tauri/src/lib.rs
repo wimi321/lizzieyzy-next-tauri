@@ -443,6 +443,47 @@ struct AnalysisJobRegistry {
     jobs: Mutex<HashMap<String, AnalysisCancelToken>>,
 }
 
+impl AnalysisJobRegistry {
+    fn insert(&self, job_id: String, cancel_token: AnalysisCancelToken) -> Result<(), String> {
+        let mut jobs = self
+            .jobs
+            .lock()
+            .map_err(|_| "analysis job registry is unavailable".to_string())?;
+        jobs.insert(job_id, cancel_token);
+        Ok(())
+    }
+
+    fn cancel(&self, job_id: &str) -> Result<bool, String> {
+        let cancel_token = {
+            let mut jobs = self
+                .jobs
+                .lock()
+                .map_err(|_| "analysis job registry is unavailable".to_string())?;
+            jobs.remove(job_id)
+        };
+        if let Some(cancel_token) = cancel_token {
+            cancel_token.cancel();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn remove(&self, job_id: &str) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.remove(job_id);
+        };
+    }
+
+    #[cfg(test)]
+    fn contains(&self, job_id: &str) -> bool {
+        self.jobs
+            .lock()
+            .map(|jobs| jobs.contains_key(job_id))
+            .unwrap_or(false)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EngineProfileSettingsDto {
     profile: EngineProfileDto,
@@ -1411,13 +1452,7 @@ fn katago_start_analyze_game(
     let spec = build_command_spec(&profile).map_err(|err| err.to_string())?;
     let cancel_token = AnalysisCancelToken::new();
 
-    {
-        let mut jobs = registry
-            .jobs
-            .lock()
-            .map_err(|_| "analysis job registry is unavailable".to_string())?;
-        jobs.insert(job_id_string.clone(), cancel_token.clone());
-    }
+    registry.insert(job_id_string.clone(), cancel_token.clone())?;
 
     std::thread::spawn({
         let job_id_string = job_id_string.clone();
@@ -1431,21 +1466,16 @@ fn katago_start_analyze_game(
 
 #[tauri::command]
 fn katago_cancel_analysis(registry: State<'_, AnalysisJobRegistry>, job_id: String) -> Result<(), String> {
-    let cancel_token = {
-        let jobs = registry
-            .jobs
-            .lock()
-            .map_err(|_| "analysis job registry is unavailable".to_string())?;
-        jobs.get(&job_id).cloned()
-    };
+    let _was_running = cancel_analysis_job_in_registry(&registry, &job_id)?;
+    Ok(())
+}
 
-    match cancel_token {
-        Some(cancel_token) => {
-            cancel_token.cancel();
-            Ok(())
-        }
-        None => Err(format!("analysis job not found: {job_id}")),
+fn cancel_analysis_job_in_registry(registry: &AnalysisJobRegistry, job_id: &str) -> Result<bool, String> {
+    let job_id = job_id.trim();
+    if job_id.is_empty() {
+        return Err("analysis job id must not be empty".to_string());
     }
+    registry.cancel(job_id)
 }
 
 fn prepare_katago_batch_analysis(
@@ -1595,9 +1625,7 @@ fn remove_analysis_job(app_handle: &AppHandle, job_id: &str) {
     let Some(registry) = app_handle.try_state::<AnalysisJobRegistry>() else {
         return;
     };
-    if let Ok(mut jobs) = registry.jobs.lock() {
-        jobs.remove(job_id);
-    };
+    registry.remove(job_id);
 }
 
 fn validate_batch_response_turns(
@@ -4350,6 +4378,42 @@ mod tests {
 
         assert_eq!(open.accelerator.as_deref(), Some("CmdOrCtrl+O"));
         assert!(import.accelerator.is_none());
+    }
+
+    #[test]
+    fn katago_cancel_registry_is_idempotent_and_cleans_up_token() {
+        let registry = AnalysisJobRegistry::default();
+        let cancel_token = AnalysisCancelToken::new();
+        registry
+            .insert("job-1".to_string(), cancel_token.clone())
+            .unwrap();
+
+        let first_cancel = cancel_analysis_job_in_registry(&registry, "job-1").unwrap();
+        let second_cancel = cancel_analysis_job_in_registry(&registry, "job-1").unwrap();
+
+        assert!(first_cancel);
+        assert!(!second_cancel);
+        assert!(cancel_token.is_cancelled());
+        assert!(!registry.contains("job-1"));
+    }
+
+    #[test]
+    fn katago_cancel_registry_treats_missing_job_as_recoverable() {
+        let registry = AnalysisJobRegistry::default();
+
+        let cancelled = cancel_analysis_job_in_registry(&registry, "already-finished-job").unwrap();
+
+        assert!(!cancelled);
+        assert!(!registry.contains("already-finished-job"));
+    }
+
+    #[test]
+    fn katago_cancel_registry_rejects_empty_job_id() {
+        let registry = AnalysisJobRegistry::default();
+
+        let error = cancel_analysis_job_in_registry(&registry, "  ").unwrap_err();
+
+        assert!(error.contains("analysis job id must not be empty"));
     }
 
     #[test]

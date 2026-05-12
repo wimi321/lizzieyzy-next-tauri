@@ -49,6 +49,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
+            self.assertIn("desktop_sgf_editing_ux_smoke", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
@@ -68,6 +69,99 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertEqual([], failures)
             self.assertIn("ui_tauri_runtime_smoke", pass_names)
             self.assertNotIn("ui_tauri_runtime_smoke", pending_names)
+
+    def test_valid_desktop_sgf_editing_ux_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_desktop_sgf_editing_ux_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("desktop_sgf_editing_ux_smoke", pass_names)
+            self.assertNotIn("desktop_sgf_editing_ux_smoke", pending_names)
+
+    def test_desktop_sgf_editing_ux_evidence_requires_ui_surface_fields(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_sgf_editing_ux_evidence()
+            surface = evidence["uiUxSurface"]
+            assert isinstance(surface, dict)
+            surface["annotationEditorVisible"] = False
+            write_json(root / smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("desktop_sgf_editing_ux_smoke", failures)
+            self.assertIn("desktop_sgf_editing_ux_smoke", pending)
+            self.assertIn("uiUxSurface.annotationEditorVisible must be true", pending["desktop_sgf_editing_ux_smoke"])
+
+    def test_desktop_sgf_editing_ux_evidence_requires_runtime_chain_coverage(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_sgf_editing_ux_evidence()
+            coverage = evidence["coverage"]
+            assert isinstance(coverage, dict)
+            coverage["reorderVariation"] = False
+            write_json(root / smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("desktop_sgf_editing_ux_smoke", failures)
+            self.assertIn("desktop_sgf_editing_ux_smoke", pending)
+            self.assertIn("coverage.reorderVariation must be true", pending["desktop_sgf_editing_ux_smoke"])
+
+    def test_desktop_sgf_editing_ux_evidence_keeps_native_dialog_boundary_false(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_sgf_editing_ux_evidence()
+            surface = evidence["uiUxSurface"]
+            boundaries = evidence["boundaries"]
+            assert isinstance(surface, dict)
+            assert isinstance(boundaries, dict)
+            surface["nativeDialogClickCovered"] = True
+            boundaries["fullNativeDialogProof"] = True
+            write_json(root / smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("desktop_sgf_editing_ux_smoke", failures)
+            self.assertIn("desktop_sgf_editing_ux_smoke", pending)
+            self.assertIn("uiUxSurface.nativeDialogClickCovered must be false", pending["desktop_sgf_editing_ux_smoke"])
+            self.assertIn("boundaries.fullNativeDialogProof must be false", pending["desktop_sgf_editing_ux_smoke"])
+
+    def test_desktop_sgf_editing_ux_evidence_declares_static_collection_method(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_sgf_editing_ux_evidence()
+            evidence["collectionMethod"] = "runtime_dom_clicks"
+            evidence["runtimeDomObserved"] = True
+            evidence["screenshotObserved"] = True
+            write_json(root / smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("desktop_sgf_editing_ux_smoke", failures)
+            self.assertIn("desktop_sgf_editing_ux_smoke", pending)
+            self.assertIn("collectionMethod must be source_static_plus_tauri_runtime_chain", pending["desktop_sgf_editing_ux_smoke"])
+            self.assertIn("runtimeDomObserved must be false", pending["desktop_sgf_editing_ux_smoke"])
+            self.assertIn("screenshotObserved must be false", pending["desktop_sgf_editing_ux_smoke"])
 
     def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -935,6 +1029,13 @@ def write_valid_tauri_runtime_ui_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE, valid_tauri_runtime_ui_evidence())
 
 
+def write_valid_desktop_sgf_editing_ux_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_EVIDENCE,
+        valid_desktop_sgf_editing_ux_evidence(),
+    )
+
+
 def write_valid_katago_live_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, valid_katago_live_evidence())
 
@@ -1382,6 +1483,71 @@ def valid_runtime_check_evidence(name: str) -> dict[str, object]:
     return {"observed": True}
 
 
+def valid_desktop_sgf_editing_ux_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_SCHEMA,
+        "name": "desktop_sgf_editing_ux_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "source_static_plus_tauri_runtime_chain",
+        "runtimeDomObserved": False,
+        "screenshotObserved": False,
+        "sourceRuntimeEvidence": {
+            "path": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE,
+            "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+            "status": "pass",
+            "valid": True,
+        },
+        "uiUxSurface": {
+            "legacyShellVisible": True,
+            "toolbarMenuControls": {
+                "visible": True,
+                "toolbarControls": ["Open", "Save", "Save As", "Import", "Sample", "Parse", "Review"],
+                "menuControls": ["File/Open", "File/Save", "File/Save As", "View/Candidates", "Engine/Profiles", "Tools/Preferences"],
+            },
+            "treePanelVisible": True,
+            "annotationEditorVisible": True,
+            "selectedNodeUxState": {
+                "selectedNodeVisible": True,
+                "commentEditorVisible": True,
+                "moveEditModeVisible": True,
+                "deleteControlVisible": True,
+                "reorderControlsVisible": True,
+            },
+            "dirtySavedStatus": {
+                "dirtyIndicatorVisible": True,
+                "savedIndicatorVisible": True,
+                "canSaveReflectsDirty": True,
+                "dirtySetAfterEdits": True,
+                "savedAfterReadback": True,
+            },
+            "nativeDialogClickCovered": False,
+        },
+        "coverage": {
+            "treeNavigation": True,
+            "commentEdit": True,
+            "propertyEdit": True,
+            "annotationEdit": True,
+            "appendMove": True,
+            "editMove": True,
+            "reorderVariation": True,
+            "deleteNode": True,
+            "saveReadbackReopen": True,
+        },
+        "boundaries": {
+            "nativeDialogClickCovered": False,
+            "fullNativeDialogProof": False,
+            "ocrCaptureCovered": False,
+            "externalClientWindowCaptureCovered": False,
+            "fullLegacyParityCovered": False,
+        },
+        "checks": [
+            {"name": name, "status": "pass", "details": {"covered": True}}
+            for name in smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS
+        ],
+    }
+
+
 def find_evidence_check(evidence: dict[str, object], name: str) -> dict[str, object]:
     checks = evidence["checks"]
     assert isinstance(checks, list)
@@ -1431,6 +1597,7 @@ def create_legacy_shell_fixture(
         f"""
         export function LegacyShell() {{
           const isBusy = false;
+          const dirty = false;
           const onCandidates = () => undefined;
           const onOwnership = () => undefined;
           const onPolicy = () => undefined;
@@ -1442,7 +1609,7 @@ def create_legacy_shell_fixture(
           const menuGroups = [
             {",".join(menu_blocks)}
           ];
-          return menuGroups;
+          return <main data-testid="legacy-shell"><nav className="legacy-menubar" aria-label="Application menu" data-testid="legacy-menubar"><span>File</span>{{menuGroups}}</nav><section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar"><button title="Open SGF">Open</button><button title="Save SGF">Save</button><button title="Save SGF as">Save As</button><span>{{dirty ? "Unsaved" : "Saved"}}</span><span>{{dirty ? "Unsaved changes" : "Saved"}}</span></section><footer className="legacy-statusbar" data-testid="legacy-statusbar" /></main>;
         }}
         """,
     )
@@ -1621,6 +1788,9 @@ def create_app_fixture(
           const currentFilePath = null;
           const sgfText = "(;GM[1])";
           const saveFileName = "review.sgf";
+          const selectedNodeId = "node-1";
+          const dirty = true;
+          const desktopSgfEditingUxSmokeTokens = "selectedNodeId canSave={{dirty}} setDirty(true) setDirty(false)";
           const legacyConfigPath = "/tmp/legacy.properties";
           const legacyConfigStatus = "Ready to preview legacy config.";
           const legacyConfigPreview = null;
@@ -1680,7 +1850,7 @@ def create_sgf_tree_panel_fixture(root: Path) -> None:
         };
 
         export function SgfTreePanel({ moveEditMode, canEditSelectedMove, onEditSelectedMovePass, onSaveAnnotations, isAnnotationSaving, annotationError }: Props) {
-          return <SgfAnnotationPanel onSaveAnnotations={onSaveAnnotations} isSaving={isAnnotationSaving} error={annotationError} moveEditMode={moveEditMode} canEditSelectedMove={canEditSelectedMove} onEditSelectedMovePass={onEditSelectedMovePass} />;
+          return <aside className="sgf-tree-panel" aria-label="SGF tree and comments"><h2>SGF Tree</h2><button className="sgf-tree-node" onClick={() => onSelectNode("node-1")}>Node</button><section aria-label="Selected node actions"><button>Move Up</button><button>Move Down</button><button>Delete Node</button></section><div aria-label="Move edit mode"><button>Append</button><button>Edit selected</button></div><textarea aria-label="Selected SGF node comment" /><SgfAnnotationPanel onSaveAnnotations={onSaveAnnotations} isSaving={isAnnotationSaving} error={annotationError} moveEditMode={moveEditMode} canEditSelectedMove={canEditSelectedMove} onEditSelectedMovePass={onEditSelectedMovePass} /></aside>;
         }
         """,
     )
@@ -1696,7 +1866,7 @@ def create_sgf_annotation_panel_fixture(root: Path) -> None:
 
         export function SgfAnnotationPanel({ onSaveAnnotations, error }) {
           return (
-            <section aria-label="SGF node annotations">
+            <section className="sgf-annotation-editor" aria-label="SGF node annotations">
               {annotationFields.map((key) => (
                 <label key={key}>{key}<textarea aria-label={`${key} annotation values`} /></label>
               ))}

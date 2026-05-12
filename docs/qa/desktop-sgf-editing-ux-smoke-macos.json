@@ -1,0 +1,218 @@
+{
+  "boundaries": {
+    "externalClientWindowCaptureCovered": false,
+    "fullLegacyParityCovered": false,
+    "fullNativeDialogProof": false,
+    "nativeDialogClickCovered": false,
+    "ocrCaptureCovered": false
+  },
+  "checks": [
+    {
+      "details": {
+        "legacyShellVisible": true,
+        "missingTokens": []
+      },
+      "name": "legacy_shell_visible",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "menuControls": [
+          "File/Open",
+          "File/Save",
+          "File/Save As",
+          "View/Candidates",
+          "Engine/Profiles",
+          "Tools/Preferences"
+        ],
+        "missingTokens": [],
+        "toolbarControls": [
+          "Open",
+          "Save",
+          "Save As",
+          "Import",
+          "Sample",
+          "Parse",
+          "Review"
+        ],
+        "visible": true
+      },
+      "name": "toolbar_menu_controls",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "missingTokens": [],
+        "treePanelVisible": true
+      },
+      "name": "tree_panel_visible",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "annotationEditorVisible": true,
+        "missingTokens": []
+      },
+      "name": "annotation_editor_visible",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "missingTokens": [],
+        "selectedNodeUxState": {
+          "commentEditorVisible": true,
+          "deleteControlVisible": true,
+          "moveEditModeVisible": true,
+          "reorderControlsVisible": true,
+          "selectedNodeVisible": true
+        }
+      },
+      "name": "selected_node_ux_state",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "covered": true,
+        "missing": [],
+        "notPass": [],
+        "runtimeChecks": [
+          "branch_navigation"
+        ]
+      },
+      "name": "tree_navigation",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "covered": true,
+        "missing": [],
+        "notPass": [],
+        "runtimeChecks": [
+          "comment_edit",
+          "property_edit",
+          "annotation_edit"
+        ]
+      },
+      "name": "comment_property_annotation_edit",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "covered": true,
+        "missing": [],
+        "notPass": [],
+        "runtimeChecks": [
+          "append_move",
+          "edit_move",
+          "variation_reorder",
+          "delete_node"
+        ]
+      },
+      "name": "append_edit_reorder_delete",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "dirtySavedStatus": {
+          "canSaveReflectsDirty": true,
+          "dirtyIndicatorVisible": true,
+          "dirtySetAfterEdits": true,
+          "savedAfterReadback": true,
+          "savedIndicatorVisible": true
+        },
+        "missingTokens": []
+      },
+      "name": "dirty_saved_status",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "afterReopen": {
+          "annotationsVerified": true,
+          "boardStateVerified": true,
+          "commentsVerified": true,
+          "deletedTargetAbsent": true,
+          "moveCountVerified": true,
+          "propertiesVerified": true,
+          "treeOrderVerified": true
+        },
+        "missingOrFalseAfterReopenFields": [],
+        "readbackMatchesSaved": true
+      },
+      "name": "save_readback_reopen",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nativeDialogClickCovered": false,
+        "reason": "This scoped smoke uses source/static surface checks plus committed Tauri runtime-chain evidence; it does not observe rendered DOM, screenshots, or the OS-native dialog."
+      },
+      "name": "native_dialog_boundary",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "source_static_plus_tauri_runtime_chain",
+  "coverage": {
+    "annotationEdit": true,
+    "appendMove": true,
+    "commentEdit": true,
+    "deleteNode": true,
+    "editMove": true,
+    "propertyEdit": true,
+    "reorderVariation": true,
+    "saveReadbackReopen": true,
+    "treeNavigation": true
+  },
+  "name": "desktop_sgf_editing_ux_smoke",
+  "platform": "macos",
+  "runtimeDomObserved": false,
+  "schema": "lizzieyzy.desktop-sgf-editing-ux-smoke.v1",
+  "screenshotObserved": false,
+  "sourceRuntimeEvidence": {
+    "path": "docs/qa/tauri-runtime-ui-smoke-macos.json",
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "status": "pass",
+    "valid": true
+  },
+  "status": "pass",
+  "uiUxSurface": {
+    "annotationEditorVisible": true,
+    "dirtySavedStatus": {
+      "canSaveReflectsDirty": true,
+      "dirtyIndicatorVisible": true,
+      "dirtySetAfterEdits": true,
+      "savedAfterReadback": true,
+      "savedIndicatorVisible": true
+    },
+    "legacyShellVisible": true,
+    "nativeDialogClickCovered": false,
+    "selectedNodeUxState": {
+      "commentEditorVisible": true,
+      "deleteControlVisible": true,
+      "moveEditModeVisible": true,
+      "reorderControlsVisible": true,
+      "selectedNodeVisible": true
+    },
+    "toolbarMenuControls": {
+      "menuControls": [
+        "File/Open",
+        "File/Save",
+        "File/Save As",
+        "View/Candidates",
+        "Engine/Profiles",
+        "Tools/Preferences"
+      ],
+      "toolbarControls": [
+        "Open",
+        "Save",
+        "Save As",
+        "Import",
+        "Sample",
+        "Parse",
+        "Review"
+      ],
+      "visible": true
+    },
+    "treePanelVisible": true
+  }
+}

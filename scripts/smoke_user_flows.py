@@ -406,6 +406,37 @@ KATAGO_LIVE_DESKTOP_WORKFLOW_REQUIRED_FALSE_FIELDS = [
     "releaseParity",
     "arbitraryOcrParity",
 ]
+INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE = "docs/qa/installed-app-katago-live-workflow-macos.json"
+INSTALLED_APP_KATAGO_LIVE_WORKFLOW_SCHEMA = "lizzieyzy.installed-app-katago-live-workflow.v1"
+INSTALLED_APP_KATAGO_LIVE_WORKFLOW_PHASE = "installed-app-katago-live-workflow"
+INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_CHECKS = [
+    "installed_app_launched",
+    "runtime_report_observed",
+    "runtime_started",
+    "engine_assets_verified",
+    "analysis_progress_observed",
+    "cancel_observed",
+    "restart_after_cancel_observed",
+    "analysis_complete_observed",
+    "cache_saved",
+    "cache_hit_restored",
+    "stale_cache_prevented",
+    "engine_failure_observed",
+    "browser_fallback_excluded",
+    "screenshot_hash_recorded",
+    "scope_boundaries_recorded",
+]
+INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_FALSE_FIELDS = [
+    "fullKataGoParity",
+    "bundledLargeModelParity",
+    "releaseParity",
+    "signedReleaseParity",
+    "windowsLinuxParity",
+    "fullLegacyParity",
+    "providerParity",
+    "readboardParity",
+    "ocrParity",
+]
 READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE = "docs/qa/readboard-tauri-runtime-smoke-macos.json"
 READBOARD_TAURI_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.readboard-tauri-runtime-smoke.v1"
 READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
@@ -1207,6 +1238,7 @@ class UserFlowSmoke:
         self.check_katago_review_workflow_ux_smoke_evidence()
         self.check_legacy_config_corpus_migration_smoke_evidence()
         self.check_katago_live_desktop_workflow_smoke_evidence()
+        self.check_installed_app_katago_live_workflow_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_readboard_image_import_smoke_evidence()
         self.check_readboard_image_ocr_corpus_smoke_evidence()
@@ -1650,6 +1682,35 @@ class UserFlowSmoke:
         self.pass_(
             "katago_live_desktop_workflow_smoke",
             "scoped live KataGo desktop workflow evidence passes with progress, cancel/restart, completion, cache, stale-guard, failure, and boundary checks",
+        )
+
+    def check_installed_app_katago_live_workflow_evidence(self) -> None:
+        evidence_path = self.path(INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "installed_app_katago_live_workflow",
+                f"TODO gate: record scoped installed packaged app live KataGo workflow evidence at {INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE)
+        if evidence is None:
+            return
+        if str(evidence.get("status", "")).lower() == "pending":
+            reason = evidence.get("pendingReason")
+            detail = reason if isinstance(reason, str) and reason.strip() else "live packaged-app KataGo evidence has not been captured yet"
+            self.pending("installed_app_katago_live_workflow", detail)
+            return
+        failures = validate_installed_app_katago_live_workflow_evidence(evidence)
+        if failures:
+            self.pending(
+                "installed_app_katago_live_workflow",
+                f"{INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE} is present but not valid scoped installed app live KataGo workflow PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "installed_app_katago_live_workflow",
+            "scoped installed packaged app live KataGo workflow evidence passes with real KataGo assets, progress/cancel/cache proof, screenshot metadata, and boundary checks",
         )
 
     def check_readboard_live_smoke_evidence(self) -> None:
@@ -4627,6 +4688,342 @@ def validate_katago_live_desktop_workflow_boundaries(
             "boundaries must include fullLegacyAnalysisParity/providerReadboardParity/releaseParity/arbitraryOcrParity=false"
         )
     return failures
+
+
+def validate_installed_app_katago_live_workflow_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != INSTALLED_APP_KATAGO_LIVE_WORKFLOW_SCHEMA:
+        failures.append(f"schema must be {INSTALLED_APP_KATAGO_LIVE_WORKFLOW_SCHEMA}")
+    if str(evidence.get("name", "installed_app_katago_live_workflow")) != "installed_app_katago_live_workflow":
+        failures.append("name must be installed_app_katago_live_workflow")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    method = str(evidence.get("collectionMethod", "")).lower()
+    if "installed" not in method or "katago" not in method or "runtime" not in method:
+        failures.append("collectionMethod must combine installed app and live KataGo runtime evidence")
+    for forbidden in ("static", "browser", "tauri-dev", "dev-server", "stub", "mock", "fake"):
+        if forbidden in method:
+            failures.append(f"collectionMethod must not be {forbidden}-only")
+    if evidence.get("installedAppLaunched") is not True:
+        failures.append("installedAppLaunched must be true")
+    if evidence.get("tauriRuntimeObserved") is not True:
+        failures.append("tauriRuntimeObserved must be true")
+    if evidence.get("liveKataGoObserved") is not True:
+        failures.append("liveKataGoObserved must be true")
+    if evidence.get("sourceStaticOnly") is not False:
+        failures.append("sourceStaticOnly must be false")
+    if evidence.get("browserFallbackUsed") is not False:
+        failures.append("browserFallbackUsed must be false")
+    if evidence.get("devServerOnly") is not False:
+        failures.append("devServerOnly must be false")
+    failures.extend(validate_installed_app_katago_live_boundaries(evidence))
+    failures.extend(validate_installed_macos_app_bundle(evidence.get("appBundle"), evidence))
+    failures.extend(validate_installed_app_katago_live_screenshots(evidence.get("screenshots")))
+    failures.extend(validate_installed_app_katago_live_runtime_metadata(evidence.get("runtimeMetadata")))
+    failures.extend(validate_installed_app_katago_live_runtime_report(evidence.get("sourceRuntimeReport")))
+
+    checks = installed_app_katago_live_check_by_name(evidence)
+    raw_checks = evidence.get("checks")
+    if not isinstance(raw_checks, list):
+        failures.append("checks must be a list")
+    missing = [name for name in INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_CHECKS if name not in checks]
+    not_pass = [
+        name
+        for name in INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_CHECKS
+        if name in checks and str(checks[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_installed_app_katago_live_check_details(checks))
+    return failures
+
+
+def validate_installed_app_katago_live_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        return ["boundaries must be an object"]
+    for key in INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_installed_app_katago_live_screenshots(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not value:
+        failures.append("screenshots must include at least one installed app live KataGo workflow screenshot")
+    for index, screenshot in enumerate(value):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        if screenshot.get("source") != "installed_app_katago_live_workflow":
+            failures.append(f"screenshots[{index}].source must be installed_app_katago_live_workflow")
+        if not is_sha256_hex(screenshot.get("sha256")):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        if not positive_number(first_present(screenshot, "sizeBytes", "bytes")):
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be stable repo-relative")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+    return failures
+
+
+def validate_installed_app_katago_live_runtime_metadata(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["runtimeMetadata must be an object"]
+    failures: list[str] = []
+    for name in ("engine", "model", "config"):
+        record = value.get(name)
+        if not isinstance(record, dict):
+            failures.append(f"runtimeMetadata.{name} must be an object")
+            continue
+        path = record.get("path")
+        if not isinstance(path, str) or not path:
+            failures.append(f"runtimeMetadata.{name}.path must be recorded")
+        elif installed_app_katago_live_path_is_forbidden(path):
+            failures.append(f"runtimeMetadata.{name}.path must be sanitized and repo-safe")
+        if not positive_number(first_present(record, "sizeBytes", "bytes")):
+            failures.append(f"runtimeMetadata.{name}.sizeBytes must be positive")
+        if not is_sha256_hex(record.get("sha256")):
+            failures.append(f"runtimeMetadata.{name}.sha256 must be a 64-character hex sha256")
+    max_visits = first_present(value, "maxVisits", "max_visits")
+    if not positive_number(max_visits):
+        failures.append("runtimeMetadata.maxVisits must be positive")
+    version = first_present(value, "katagoVersion", "version")
+    if not isinstance(version, str) or not version.strip():
+        failures.append("runtimeMetadata.katagoVersion must be recorded")
+    failures.extend(installed_app_katago_live_forbidden_claims(value, "runtimeMetadata"))
+    return failures
+
+
+def validate_installed_app_katago_live_runtime_report(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["sourceRuntimeReport must be an object"]
+    failures: list[str] = []
+    if value.get("schema") != TAURI_RUNTIME_UI_SMOKE_SCHEMA:
+        failures.append(f"sourceRuntimeReport.schema must be {TAURI_RUNTIME_UI_SMOKE_SCHEMA}")
+    if value.get("phase") != INSTALLED_APP_KATAGO_LIVE_WORKFLOW_PHASE:
+        failures.append(f"sourceRuntimeReport.phase must be {INSTALLED_APP_KATAGO_LIVE_WORKFLOW_PHASE}")
+    if str(value.get("status", "")).lower() != "pass":
+        failures.append("sourceRuntimeReport.status must be pass")
+    platform = str(value.get("platform", "")).lower()
+    if platform and platform not in {"macos", "darwin"}:
+        failures.append("sourceRuntimeReport.platform must be macos/darwin")
+    if value.get("browserFallbackUsed") is True:
+        failures.append("sourceRuntimeReport.browserFallbackUsed must be false")
+    if value.get("liveKataGoObserved") is False:
+        failures.append("sourceRuntimeReport.liveKataGoObserved must be true")
+    failures.extend(installed_app_katago_live_forbidden_runtime_traces(value))
+    report_checks = installed_app_katago_live_runtime_check_by_name(value)
+    required = [
+        "runtime_started",
+        "backend_runtime_proof_observed",
+        "engine_assets_verified",
+        "analysis_progress_observed",
+        "cancel_observed",
+        "restart_after_cancel_observed",
+        "analysis_complete_observed",
+        "cache_saved",
+        "cache_hit_restored",
+        "stale_cache_prevented",
+        "engine_failure_observed",
+        "browser_fallback_excluded",
+        "scope_boundaries_recorded",
+    ]
+    missing = [name for name in required if name not in report_checks]
+    if missing:
+        failures.append("sourceRuntimeReport missing required checks: " + ", ".join(missing))
+    not_pass = [
+        name
+        for name in required
+        if name in report_checks and str(report_checks[name].get("status", "")).lower() != "pass"
+    ]
+    if not_pass:
+        failures.append("sourceRuntimeReport required checks not pass: " + ", ".join(not_pass))
+    runtime = check_evidence(report_checks.get("runtime_started"))
+    if runtime is None:
+        failures.append("sourceRuntimeReport.runtime_started evidence must be an object")
+    elif runtime.get("tauriInternals") is not True:
+        failures.append("sourceRuntimeReport.runtime_started.tauriInternals must be true")
+    backend = check_evidence(report_checks.get("backend_runtime_proof_observed"))
+    if backend is None:
+        failures.append("sourceRuntimeReport.backend_runtime_proof_observed evidence must be an object")
+    else:
+        proof = None
+        if backend.get("schema") == INSTALLED_APP_RUNTIME_PROOF_SCHEMA:
+            proof = backend
+        elif isinstance(backend.get("raw"), dict):
+            proof = backend["raw"]
+        elif isinstance(backend.get("backendRuntimeProof"), dict):
+            proof = backend["backendRuntimeProof"]
+        elif isinstance(backend.get("runtimeProof"), dict):
+            proof = backend["runtimeProof"]
+        if not isinstance(proof, dict):
+            failures.append("sourceRuntimeReport.backend_runtime_proof_observed must include raw backend proof")
+        else:
+            failures.extend(
+                "sourceRuntimeReport.backend_runtime_proof_observed " + failure
+                for failure in validate_installed_app_backend_runtime_proof(proof)
+            )
+            runtime_proof = proof.get("runtime")
+            runtime_source = first_present(runtime_proof, "source", "runtimeSource") if isinstance(runtime_proof, dict) else None
+            if runtime_source != "packaged-macos-app":
+                failures.append(
+                    "sourceRuntimeReport.backend_runtime_proof_observed backendRuntimeProof.runtime.source must be packaged-macos-app"
+                )
+    failures.extend(validate_katago_live_desktop_workflow_check_details(report_checks))
+    return failures
+
+
+def validate_installed_app_katago_live_check_details(checks: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    failures.extend(validate_katago_runtime_started(checks.get("runtime_started")))
+    failures.extend(validate_installed_app_katago_live_assets(checks.get("engine_assets_verified")))
+    failures.extend(validate_katago_live_desktop_workflow_check_details(checks))
+    screenshot = check_evidence(checks.get("screenshot_hash_recorded"))
+    if screenshot is None:
+        failures.append("screenshot_hash_recorded evidence must be an object")
+    else:
+        if not is_sha256_hex(screenshot.get("sha256")):
+            failures.append("screenshot_hash_recorded.sha256 must be a 64-character hex sha256")
+        if not positive_number(first_present(screenshot, "sizeBytes", "bytes")):
+            failures.append("screenshot_hash_recorded.sizeBytes must be positive")
+    installed = check_evidence(checks.get("installed_app_launched"))
+    if isinstance(installed, dict) and installed.get("installedAppLaunched") is not True:
+        failures.append("installed_app_launched.installedAppLaunched must be true")
+    boundaries = check_evidence(checks.get("scope_boundaries_recorded"))
+    if not isinstance(boundaries, dict):
+        failures.append("scope_boundaries_recorded evidence must be an object")
+    else:
+        nested = boundaries.get("boundaries") if isinstance(boundaries.get("boundaries"), dict) else boundaries
+        for key in INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_FALSE_FIELDS:
+            if nested.get(key) is not False:
+                failures.append(f"scope_boundaries_recorded.{key} must be false")
+    return unique_ordered(failures)
+
+
+def validate_installed_app_katago_live_assets(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["engine_assets_verified evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("realKataGoObserved") is not True and evidence.get("observed") is not True:
+        failures.append("engine_assets_verified.realKataGoObserved must be true")
+    for key in ("engine", "model", "config"):
+        if not isinstance(evidence.get(key), dict):
+            failures.append(f"engine_assets_verified.{key} must include metadata")
+    failures.extend(validate_installed_app_katago_live_runtime_metadata({
+        "engine": evidence.get("engine"),
+        "model": evidence.get("model"),
+        "config": evidence.get("config"),
+        "maxVisits": first_present(evidence, "maxVisits", "max_visits", "visits"),
+        "katagoVersion": first_present(evidence, "katagoVersion", "version"),
+    }))
+    missing_required = evidence.get("missingRequired")
+    if isinstance(missing_required, list) and missing_required:
+        failures.append("engine_assets_verified must have no missing required assets")
+    return unique_ordered(failures)
+
+
+def installed_app_katago_live_check_by_name(evidence: dict[str, Any]) -> dict[str, Any]:
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    return {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+
+
+def installed_app_katago_live_runtime_check_by_name(report: dict[str, Any]) -> dict[str, Any]:
+    checks = report.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    by_name = {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    aliases = {
+        "tauriRuntimeObserved": "runtime_started",
+        "realKataGoAssetsObserved": "engine_assets_verified",
+        "analysisProgressObserved": "analysis_progress_observed",
+        "cancelObserved": "cancel_observed",
+        "restartAfterCancelObserved": "restart_after_cancel_observed",
+        "analysisCompleteObserved": "analysis_complete_observed",
+        "cacheSaved": "cache_saved",
+        "cacheHitRestored": "cache_hit_restored",
+        "staleCachePrevented": "stale_cache_prevented",
+        "engineFailureObserved": "engine_failure_observed",
+    }
+    for alias, canonical in aliases.items():
+        if canonical not in by_name and alias in by_name:
+            by_name[canonical] = by_name[alias]
+    return by_name
+
+
+def installed_app_katago_live_forbidden_claims(value: Any, path: str = "") -> list[str]:
+    failures: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            if isinstance(child, str) and installed_app_katago_live_text_forbidden(child):
+                failures.append(f"{child_path} must not contain fake/stub/mock/browser/dev-only claims")
+            failures.extend(installed_app_katago_live_forbidden_claims(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            failures.extend(installed_app_katago_live_forbidden_claims(child, f"{path}[{index}]"))
+    elif isinstance(value, str) and installed_app_katago_live_text_forbidden(value):
+        failures.append(f"{path or 'value'} must not contain fake/stub/mock/browser/dev-only claims")
+    return unique_ordered(failures)
+
+
+def installed_app_katago_live_forbidden_runtime_traces(value: Any, path: str = "") -> list[str]:
+    failures: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            if key in {"firstLaunch", "first_launch"}:
+                failures.append("must not include firstLaunch tauri-dev two-launch evidence")
+            if key in {"logPath", "log_path"}:
+                failures.append("must not include logPath dev-server evidence")
+            failures.extend(installed_app_katago_live_forbidden_runtime_traces(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            failures.extend(installed_app_katago_live_forbidden_runtime_traces(child, f"{path}[{index}]"))
+    elif isinstance(value, str):
+        text = value.lower()
+        if installed_app_katago_live_text_forbidden(text) or "127.0.0.1:1420" in text or "localhost:1420" in text:
+            failures.append("must not include fake/stub/browser/tauri-dev/dev-server traces")
+    return unique_ordered(failures)
+
+
+def installed_app_katago_live_text_forbidden(value: str) -> bool:
+    text = value.lower()
+    return any(token in text for token in ("fake", "stub", "mock", "browser-only", "tauri-dev", "dev-server-only"))
+
+
+def installed_app_katago_live_path_is_forbidden(value: str) -> bool:
+    if value.startswith("/Users/") or value.startswith("/tmp/") or value.startswith("/private/var/") or value.startswith("/var/folders/"):
+        return True
+    if value.startswith("~"):
+        return True
+    return False
 
 
 def validate_readboard_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:

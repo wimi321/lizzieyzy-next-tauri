@@ -65,6 +65,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
             self.assertIn("legacy_config_corpus_migration_smoke", pending_names)
             self.assertIn("katago_live_desktop_workflow_smoke", pending_names)
+            self.assertIn("installed_app_katago_live_workflow", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("readboard_image_import_smoke", pending_names)
             self.assertIn("readboard_image_ocr_corpus_smoke", pending_names)
@@ -1758,6 +1759,145 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("katago_live_desktop_workflow_smoke", pending)
             self.assertIn(expected_detail, pending["katago_live_desktop_workflow_smoke"])
 
+    def test_valid_installed_app_katago_live_workflow_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_installed_app_katago_live_workflow_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("installed_app_katago_live_workflow", pass_names)
+            self.assertNotIn("installed_app_katago_live_workflow", pending_names)
+
+    def test_installed_app_katago_live_workflow_rejects_static_only(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["collectionMethod"] = "source_static_only"
+            evidence["sourceStaticOnly"] = True
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "collectionMethod must combine installed app and live KataGo runtime evidence",
+        )
+
+    def test_installed_app_katago_live_workflow_rejects_fake_assets(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            metadata = evidence["runtimeMetadata"]
+            assert isinstance(metadata, dict)
+            metadata["katagoVersion"] = "KataGo fake stub"
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "runtimeMetadata.katagoVersion must not contain fake/stub/mock/browser/dev-only claims",
+        )
+
+    def test_installed_app_katago_live_workflow_requires_real_asset_metadata(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            metadata = evidence["runtimeMetadata"]
+            assert isinstance(metadata, dict)
+            model = metadata["model"]
+            assert isinstance(model, dict)
+            model.pop("sha256")
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "runtimeMetadata.model.sha256 must be a 64-character hex sha256",
+        )
+
+    def test_installed_app_katago_live_workflow_rejects_tauri_dev_phase(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            report["phase"] = "katago-live"
+            report["logPath"] = "<tmp>/tauri-dev.log"
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "sourceRuntimeReport.phase must be installed-app-katago-live-workflow",
+        )
+
+    def test_installed_app_katago_live_workflow_requires_backend_runtime_proof(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            checks = report["checks"]
+            assert isinstance(checks, list)
+            checks[:] = [
+                check
+                for check in checks
+                if isinstance(check, dict) and check.get("name") != "backend_runtime_proof_observed"
+            ]
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "sourceRuntimeReport missing required checks: backend_runtime_proof_observed",
+        )
+
+    def test_installed_app_katago_live_workflow_rejects_tauri_dev_backend_source(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            checks = report["checks"]
+            assert isinstance(checks, list)
+            backend = next(check for check in checks if isinstance(check, dict) and check.get("name") == "backend_runtime_proof_observed")
+            details = backend["details"]
+            assert isinstance(details, dict)
+            raw = details["raw"]
+            assert isinstance(raw, dict)
+            runtime = raw["runtime"]
+            assert isinstance(runtime, dict)
+            runtime["source"] = "tauri-dev"
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "sourceRuntimeReport.backend_runtime_proof_observed backendRuntimeProof.runtime.source must be packaged-macos-app",
+        )
+
+    def test_installed_app_katago_live_workflow_rejects_cache_without_proof(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            cache_hit = find_evidence_check(evidence, "cache_hit_restored")["details"]
+            cache_hit.pop("frameCount", None)
+            cache_hit.pop("candidateCount", None)
+            cache_hit.pop("winrateRestored", None)
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "cache_hit_restored must include frame evidence",
+        )
+
+    def test_installed_app_katago_live_workflow_rejects_overclaim(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullKataGoParity"] = True
+            evidence["releaseParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["signedReleaseParity"] = True
+
+        self.assert_invalid_installed_app_katago_live_workflow_pending(
+            mutate,
+            "fullKataGoParity must be false",
+        )
+
+    def assert_invalid_installed_app_katago_live_workflow_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_app_katago_live_workflow_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_app_katago_live_workflow", failures)
+            self.assertIn("installed_app_katago_live_workflow", pending)
+            self.assertIn(expected_detail, pending["installed_app_katago_live_workflow"])
+
     def test_valid_readboard_tauri_runtime_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3326,6 +3466,13 @@ def write_valid_katago_live_desktop_workflow_evidence(root: Path) -> None:
     )
 
 
+def write_valid_installed_app_katago_live_workflow_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_EVIDENCE,
+        valid_installed_app_katago_live_workflow_evidence(),
+    )
+
+
 def write_valid_readboard_tauri_runtime_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE,
@@ -3837,6 +3984,217 @@ def valid_katago_live_desktop_workflow_evidence() -> dict[str, object]:
             },
         ],
         "boundaries": {**false_boundaries, "browserFallbackUsed": False},
+    }
+
+
+def valid_installed_app_katago_live_workflow_evidence() -> dict[str, object]:
+    boundaries = {
+        key: False
+        for key in smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_REQUIRED_FALSE_FIELDS
+    }
+    metadata = valid_installed_app_katago_live_metadata()
+    screenshot = {
+        "label": "installed-app-katago-live-window",
+        "path": "docs/qa/screenshots/installed-app-katago-live-window.png",
+        "sizeBytes": 23456,
+        "sha256": "a" * 64,
+        "source": "installed_app_katago_live_workflow",
+    }
+    source_report = valid_installed_app_katago_live_runtime_report()
+    checks = [
+        {"name": "installed_app_launched", "status": "pass", "details": {"installedAppLaunched": True}},
+        {
+            "name": "runtime_report_observed",
+            "status": "pass",
+            "details": {
+                "phase": smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_PHASE,
+                "status": "pass",
+                "liveKataGoObserved": True,
+            },
+        },
+        *[
+            {"name": name, "status": "pass", "details": find_evidence_check(source_report, name)["details"]}
+            for name in [
+                "runtime_started",
+                "analysis_progress_observed",
+                "cancel_observed",
+                "restart_after_cancel_observed",
+                "analysis_complete_observed",
+                "cache_saved",
+                "cache_hit_restored",
+                "stale_cache_prevented",
+                "engine_failure_observed",
+                "browser_fallback_excluded",
+            ]
+        ],
+        {
+            "name": "engine_assets_verified",
+            "status": "pass",
+            "details": {
+                "realKataGoObserved": True,
+                "observed": True,
+                "engine": metadata["engine"],
+                "model": metadata["model"],
+                "config": metadata["config"],
+                "maxVisits": metadata["maxVisits"],
+                "katagoVersion": metadata["katagoVersion"],
+                "missingRequired": [],
+            },
+        },
+        {"name": "screenshot_hash_recorded", "status": "pass", "details": screenshot},
+        {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
+    ]
+    return {
+        "schema": smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_SCHEMA,
+        "name": "installed_app_katago_live_workflow",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "installed_packaged_app_live_katago_runtime_workflow",
+        "runtimePhase": smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_PHASE,
+        "installedAppLaunched": True,
+        "tauriRuntimeObserved": True,
+        "liveKataGoObserved": True,
+        "sourceStaticOnly": False,
+        "browserFallbackUsed": False,
+        "devServerOnly": False,
+        **boundaries,
+        "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
+        "appBundle": {
+            "exists": True,
+            "path": "target/release/bundle/macos/LizzieYzy Next.app",
+            "sizeBytes": 123456,
+            "sha256": "b" * 64,
+            "mainExecutable": "lizzieyzy-next-desktop",
+        },
+        "runtimeProcess": {"observed": True, "processName": "LizzieYzy Next", "pid": 1234},
+        "runtimeMetadata": metadata,
+        "sourceRuntimeReport": source_report,
+        "screenshots": [screenshot],
+        "checks": checks,
+        "boundaries": boundaries,
+    }
+
+
+def valid_installed_app_katago_live_metadata() -> dict[str, object]:
+    return {
+        "engine": {
+            "kind": "katago-engine",
+            "path": "<home>/.local/bin/katago",
+            "sizeBytes": 1234567,
+            "sha256": "1" * 64,
+        },
+        "model": {
+            "kind": "katago-model",
+            "path": "<home>/.katago/models/latest-kata1.bin.gz",
+            "sizeBytes": 2345678,
+            "sha256": "2" * 64,
+        },
+        "config": {
+            "kind": "katago-config",
+            "path": "<home>/.katago/configs/analysis_example.cfg",
+            "sizeBytes": 3456,
+            "sha256": "3" * 64,
+        },
+        "maxVisits": 16,
+        "katagoVersion": "KataGo 1.15.3",
+    }
+
+
+def valid_installed_app_katago_live_runtime_report() -> dict[str, object]:
+    checks = [
+        {"name": "runtime_started", "status": "pass", "details": {"tauriInternals": True, "platform": "MacIntel"}},
+        {
+            "name": "backend_runtime_proof_observed",
+            "status": "pass",
+            "details": {"raw": valid_installed_app_backend_runtime_proof()},
+        },
+        {
+            "name": "engine_assets_verified",
+            "status": "pass",
+            "details": {
+                "realKataGoObserved": True,
+                "observed": True,
+                **valid_installed_app_katago_live_metadata(),
+                "missingRequired": [],
+            },
+        },
+        {
+            "name": "analysis_progress_observed",
+            "status": "pass",
+            "details": {
+                "analysisProgressObserved": True,
+                "jobId": "installed-katago-job-1",
+                "completed": 1,
+                "expected": 3,
+                "frameCount": 1,
+            },
+        },
+        {
+            "name": "cancel_observed",
+            "status": "pass",
+            "details": {"jobId": "installed-katago-job-1", "cancelRequested": True, "cancelObserved": True},
+        },
+        {
+            "name": "restart_after_cancel_observed",
+            "status": "pass",
+            "details": {
+                "restartAfterCancelObserved": True,
+                "cancelledJobId": "installed-katago-job-1",
+                "restartJobId": "installed-katago-job-2",
+            },
+        },
+        {
+            "name": "analysis_complete_observed",
+            "status": "pass",
+            "details": {
+                "analysisCompleteObserved": True,
+                "jobId": "installed-katago-job-2",
+                "frameCount": 3,
+                "candidateCount": 2,
+                "winrate": 0.51,
+            },
+        },
+        {
+            "name": "cache_saved",
+            "status": "pass",
+            "details": {"cacheSaved": True, "cacheKey": "installed-katago-cache-1", "frameCount": 3},
+        },
+        {
+            "name": "cache_hit_restored",
+            "status": "pass",
+            "details": {
+                "cacheHitRestored": True,
+                "cacheKey": "installed-katago-cache-1",
+                "frameCount": 3,
+                "candidateCount": 2,
+                "winrateRestored": 0.51,
+            },
+        },
+        {
+            "name": "stale_cache_prevented",
+            "status": "pass",
+            "details": {"staleCachePrevented": True, "jobIdGuard": True, "hashGuard": True},
+        },
+        {
+            "name": "engine_failure_observed",
+            "status": "pass",
+            "details": {"engineFailureObserved": True, "message": "missing model failure observed"},
+        },
+        {"name": "browser_fallback_excluded", "status": "pass", "details": {"browserFallbackUsed": False}},
+        {
+            "name": "scope_boundaries_recorded",
+            "status": "pass",
+            "details": {"browserFallbackUsed": False, "releaseParity": False, "fullLegacyParity": False},
+        },
+    ]
+    return {
+        "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+        "status": "pass",
+        "platform": "macos",
+        "phase": smoke_user_flows.INSTALLED_APP_KATAGO_LIVE_WORKFLOW_PHASE,
+        "liveKataGoObserved": True,
+        "browserFallbackUsed": False,
+        "checks": checks,
     }
 
 

@@ -4,6 +4,7 @@ import {
   appendSgfMove,
   cancelKataGoAnalysis,
   checkEngineAssets,
+  classifyProblems,
   deleteSgfNode,
   editSgfMove,
   isTauriRuntime,
@@ -29,6 +30,8 @@ import {
   probeReadboardSidecar,
   syncReadboardSidecarSnapshot
 } from "./api/providers";
+import { computeGameCacheKey, loadAnalysisCache, saveAnalysisCache } from "./api/analysisCache";
+import type { JsonValue } from "./domain/cache";
 import type { AnalysisFrameDto, AssetCheckDto, EngineProfileDto, KataGoLiveSmokeConfigDto, MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 type RuntimeSmokeStatus = "pass" | "fail";
@@ -63,6 +66,15 @@ type RuntimeSmokeCheckName =
   | "visible_targets_verified"
   | "browser_fallback_excluded"
   | "scope_boundaries_recorded"
+  | "engine_assets_verified"
+  | "analysis_progress_observed"
+  | "cancel_observed"
+  | "restart_after_cancel_observed"
+  | "analysis_complete_observed"
+  | "cache_saved"
+  | "cache_hit_restored"
+  | "stale_cache_prevented"
+  | "engine_failure_observed"
   | "yike_controlled_fetch"
   | "fox_controlled_fetch"
   | "provider_failure_modes"
@@ -96,6 +108,7 @@ type RuntimeSmokeReport = {
   steps: RuntimeSmokeStep[];
   expected?: RuntimeSmokeExpectedEvidence;
   katago?: KataGoLiveSmokeEvidence;
+  katagoWorkflowCache?: KataGoWorkflowCacheEvidence;
   readboard?: ReadboardLiveSmokeEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
@@ -103,7 +116,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "readboard-live" | "provider-live" | "webview-dom-click";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -172,11 +185,80 @@ type KataGoLiveSmokeEvidence = {
     event?: KataGoCancelEvidence;
   };
 };
+type KataGoWorkflowCacheEvidence = {
+  profile: SanitizedEngineProfile;
+  sgf: {
+    path: string | null;
+    bytes: number;
+    moveCount: number;
+    boardSize: number;
+  };
+  browserFallbackUsed: false;
+  tauriRuntimeObserved: true;
+  assetChecks?: {
+    total: number;
+    required: number;
+    missingRequired: string[];
+  };
+  progress?: {
+    jobId: string;
+    completed: number;
+    expected: number;
+    turn: number;
+    progressObserved: true;
+  };
+  cancel?: {
+    jobId: string;
+    cancelRequested: true;
+    cancelConfirmed: true;
+    uiReleasedForRestart: true;
+    event: KataGoCancelEvidence;
+  };
+  restart?: {
+    previousJobId: string;
+    restarted: true;
+    newJobId: string;
+  };
+  complete?: {
+    jobId: string;
+    frames: number;
+    turns: number[];
+    firstFrame?: AnalysisFrameEvidence;
+    lastFrame?: AnalysisFrameEvidence;
+  };
+  cache?: {
+    gameKey: string;
+    sgfHash: string;
+    profileId: string;
+    savedId: string;
+    hitStatus: string;
+    restoredFrames: number;
+    restoredCandidates: number;
+    restoredWinrateBlack: number;
+    staleChangedSgfStatus: string;
+    staleProfileStatus: string;
+  };
+  failureMode?: {
+    missingRequired: string[];
+    structuredError?: string;
+    observed: true;
+  };
+  boundaries?: {
+    browserFallbackUsed: false;
+    fakeEngineUsed: false;
+    fullReviewParity: false;
+    providerParity: false;
+    readboardParity: false;
+    arbitraryOcrParity: false;
+    releaseParity: false;
+  };
+};
 type KataGoCancelEvidence = {
   kind: "cancelled" | "error" | "complete" | "timeout";
   jobId: string;
   message?: string;
   frames?: number;
+  framesData?: AnalysisFrameDto[];
 };
 type SanitizedEngineProfile = {
   name: string;
@@ -379,6 +461,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
+    } else if (resolvedConfig.phase === "katago-live-workflow-cache") {
+      await runKataGoLiveWorkflowCachePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "reopen-verify") {
       await runReopenVerifyPhase(report, requireRuntimeSmokeSgfPath(sgfPath), expectedReportPath ?? reportPath);
     } else {
@@ -782,6 +866,234 @@ async function runKataGoLivePhase(report: RuntimeSmokeReport, sgfPath: string, c
       details: { runCancel: false }
     });
   }
+}
+
+async function runKataGoLiveWorkflowCachePhase(report: RuntimeSmokeReport, sgfPath: string, config: KataGoLiveSmokeConfig) {
+  const loaded = await check(report, "sgf_loaded", async () => {
+    const document = await readSgfDocument(sgfPath);
+    assertNonEmptyString(document.sgfText, "readSgfDocument returned empty SGF text.");
+    await verifySgf(report, "KataGo workflow/cache source", document.sgfText);
+    return { sgfText: document.sgfText, details: { bytes: document.sgfText.length, path: document.path } };
+  });
+  const sgfText = loaded.sgfText;
+  const parsed = await step(report, "parse KataGo workflow/cache source", () => parseSgfSummary(sgfText));
+  const profile = await resolveKataGoLiveProfile(config);
+  const profileId = `runtime-smoke-workflow-cache-${Date.now().toString(36)}`;
+  const evidence: KataGoWorkflowCacheEvidence = {
+    profile: sanitizeEngineProfile(profile),
+    sgf: {
+      path: sgfPath,
+      bytes: sgfText.length,
+      moveCount: parsed.summary.move_count,
+      boardSize: parsed.summary.board_size
+    },
+    browserFallbackUsed: false,
+    tauriRuntimeObserved: true
+  };
+  report.katagoWorkflowCache = evidence;
+
+  await check(report, "browser_fallback_excluded", async () => {
+    if (!isTauriRuntime()) throw new Error("katago-live-workflow-cache must run inside the real Tauri runtime.");
+    return {
+      tauriRuntimeObserved: true,
+      browserFallbackUsed: false,
+      source: "real_tauri_runtime"
+    };
+  });
+
+  await check(report, "engine_failure_observed", async () => {
+    const missingProfile = buildMissingAssetKataGoProfile(profile);
+    try {
+      const checks = await checkEngineAssets(missingProfile);
+      const missingRequired = checks.filter((item) => item.required && !item.exists).map((item) => item.label || item.path);
+      if (missingRequired.length === 0) {
+        throw new Error("Intentional missing model/config profile did not report missing required assets.");
+      }
+      evidence.failureMode = { missingRequired, observed: true };
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.includes("did not report missing required assets")) throw error;
+      evidence.failureMode = { missingRequired: [], structuredError: message, observed: true };
+    }
+    return evidence.failureMode;
+  });
+
+  await check(report, "engine_assets_verified", async () => {
+    const checks = await checkEngineAssets(profile);
+    const missingRequired = checks.filter((item) => item.required && !item.exists).map((item) => item.label || item.path);
+    if (missingRequired.length > 0) {
+      throw new Error(`KataGo required assets are missing: ${missingRequired.join(", ")}`);
+    }
+    evidence.assetChecks = {
+      total: checks.length,
+      required: checks.filter((item) => item.required).length,
+      missingRequired
+    };
+    return evidence.assetChecks;
+  });
+
+  let cancelledJobId = "";
+  await check(report, "analysis_progress_observed", async () => {
+    const events = createKataGoWorkflowEventCollector();
+    const unlisten = await listenToKataGoAnalysisEvents(events.handlers);
+    try {
+      cancelledJobId = await startKataGoGameAnalysis(profile, sgfText, config.cancelMaxVisits);
+      assertNonEmptyString(cancelledJobId, "katago_start_analyze_game returned an empty cancel job id.");
+      events.setJobId(cancelledJobId);
+      const progress = await events.waitForProgress(10_000);
+      evidence.progress = {
+        jobId: progress.job_id,
+        completed: progress.completed,
+        expected: progress.expected,
+        turn: progress.turn,
+        progressObserved: true
+      };
+      await cancelKataGoAnalysis(cancelledJobId);
+      const terminal = await events.waitForTerminal(10_000);
+      if (terminal.kind !== "cancelled") {
+        throw new Error(`KataGo cancel was not confirmed after progress; observed ${terminal.kind}.`);
+      }
+      evidence.cancel = {
+        jobId: cancelledJobId,
+        cancelRequested: true,
+        cancelConfirmed: true,
+        uiReleasedForRestart: true,
+        event: terminal
+      };
+      return evidence.progress;
+    } finally {
+      unlisten();
+    }
+  });
+
+  await check(report, "cancel_observed", async () => {
+    if (!evidence.cancel?.cancelConfirmed) throw new Error("Cancel was not confirmed before cancel_observed check.");
+    return evidence.cancel;
+  });
+
+  let completedFrames: AnalysisFrameDto[] = [];
+  let completedJobId = "";
+  await check(report, "restart_after_cancel_observed", async () => {
+    const events = createKataGoWorkflowEventCollector();
+    const unlisten = await listenToKataGoAnalysisEvents(events.handlers);
+    try {
+      completedJobId = await startKataGoGameAnalysis(profile, sgfText, config.gameMaxVisits);
+      assertNonEmptyString(completedJobId, "katago_start_analyze_game returned an empty restart job id.");
+      if (completedJobId === cancelledJobId) throw new Error("Restart returned the same job id as the cancelled analysis.");
+      events.setJobId(completedJobId);
+      evidence.restart = {
+        previousJobId: cancelledJobId,
+        restarted: true,
+        newJobId: completedJobId
+      };
+      const terminal = await events.waitForTerminal(60_000);
+      if (terminal.kind !== "complete" || !terminal.framesData?.length) {
+        throw new Error(`Restarted KataGo analysis did not complete; observed ${terminal.kind}.`);
+      }
+      completedFrames = terminal.framesData;
+      return evidence.restart;
+    } finally {
+      unlisten();
+    }
+  });
+
+  await check(report, "analysis_complete_observed", async () => {
+    if (completedFrames.length === 0) throw new Error("No completed analysis frames were observed after restart.");
+    for (const frame of completedFrames) validateAnalysisFrame(frame, "KataGo workflow completed analysis");
+    evidence.complete = {
+      jobId: completedJobId,
+      frames: completedFrames.length,
+      turns: completedFrames.map((frame) => frame.turn),
+      firstFrame: summarizeAnalysisFrame(completedFrames[0]),
+      lastFrame: summarizeAnalysisFrame(completedFrames[completedFrames.length - 1])
+    };
+    return evidence.complete;
+  });
+
+  const cachePayload = await check(report, "cache_saved", async () => {
+    const key = await computeGameCacheKey(sgfText, sgfPath);
+    const problems = await classifyProblems(completedFrames);
+    const payload = { frames: completedFrames, problems } as unknown as JsonValue;
+    const saved = await saveAnalysisCache({
+      gameKey: key.gameKey,
+      sgfHash: key.sgfHash,
+      profileId,
+      engineKind: "katago",
+      source: "katago",
+      moveCount: parsed.summary.move_count,
+      analyzedMoveCount: countAnalyzedMoves(completedFrames, parsed.summary.move_count),
+      payload
+    });
+    evidence.cache = {
+      gameKey: key.gameKey,
+      sgfHash: key.sgfHash,
+      profileId,
+      savedId: saved.id,
+      hitStatus: "pending",
+      restoredFrames: 0,
+      restoredCandidates: 0,
+      restoredWinrateBlack: 0,
+      staleChangedSgfStatus: "pending",
+      staleProfileStatus: "pending"
+    };
+    return { key, saved, payload };
+  });
+
+  await check(report, "cache_hit_restored", async () => {
+    const lookup = await loadAnalysisCache(cachePayload.key.gameKey, profileId, "katago");
+    if (lookup.status !== "hit" || !lookup.record) {
+      throw new Error(`Expected cache hit after save; observed ${lookup.status}.`);
+    }
+    const restored = cachePayloadFromRecord(lookup.record.payload);
+    if (restored.frames.length !== completedFrames.length) {
+      throw new Error(`Restored cache frame count ${restored.frames.length} did not match completed frame count ${completedFrames.length}.`);
+    }
+    const firstFrame = restored.frames[0];
+    validateAnalysisFrame(firstFrame, "restored cached KataGo frame");
+    if (!evidence.cache) throw new Error("cache_saved evidence missing.");
+    evidence.cache.hitStatus = lookup.status;
+    evidence.cache.restoredFrames = restored.frames.length;
+    evidence.cache.restoredCandidates = firstFrame.candidates.length;
+    evidence.cache.restoredWinrateBlack = firstFrame.winrate_black;
+    return {
+      hitStatus: lookup.status,
+      recordId: lookup.record.id,
+      restoredFrames: restored.frames.length,
+      restoredCandidates: firstFrame.candidates.length,
+      restoredWinrateBlack: firstFrame.winrate_black
+    };
+  });
+
+  await check(report, "stale_cache_prevented", async () => {
+    const changedSgfText = buildValidChangedSgfForCacheCheck(sgfText);
+    const changedKey = await computeGameCacheKey(changedSgfText, sgfPath);
+    const changedLookup = await loadAnalysisCache(changedKey.gameKey, profileId, "katago");
+    const profileLookup = await loadAnalysisCache(cachePayload.key.gameKey, `${profileId}-other-profile`, "katago");
+    if (changedLookup.status === "hit") throw new Error("Changed SGF unexpectedly reused the saved KataGo cache record.");
+    if (profileLookup.status === "hit") throw new Error("Different profile unexpectedly reused the saved KataGo cache record.");
+    if (!evidence.cache) throw new Error("cache_saved evidence missing.");
+    evidence.cache.staleChangedSgfStatus = changedLookup.status;
+    evidence.cache.staleProfileStatus = profileLookup.status;
+    return {
+      changedSgfGameKey: changedKey.gameKey,
+      changedSgfStatus: changedLookup.status,
+      differentProfileStatus: profileLookup.status,
+      staleCachePrevented: true
+    };
+  });
+
+  await check(report, "scope_boundaries_recorded", async () => {
+    evidence.boundaries = {
+      browserFallbackUsed: false,
+      fakeEngineUsed: false,
+      fullReviewParity: false,
+      providerParity: false,
+      readboardParity: false,
+      arbitraryOcrParity: false,
+      releaseParity: false
+    };
+    return evidence.boundaries;
+  });
 }
 
 async function runReadboardLivePhase(report: RuntimeSmokeReport) {
@@ -1368,6 +1680,7 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "edit-save" ||
     value === "reopen-verify" ||
     value === "katago-live" ||
+    value === "katago-live-workflow-cache" ||
     value === "readboard-live" ||
     value === "provider-live" ||
     value === "webview-dom-click"
@@ -1823,6 +2136,35 @@ function summarizeAnalysisFrame(frame: AnalysisFrameDto): AnalysisFrameEvidence 
   };
 }
 
+function cachePayloadFromRecord(payload: JsonValue): { frames: AnalysisFrameDto[]; problems: JsonValue[] } {
+  if (!isRecord(payload)) throw new Error("Analysis cache payload must be an object.");
+  if (!Array.isArray(payload.frames)) throw new Error("Analysis cache payload missing frames array.");
+  const frames = payload.frames as unknown as AnalysisFrameDto[];
+  if (frames.length === 0) throw new Error("Analysis cache payload contained no frames.");
+  const problems = Array.isArray(payload.problems) ? payload.problems : [];
+  return { frames, problems };
+}
+
+function buildValidChangedSgfForCacheCheck(sgfText: string): string {
+  const trimmed = sgfText.trimEnd();
+  const finalParenIndex = trimmed.lastIndexOf(")");
+  if (finalParenIndex < 0) {
+    throw new Error("Cannot build changed SGF for stale cache check: source SGF has no closing parenthesis.");
+  }
+  const before = trimmed.slice(0, finalParenIndex);
+  const after = trimmed.slice(finalParenIndex);
+  const changed = `${before}C[runtime smoke changed sgf for stale cache check]${after}`;
+  if (changed === sgfText || !changed.includes("C[runtime smoke changed sgf for stale cache check]")) {
+    throw new Error("Cannot build changed SGF for stale cache check: comment insertion did not change SGF text.");
+  }
+  return changed;
+}
+
+function countAnalyzedMoves(frames: AnalysisFrameDto[], moveCount: number): number {
+  const turns = new Set(frames.map((frame) => frame.turn).filter((turn) => Number.isFinite(turn)));
+  return Math.min(Math.max(turns.size, frames.length), Math.max(moveCount, frames.length));
+}
+
 function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -1877,6 +2219,95 @@ function createKataGoCancelEventCollector() {
         kind: "complete",
         jobId: payload.job_id,
         frames: payload.frames.length
+      })
+    }
+  };
+}
+
+function createKataGoWorkflowEventCollector() {
+  let jobId = "";
+  const pendingProgress: Array<{ job_id: string; completed: number; expected: number; turn: number; response_jsonl: string }> = [];
+  const pendingTerminal: KataGoCancelEvidence[] = [];
+  let progressWaiter: ((event: { job_id: string; completed: number; expected: number; turn: number; response_jsonl: string }) => void) | null = null;
+  let terminalWaiter: ((event: KataGoCancelEvidence) => void) | null = null;
+  let progressTimeoutId: number | null = null;
+  let terminalTimeoutId: number | null = null;
+
+  const matchesJob = (nextJobId: string) => !jobId || nextJobId === jobId;
+  const takeProgress = () => jobId ? pendingProgress.find((event) => event.job_id === jobId) ?? null : pendingProgress[0] ?? null;
+  const takeTerminal = () => jobId ? pendingTerminal.find((event) => event.jobId === jobId) ?? null : pendingTerminal[0] ?? null;
+
+  const resolveProgress = (event: { job_id: string; completed: number; expected: number; turn: number; response_jsonl: string }) => {
+    if (progressTimeoutId !== null) window.clearTimeout(progressTimeoutId);
+    progressTimeoutId = null;
+    progressWaiter?.(event);
+    progressWaiter = null;
+  };
+  const resolveTerminal = (event: KataGoCancelEvidence) => {
+    if (terminalTimeoutId !== null) window.clearTimeout(terminalTimeoutId);
+    terminalTimeoutId = null;
+    terminalWaiter?.(event);
+    terminalWaiter = null;
+  };
+
+  const recordProgress = (event: { job_id: string; completed: number; expected: number; turn: number; response_jsonl: string }) => {
+    if (!matchesJob(event.job_id)) return;
+    pendingProgress.push(event);
+    if (progressWaiter) resolveProgress(event);
+  };
+  const recordTerminal = (event: KataGoCancelEvidence) => {
+    if (!matchesJob(event.jobId)) return;
+    pendingTerminal.push(event);
+    if (terminalWaiter) resolveTerminal(event);
+  };
+
+  return {
+    setJobId(nextJobId: string) {
+      jobId = nextJobId;
+      const progress = takeProgress();
+      if (progress && progressWaiter) resolveProgress(progress);
+      const terminal = takeTerminal();
+      if (terminal && terminalWaiter) resolveTerminal(terminal);
+    },
+    waitForProgress(timeoutMs: number): Promise<{ job_id: string; completed: number; expected: number; turn: number; response_jsonl: string }> {
+      const progress = takeProgress();
+      if (progress) return Promise.resolve(progress);
+      return new Promise((resolve, reject) => {
+        progressWaiter = resolve;
+        progressTimeoutId = window.setTimeout(() => {
+          progressWaiter = null;
+          reject(new Error(`Timed out waiting for KataGo progress event for ${jobId || "pending job"}.`));
+        }, timeoutMs);
+      });
+    },
+    waitForTerminal(timeoutMs: number): Promise<KataGoCancelEvidence> {
+      const terminal = takeTerminal();
+      if (terminal) return Promise.resolve(terminal);
+      return new Promise((resolve) => {
+        terminalWaiter = resolve;
+        terminalTimeoutId = window.setTimeout(() => {
+          terminalWaiter = null;
+          resolve({ kind: "timeout", jobId });
+        }, timeoutMs);
+      });
+    },
+    handlers: {
+      onProgress: recordProgress,
+      onCancelled: (payload: { job_id: string; message: string }) => recordTerminal({
+        kind: "cancelled",
+        jobId: payload.job_id,
+        message: payload.message
+      }),
+      onError: (payload: { job_id: string; message: string }) => recordTerminal({
+        kind: "error",
+        jobId: payload.job_id,
+        message: payload.message
+      }),
+      onComplete: (payload: { job_id: string; frames: AnalysisFrameDto[] }) => recordTerminal({
+        kind: "complete",
+        jobId: payload.job_id,
+        frames: payload.frames.length,
+        framesData: payload.frames
       })
     }
   };

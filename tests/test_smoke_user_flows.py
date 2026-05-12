@@ -58,6 +58,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_layout_parity_smoke", pending_names)
             self.assertIn("legacy_shortcut_layout_evidence", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
+            self.assertIn("installed_app_runtime_workflow", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
@@ -894,6 +895,163 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("launched must be true", pending["installed_macos_app_smoke"])
             self.assertIn("windowObserved must be true", pending["installed_macos_app_smoke"])
 
+    def test_valid_installed_app_runtime_workflow_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_installed_app_runtime_workflow_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("installed_app_runtime_workflow", pass_names)
+            self.assertNotIn("installed_app_runtime_workflow", pending_names)
+
+    def test_installed_app_runtime_workflow_rejects_static_only_or_artifact_only(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["collectionMethod"] = "static_source_only"
+            evidence["sourceStaticOnly"] = True
+            evidence["artifactOnly"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["sourceStaticOnly"] = True
+            boundaries["artifactOnly"] = True
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "collectionMethod must not be static-only",
+        )
+        evidence = valid_installed_app_runtime_workflow_evidence()
+        mutate(evidence)
+        failures = smoke_user_flows.validate_installed_app_runtime_workflow_evidence(evidence)
+        detail = "; ".join(failures)
+        self.assertIn("sourceStaticOnly must be false", detail)
+        self.assertIn("artifactOnly must be false", detail)
+
+        artifact_only = valid_installed_app_runtime_workflow_evidence()
+        artifact_only["collectionMethod"] = "artifact_only"
+        failures = smoke_user_flows.validate_installed_app_runtime_workflow_evidence(artifact_only)
+        self.assertIn("collectionMethod must not be artifact-only", "; ".join(failures))
+
+    def test_installed_app_runtime_workflow_requires_required_checks(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["checks"] = [
+                check
+                for check in evidence["checks"]
+                if isinstance(check, dict) and check.get("name") != "workflow_action_executed"
+            ]
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "missing required checks: workflow_action_executed",
+        )
+
+    def test_installed_app_runtime_workflow_requires_backend_runtime_proof(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("backendRuntimeProof")
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "backendRuntimeProof must be an object",
+        )
+
+    def test_installed_app_runtime_workflow_rejects_fake_runtime_action(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            actions = evidence["workflowActions"]
+            assert isinstance(actions, list)
+            action = next(item for item in actions if isinstance(item, dict) and item.get("actionId") == "execute_runtime_action")
+            action["evidence"] = {"action": "focus-board-and-confirm-runtime-state", "boardVisible": True}
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "workflowActions execute_runtime_action must cite installed_app_runtime_proof backend command",
+        )
+
+    def test_installed_app_runtime_workflow_rejects_assets_missing_marked_ready(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            proof = evidence["backendRuntimeProof"]
+            assert isinstance(proof, dict)
+            assets = proof["assets"]
+            assert isinstance(assets, dict)
+            assets["status"] = "ready"
+            assets["missing"] = [{"label": "resource-dir"}]
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "backendRuntimeProof.assets must not be ready when missing/placeholders are present",
+        )
+
+    def test_installed_app_runtime_workflow_rejects_engine_unavailable_counted_success(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            proof = evidence["backendRuntimeProof"]
+            assert isinstance(proof, dict)
+            launch = proof["engineLaunchAttempt"]
+            assert isinstance(launch, dict)
+            launch["status"] = "unavailable"
+            launch["success"] = True
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "backendRuntimeProof.engineLaunchAttempt unavailable/problem status must not be counted as success",
+        )
+
+    def test_installed_app_runtime_workflow_requires_runtime_action(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["workflowActions"] = [
+                action
+                for action in evidence["workflowActions"]
+                if isinstance(action, dict) and action.get("actionId") != "execute_runtime_action"
+            ]
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "workflowActions missing: execute_runtime_action",
+        )
+
+    def test_installed_app_runtime_workflow_rejects_overclaim_boundaries(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            for key in (
+                "productionSigned",
+                "notarized",
+                "updaterReady",
+                "windowsInstalledAppCovered",
+                "linuxInstalledAppCovered",
+                "fullLegacyParity",
+            ):
+                evidence[key] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            for key in (
+                "productionSigned",
+                "notarized",
+                "updaterReady",
+                "windowsInstalledAppCovered",
+                "linuxInstalledAppCovered",
+                "fullLegacyParity",
+            ):
+                boundaries[key] = True
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "productionSigned must be false",
+        )
+
+    def test_installed_app_runtime_workflow_rejects_browser_fallback_and_dev_server(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["browserFallbackUsed"] = True
+            evidence["runnerStartedDevServer"] = True
+            preflight = evidence["devServerPreflight"]
+            assert isinstance(preflight, dict)
+            preflight["reachableBeforeLaunch"] = True
+
+        self.assert_invalid_installed_app_runtime_workflow_pending(
+            mutate,
+            "browserFallbackUsed must be false",
+        )
+
     def assert_invalid_installed_macos_app_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -909,6 +1067,22 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("installed_macos_app_smoke", failures)
             self.assertIn("installed_macos_app_smoke", pending)
             self.assertIn(expected_detail, pending["installed_macos_app_smoke"])
+
+    def assert_invalid_installed_app_runtime_workflow_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_app_runtime_workflow_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_app_runtime_workflow", failures)
+            self.assertIn("installed_app_runtime_workflow", pending)
+            self.assertIn(expected_detail, pending["installed_app_runtime_workflow"])
 
     def test_valid_native_desktop_sgf_workflow_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2937,6 +3111,13 @@ def write_valid_installed_macos_app_evidence(root: Path) -> None:
     )
 
 
+def write_valid_installed_app_runtime_workflow_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE,
+        valid_installed_app_runtime_workflow_evidence(),
+    )
+
+
 def write_valid_native_desktop_sgf_workflow_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE,
@@ -4783,6 +4964,232 @@ def valid_installed_macos_app_evidence() -> dict[str, object]:
             "exitCode": 0,
             "success": True,
         },
+    }
+
+
+def valid_installed_app_backend_runtime_proof() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.INSTALLED_APP_RUNTIME_PROOF_SCHEMA,
+        "status": "ok",
+        "platform": "macos",
+        "runtime": {
+            "appName": "LizzieYzy Next",
+            "version": "0.1.0",
+            "identifier": "org.lizzieyzy.next",
+            "source": "packaged-macos-app",
+            "tauriRuntimeObserved": True,
+            "devServerRequired": False,
+            "debugAssertions": False,
+            "currentExe": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+            "resourceDir": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/Resources",
+            "appDataDir": "<home>/Library/Application Support/org.lizzieyzy.next",
+        },
+        "bundle": {
+            "productName": "LizzieYzy Next",
+            "mainBinaryName": "lizzieyzy-next-desktop",
+            "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
+            "appBundleExists": True,
+            "executableExists": True,
+            "resourceDirExists": True,
+        },
+        "assets": {
+            "status": "ready",
+            "checks": [
+                {"label": "resource-dir", "status": "exists"},
+                {"label": "app-data-dir", "status": "exists"},
+            ],
+            "exists": ["resource-dir", "app-data-dir"],
+            "missing": [],
+            "placeholders": [],
+            "warnings": [],
+        },
+        "profileStatus": {
+            "status": "loaded",
+            "loaded": True,
+            "selectedProfileId": "runtime-smoke",
+            "profileCount": 1,
+            "selectedProfileName": "Runtime Smoke KataGo",
+            "maxVisits": 64,
+            "errorMessage": None,
+        },
+        "engineLaunchAttempt": {
+            "attempted": True,
+            "status": "unavailable",
+            "recoverable": True,
+            "success": False,
+            "commandSpec": None,
+            "assetChecks": [],
+            "processId": None,
+            "exitCode": None,
+            "stderrPreview": None,
+            "errorKind": "spawnFailed",
+            "errorMessage": "sanitized captured runtime report recorded engine unavailable; not counted as success",
+        },
+        "boundaries": {
+            "browserFallbackUsed": False,
+            "devServerStarted": False,
+            "realReleasePublished": False,
+            "productionSigned": False,
+            "notarized": False,
+            "fullLegacyParity": False,
+        },
+    }
+
+
+def valid_installed_app_runtime_workflow_evidence() -> dict[str, object]:
+    boundaries = {
+        "browserFallbackUsed": False,
+        "sourceStaticOnly": False,
+        "artifactOnly": False,
+        "runnerStartedDevServer": False,
+        "runnerStartedViteDevServer": False,
+        "productionSigned": False,
+        "signed": False,
+        "notarized": False,
+        "updaterReady": False,
+        "updaterCovered": False,
+        "releasePublished": False,
+        "windowsInstalledAppCovered": False,
+        "linuxInstalledAppCovered": False,
+        "windowsLinuxInstalledAppCovered": False,
+        "fullInstalledAppParity": False,
+        "fullLegacyParity": False,
+        "fullShortcutParity": False,
+        "fullLayoutParity": False,
+        "providerReadboardOcrParity": False,
+        "providerReadboardOCRParity": False,
+    }
+    app_bundle = {
+        "exists": True,
+        "path": "target/release/bundle/macos/LizzieYzy Next.app",
+        "sizeBytes": 17399164,
+        "sha256": "2530d458dd7b676911e5e36088d7a902887e9a9e9edffa1bbecada7b12bc9de6",
+    }
+    runtime_process = {
+        "observed": True,
+        "processName": "LizzieYzy Next",
+        "pid": 59579,
+    }
+    screenshots = [
+        {
+            "label": "installed-app-runtime-window",
+            "source": "installed_app_runtime",
+            "path": "docs/qa/screenshots/installed-macos-app-window.png",
+            "sizeBytes": 186268,
+            "sha256": "f0731971b0dd93513a5d103e18c96aa275495d814e2ac5940c5af59481cab3ba",
+            "capturedAfterActionId": "observe_main_window",
+        }
+    ]
+    termination = {
+        "status": "pass",
+        "exitCode": 0,
+        "success": True,
+    }
+    workflow_actions = [
+        {
+            "actionId": "launch_installed_app",
+            "status": "pass",
+            "runtimeObserved": True,
+            "evidence": {"appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app"},
+        },
+        {
+            "actionId": "observe_main_window",
+            "status": "pass",
+            "runtimeObserved": True,
+            "evidence": {"windowTitle": "LizzieYzy"},
+        },
+        {
+            "actionId": "execute_runtime_action",
+            "status": "pass",
+            "runtimeObserved": True,
+            "evidence": {
+                "backendCommand": "installed_app_runtime_proof",
+                "proofSchema": smoke_user_flows.INSTALLED_APP_RUNTIME_PROOF_SCHEMA,
+                "runtimeSource": "packaged-macos-app",
+            },
+        },
+        {
+            "actionId": "terminate_installed_app",
+            "status": "pass",
+            "runtimeObserved": True,
+            "evidence": {"terminated": True, "exitCode": 0},
+        },
+    ]
+    return {
+        "schema": smoke_user_flows.INSTALLED_APP_RUNTIME_WORKFLOW_SCHEMA,
+        "name": "installed_app_runtime_workflow",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "installed_app_smoke_plus_backend_runtime_proof",
+        "runtimeSource": "packaged-macos-app",
+        "runtimeObserved": True,
+        "installedAppLaunched": True,
+        "runtimeProcessObserved": True,
+        "windowObserved": True,
+        "workflowExecuted": True,
+        "screenshotObserved": True,
+        "devServerAbsent": True,
+        "browserFallbackUsed": False,
+        "sourceStaticOnly": False,
+        "artifactOnly": False,
+        "runnerStartedDevServer": False,
+        "runnerStartedViteDevServer": False,
+        "productionSigned": False,
+        "signed": False,
+        "notarized": False,
+        "updaterReady": False,
+        "updaterCovered": False,
+        "releasePublished": False,
+        "windowsInstalledAppCovered": False,
+        "linuxInstalledAppCovered": False,
+        "windowsLinuxInstalledAppCovered": False,
+        "fullInstalledAppParity": False,
+        "fullLegacyParity": False,
+        "fullShortcutParity": False,
+        "fullLayoutParity": False,
+        "providerReadboardOcrParity": False,
+        "providerReadboardOCRParity": False,
+        "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
+        "appBundle": app_bundle,
+        "runtimeProcess": runtime_process,
+        "backendRuntimeProof": valid_installed_app_backend_runtime_proof(),
+        "workflowActions": workflow_actions,
+        "screenshots": screenshots,
+        "devServerPreflight": {
+            "reachableBeforeLaunch": False,
+            "runnerStartedDevServer": False,
+        },
+        "termination": termination,
+        "boundaries": boundaries,
+        "checks": [
+            {"name": "app_bundle_verified", "status": "pass", "details": {"appBundle": app_bundle}},
+            {
+                "name": "installed_app_launched",
+                "status": "pass",
+                "details": {"installedAppLaunched": True, "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app"},
+            },
+            {"name": "runtime_process_observed", "status": "pass", "details": runtime_process},
+            {"name": "window_observed", "status": "pass", "details": {"windowObserved": True}},
+            {
+                "name": "workflow_action_executed",
+                "status": "pass",
+                "details": {
+                    "workflowExecuted": True,
+                    "actionId": "execute_runtime_action",
+                    "backendCommand": "installed_app_runtime_proof",
+                    "proofSchema": smoke_user_flows.INSTALLED_APP_RUNTIME_PROOF_SCHEMA,
+                },
+            },
+            {
+                "name": "backend_runtime_proof_observed",
+                "status": "pass",
+                "details": {"backendRuntimeProof": valid_installed_app_backend_runtime_proof()},
+            },
+            {"name": "screenshot_recorded", "status": "pass", "details": {"screenshots": screenshots}},
+            {"name": "dev_server_absent", "status": "pass", "details": {"devServerAbsent": True}},
+            {"name": "quit_or_terminate_observed", "status": "pass", "details": termination},
+            {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
+        ],
     }
 
 

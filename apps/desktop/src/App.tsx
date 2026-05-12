@@ -1754,6 +1754,32 @@ export function App() {
     isNodeReordering,
     canReorder: !isBusy
   };
+  const runtimeSource = backendApi.frontendRuntimeSource();
+  const tauriRuntimeObserved = runtimeSource === "tauri";
+  const backendAvailability = health === null
+    ? "checking"
+    : tauriRuntimeObserved && health.rust_backend_ready
+      ? "available"
+      : tauriRuntimeObserved
+        ? "tauri-backend-unavailable"
+        : "browser-fallback";
+  const backendAvailable = backendAvailability === "available";
+  const sgfWorkflowState = sgfTreeError
+    ? "parse-error"
+    : isSgfTreeLoading
+      ? "loading-tree"
+      : dirty
+        ? "dirty"
+        : currentFilePath
+          ? "opened-saved"
+          : fallbackFileName
+            ? "imported"
+            : sgfTree
+              ? "sample-ready"
+              : "source-editing";
+  const sgfWorkflowLabel = sgfTreeError
+    ? `SGF error: ${sgfTreeError}`
+    : `${documentName}: ${game.summary.move_count} moves, move ${currentMove}, ${dirty ? "unsaved" : "saved"}.`;
 
   return (
     <LegacyShell
@@ -1850,15 +1876,44 @@ export function App() {
         </div>
       }
       enginePanel={
-        <EngineSetupPanel
-          disabled={isBusy}
-          onRun={handleRunKataGo}
-          onAnalyzeGame={handleAnalyzeKataGoGame}
-          onCancelAnalysis={handleCancelKataGoAnalysis}
-          analysisProgress={analysisProgress}
-          activeJobId={activeJobId}
-          reviewWorkflow={reviewWorkflowStatus}
-        />
+        <>
+          <section
+            className="analysis-progress"
+            aria-label="Installed app runtime proof"
+            data-testid="installed-app-runtime-proof"
+            data-runtime-source={runtimeSource}
+            data-tauri-runtime-observed={String(tauriRuntimeObserved)}
+            data-browser-fallback-used={String(!tauriRuntimeObserved)}
+            data-backend-availability={backendAvailability}
+            data-backend-available={String(backendAvailable)}
+            data-sgf-workflow-state={sgfWorkflowState}
+            data-sgf-tree-loaded={String(Boolean(sgfTree))}
+            data-sgf-tree-loading={String(isSgfTreeLoading)}
+            data-sgf-tree-error={sgfTreeError ?? ""}
+            data-sgf-current-move={currentMove}
+            data-sgf-max-move={maxMove}
+            data-sgf-dirty={String(dirty)}
+          >
+            <strong data-testid="runtime-source" data-runtime-source={runtimeSource}>
+              {tauriRuntimeObserved ? "Tauri runtime" : "Browser preview"}
+            </strong>
+            <span data-testid="backend-availability" data-backend-availability={backendAvailability}>
+              {backendAvailable ? "Backend available" : tauriRuntimeObserved ? "Backend unavailable" : "Browser fallback, no Tauri backend"}
+            </span>
+            <span data-testid="sgf-workflow-state" data-sgf-workflow-state={sgfWorkflowState}>
+              {sgfWorkflowLabel}
+            </span>
+          </section>
+          <EngineSetupPanel
+            disabled={isBusy}
+            onRun={handleRunKataGo}
+            onAnalyzeGame={handleAnalyzeKataGoGame}
+            onCancelAnalysis={handleCancelKataGoAnalysis}
+            analysisProgress={analysisProgress}
+            activeJobId={activeJobId}
+            reviewWorkflow={reviewWorkflowStatus}
+          />
+        </>
       }
       preferencesPanel={
         <PreferencesPanel

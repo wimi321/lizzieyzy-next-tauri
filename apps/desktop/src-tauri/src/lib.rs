@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -738,6 +739,93 @@ struct RuntimeSmokeKatagoConfigDto {
     run_cancel: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppRuntimeProofRequestDto {
+    engine_profile: Option<EngineProfileDto>,
+    attempt_engine_launch: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppRuntimeProofDto {
+    schema: String,
+    status: String,
+    platform: String,
+    runtime: InstalledAppRuntimeDto,
+    bundle: InstalledAppBundleDto,
+    assets: RuntimeAssetValidationDto,
+    profile_status: InstalledAppProfileStatusDto,
+    engine_launch_attempt: InstalledAppEngineLaunchAttemptDto,
+    boundaries: InstalledAppRuntimeBoundariesDto,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppRuntimeDto {
+    app_name: String,
+    version: String,
+    identifier: String,
+    source: String,
+    tauri_runtime_observed: bool,
+    dev_server_required: bool,
+    debug_assertions: bool,
+    current_exe: Option<String>,
+    resource_dir: Option<String>,
+    app_data_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppBundleDto {
+    product_name: String,
+    main_binary_name: String,
+    app_bundle_path: Option<String>,
+    app_bundle_exists: bool,
+    executable_exists: bool,
+    resource_dir_exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppProfileStatusDto {
+    status: String,
+    path: Option<String>,
+    loaded: bool,
+    selected_profile_id: Option<String>,
+    profile_count: usize,
+    selected_profile_name: Option<String>,
+    selected_profile: Option<EngineProfileDto>,
+    max_visits: Option<u32>,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppEngineLaunchAttemptDto {
+    attempted: bool,
+    status: String,
+    recoverable: bool,
+    command_spec: Option<CommandSpec>,
+    asset_checks: Vec<AssetCheck>,
+    process_id: Option<u32>,
+    exit_code: Option<i32>,
+    stderr_preview: Option<String>,
+    error_kind: Option<String>,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppRuntimeBoundariesDto {
+    browser_fallback_used: bool,
+    dev_server_started: bool,
+    real_release_published: bool,
+    production_signed: bool,
+    notarized: bool,
+    full_legacy_parity: bool,
+}
+
 #[tauri::command]
 fn health() -> AppHealthDto {
     AppHealthDto {
@@ -787,6 +875,70 @@ fn runtime_smoke_config() -> RuntimeSmokeConfigDto {
         expected_report_path: non_empty_env(RUNTIME_SMOKE_EXPECTED_REPORT_PATH_ENV),
         phase: non_empty_env(RUNTIME_SMOKE_PHASE_ENV),
         katago: runtime_smoke_katago_config(),
+    }
+}
+
+#[tauri::command]
+fn installed_app_runtime_proof(
+    app_handle: AppHandle,
+    request: Option<InstalledAppRuntimeProofRequestDto>,
+) -> InstalledAppRuntimeProofDto {
+    let current_exe = std::env::current_exe().ok();
+    let resource_dir = app_handle.path().resource_dir().ok();
+    let app_data_dir = app_handle.path().app_data_dir().ok();
+    let app_bundle_path = current_exe.as_deref().and_then(derive_macos_app_bundle_path);
+    let source = installed_app_runtime_source(current_exe.as_deref(), resource_dir.as_deref());
+    let asset_layout = resolve_runtime_asset_layout_for_paths(
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        resource_dir.clone(),
+    );
+    let assets = validate_runtime_asset_layout_from_layout(asset_layout);
+    let profile_status = installed_app_profile_status(
+        &app_handle,
+        request.as_ref().and_then(|value| value.engine_profile.clone()),
+    );
+    let attempt_engine_launch = request
+        .as_ref()
+        .and_then(|value| value.attempt_engine_launch)
+        .unwrap_or(true);
+    let engine_launch_attempt =
+        installed_app_engine_launch_attempt(profile_status.selected_profile.clone(), attempt_engine_launch);
+
+    InstalledAppRuntimeProofDto {
+        schema: "lizzieyzy.installed-app-runtime-proof.v1".to_string(),
+        status: "ok".to_string(),
+        platform: std::env::consts::OS.to_string(),
+        runtime: InstalledAppRuntimeDto {
+            app_name: "LizzieYzy Next".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            identifier: "org.lizzieyzy.next".to_string(),
+            source,
+            tauri_runtime_observed: true,
+            dev_server_required: false,
+            debug_assertions: cfg!(debug_assertions),
+            current_exe: current_exe.as_ref().map(|path| path_to_string(path)),
+            resource_dir: resource_dir.as_ref().map(|path| path_to_string(path)),
+            app_data_dir: app_data_dir.as_ref().map(|path| path_to_string(path)),
+        },
+        bundle: InstalledAppBundleDto {
+            product_name: "LizzieYzy Next".to_string(),
+            main_binary_name: "lizzieyzy-next-desktop".to_string(),
+            app_bundle_path: app_bundle_path.as_ref().map(|path| path_to_string(path)),
+            app_bundle_exists: app_bundle_path.as_deref().is_some_and(Path::exists),
+            executable_exists: current_exe.as_deref().is_some_and(Path::exists),
+            resource_dir_exists: resource_dir.as_deref().is_some_and(Path::exists),
+        },
+        assets,
+        profile_status,
+        engine_launch_attempt,
+        boundaries: InstalledAppRuntimeBoundariesDto {
+            browser_fallback_used: false,
+            dev_server_started: false,
+            real_release_published: false,
+            production_signed: false,
+            notarized: false,
+            full_legacy_parity: false,
+        },
     }
 }
 
@@ -840,6 +992,265 @@ fn env_bool(name: &str) -> Option<bool> {
         "1" | "true" | "yes" | "on" => Some(true),
         "0" | "false" | "no" | "off" => Some(false),
         _ => None,
+    }
+}
+
+fn installed_app_runtime_source(current_exe: Option<&Path>, resource_dir: Option<&Path>) -> String {
+    if current_exe.and_then(derive_macos_app_bundle_path).is_some() {
+        return "packaged-macos-app".to_string();
+    }
+    if cfg!(debug_assertions) {
+        return "tauri-dev".to_string();
+    }
+    if resource_dir.is_some() {
+        return "packaged-app".to_string();
+    }
+    "unknown".to_string()
+}
+
+fn derive_macos_app_bundle_path(executable_path: &Path) -> Option<PathBuf> {
+    executable_path
+        .ancestors()
+        .find(|ancestor| ancestor.extension().is_some_and(|extension| extension == "app"))
+        .map(Path::to_path_buf)
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.display().to_string()
+}
+
+fn installed_app_profile_status(
+    app_handle: &AppHandle,
+    requested_profile: Option<EngineProfileDto>,
+) -> InstalledAppProfileStatusDto {
+    if let Some(profile) = requested_profile {
+        return InstalledAppProfileStatusDto {
+            status: "requestProfile".to_string(),
+            path: None,
+            loaded: true,
+            selected_profile_id: None,
+            profile_count: 1,
+            selected_profile_name: Some(profile.name.clone()),
+            selected_profile: Some(profile),
+            max_visits: None,
+            error_message: None,
+        };
+    }
+
+    let path = match engine_profile_path(app_handle) {
+        Ok(path) => path,
+        Err(err) => {
+            return InstalledAppProfileStatusDto {
+                status: "error".to_string(),
+                path: None,
+                loaded: false,
+                selected_profile_id: None,
+                profile_count: 0,
+                selected_profile_name: None,
+                selected_profile: None,
+                max_visits: None,
+                error_message: Some(err),
+            };
+        }
+    };
+
+    match fs::read_to_string(&path) {
+        Ok(contents) => match parse_engine_profiles_settings(&contents, &path) {
+            Ok(settings) => installed_app_profile_status_from_settings("loaded", Some(path), settings),
+            Err(err) => InstalledAppProfileStatusDto {
+                status: "error".to_string(),
+                path: Some(path.display().to_string()),
+                loaded: false,
+                selected_profile_id: None,
+                profile_count: 0,
+                selected_profile_name: None,
+                selected_profile: None,
+                max_visits: None,
+                error_message: Some(err),
+            },
+        },
+        Err(err) if err.kind() == ErrorKind::NotFound => installed_app_profile_status_from_settings(
+            "defaultMissingFile",
+            Some(path),
+            default_engine_profiles_settings(),
+        ),
+        Err(err) => InstalledAppProfileStatusDto {
+            status: "error".to_string(),
+            path: Some(path.display().to_string()),
+            loaded: false,
+            selected_profile_id: None,
+            profile_count: 0,
+            selected_profile_name: None,
+            selected_profile: None,
+            max_visits: None,
+            error_message: Some(format!("failed to read engine profiles: {err}")),
+        },
+    }
+}
+
+fn installed_app_profile_status_from_settings(
+    status: &str,
+    path: Option<PathBuf>,
+    settings: EngineProfilesSettingsDto,
+) -> InstalledAppProfileStatusDto {
+    let selected = selected_engine_profile_record(&settings)
+        .or_else(|| settings.profiles.first())
+        .cloned();
+    InstalledAppProfileStatusDto {
+        status: status.to_string(),
+        path: path.as_ref().map(|path| path.display().to_string()),
+        loaded: status == "loaded",
+        selected_profile_id: Some(settings.selected_profile_id),
+        profile_count: settings.profiles.len(),
+        selected_profile_name: selected.as_ref().map(|record| record.profile.name.clone()),
+        selected_profile: selected.as_ref().map(|record| record.profile.clone()),
+        max_visits: selected.map(|record| record.max_visits),
+        error_message: None,
+    }
+}
+
+fn installed_app_engine_launch_attempt(
+    profile: Option<EngineProfileDto>,
+    attempt_engine_launch: bool,
+) -> InstalledAppEngineLaunchAttemptDto {
+    let Some(profile) = profile else {
+        return installed_app_engine_launch_skipped("no selected engine profile is available");
+    };
+    let asset_checks = engine_asset_checks(profile.clone());
+    if !attempt_engine_launch {
+        return InstalledAppEngineLaunchAttemptDto {
+            attempted: false,
+            status: "skipped".to_string(),
+            recoverable: true,
+            command_spec: None,
+            asset_checks,
+            process_id: None,
+            exit_code: None,
+            stderr_preview: None,
+            error_kind: None,
+            error_message: Some("engine launch attempt disabled by request".to_string()),
+        };
+    }
+
+    let spec = match build_command_spec(&profile) {
+        Ok(spec) => spec,
+        Err(err) => {
+            return InstalledAppEngineLaunchAttemptDto {
+                attempted: true,
+                status: "unavailable".to_string(),
+                recoverable: true,
+                command_spec: None,
+                asset_checks,
+                process_id: None,
+                exit_code: None,
+                stderr_preview: None,
+                error_kind: Some(engine_error_kind(&err).to_string()),
+                error_message: Some(err.to_string()),
+            };
+        }
+    };
+
+    let mut command = Command::new(&spec.program);
+    command
+        .args(&spec.args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(working_dir) = spec.working_dir.as_ref().filter(|value| !value.trim().is_empty()) {
+        command.current_dir(working_dir);
+    }
+    for (key, value) in &spec.env {
+        command.env(key, value);
+    }
+
+    match command.spawn() {
+        Ok(mut child) => {
+            let process_id = child.id();
+            let _ = child.kill();
+            match child.wait_with_output() {
+                Ok(output) => InstalledAppEngineLaunchAttemptDto {
+                    attempted: true,
+                    status: "launched".to_string(),
+                    recoverable: false,
+                    command_spec: Some(spec),
+                    asset_checks,
+                    process_id: Some(process_id),
+                    exit_code: output.status.code(),
+                    stderr_preview: stderr_preview(&output.stderr),
+                    error_kind: None,
+                    error_message: None,
+                },
+                Err(err) => InstalledAppEngineLaunchAttemptDto {
+                    attempted: true,
+                    status: "error".to_string(),
+                    recoverable: true,
+                    command_spec: Some(spec),
+                    asset_checks,
+                    process_id: Some(process_id),
+                    exit_code: None,
+                    stderr_preview: None,
+                    error_kind: Some("waitFailed".to_string()),
+                    error_message: Some(format!("engine spawned but wait failed: {err}")),
+                },
+            }
+        }
+        Err(err) => InstalledAppEngineLaunchAttemptDto {
+            attempted: true,
+            status: "unavailable".to_string(),
+            recoverable: true,
+            command_spec: Some(spec),
+            asset_checks,
+            process_id: None,
+            exit_code: None,
+            stderr_preview: None,
+            error_kind: Some("spawnFailed".to_string()),
+            error_message: Some(format!("failed to spawn engine: {err}")),
+        },
+    }
+}
+
+fn installed_app_engine_launch_skipped(message: &str) -> InstalledAppEngineLaunchAttemptDto {
+    InstalledAppEngineLaunchAttemptDto {
+        attempted: false,
+        status: "skipped".to_string(),
+        recoverable: true,
+        command_spec: None,
+        asset_checks: Vec::new(),
+        process_id: None,
+        exit_code: None,
+        stderr_preview: None,
+        error_kind: None,
+        error_message: Some(message.to_string()),
+    }
+}
+
+fn engine_error_kind(err: &EngineManagerError) -> &'static str {
+    match err {
+        EngineManagerError::MissingEnginePath => "missingEnginePath",
+        EngineManagerError::MissingModelPath => "missingModelPath",
+        EngineManagerError::MissingConfigPath => "missingConfigPath",
+        EngineManagerError::EnginePathNotFound { .. } => "enginePathNotFound",
+        EngineManagerError::ModelPathNotFound { .. } => "modelPathNotFound",
+        EngineManagerError::ConfigPathNotFound { .. } => "configPathNotFound",
+        EngineManagerError::WorkingDirNotFound { .. } => "workingDirNotFound",
+        EngineManagerError::Spawn { .. } => "spawnFailed",
+        EngineManagerError::StdinWrite { .. } => "stdinWriteFailed",
+        EngineManagerError::StdoutRead { .. } => "stdoutReadFailed",
+        EngineManagerError::Wait { .. } => "waitFailed",
+        EngineManagerError::MissingStdout { .. } => "missingStdout",
+        EngineManagerError::InsufficientStdout { .. } => "insufficientStdout",
+        EngineManagerError::NonZeroExit { .. } => "nonZeroExit",
+        EngineManagerError::Timeout { .. } => "timeout",
+        EngineManagerError::Cancelled { .. } => "cancelled",
+    }
+}
+
+fn stderr_preview(stderr: &[u8]) -> Option<String> {
+    let value = String::from_utf8_lossy(stderr).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.chars().take(500).collect())
     }
 }
 
@@ -4250,6 +4661,7 @@ pub fn run() {
             native_menu_contract,
             runtime_smoke_config,
             runtime_smoke_report,
+            installed_app_runtime_proof,
             parse_sgf_summary,
             parse_sgf_tree,
             provider_parse_yike_url,
@@ -5631,6 +6043,117 @@ mod tests {
         assert_eq!(validation.checks.len(), 1);
         assert_eq!(validation.missing[0].status, "missing");
         assert_eq!(validation.warnings.len(), 1);
+    }
+
+    #[test]
+    fn installed_app_runtime_source_detects_macos_app_bundle() {
+        let exe = Path::new("/Applications/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop");
+        assert_eq!(
+            derive_macos_app_bundle_path(exe),
+            Some(PathBuf::from("/Applications/LizzieYzy Next.app"))
+        );
+        assert_eq!(
+            installed_app_runtime_source(
+                Some(exe),
+                Some(Path::new("/Applications/LizzieYzy Next.app/Contents/Resources"))
+            ),
+            "packaged-macos-app"
+        );
+    }
+
+    #[test]
+    fn installed_app_profile_status_from_settings_reports_selected_profile() {
+        let settings = EngineProfilesSettingsDto {
+            selected_profile_id: "selected".to_string(),
+            profiles: vec![EngineProfileRecordDto {
+                id: "selected".to_string(),
+                profile: EngineProfileDto {
+                    name: "Installed profile".to_string(),
+                    engine_path: "/opt/katago/bin/katago".to_string(),
+                    model_path: Some("/opt/katago/model.bin.gz".to_string()),
+                    config_path: Some("/opt/katago/analysis.cfg".to_string()),
+                    working_dir: None,
+                    backend: EngineBackend::KataGoAnalysis,
+                },
+                max_visits: 321,
+            }],
+        };
+
+        let status = installed_app_profile_status_from_settings("loaded", None, settings);
+
+        assert_eq!(status.status, "loaded");
+        assert!(status.loaded);
+        assert_eq!(status.selected_profile_id.as_deref(), Some("selected"));
+        assert_eq!(status.profile_count, 1);
+        assert_eq!(status.selected_profile_name.as_deref(), Some("Installed profile"));
+        assert_eq!(status.max_visits, Some(321));
+        assert_eq!(
+            status.selected_profile.as_ref().map(|profile| profile.backend),
+            Some(EngineBackend::KataGoAnalysis)
+        );
+    }
+
+    #[test]
+    fn installed_app_engine_launch_missing_profile_is_skipped() {
+        let attempt = installed_app_engine_launch_attempt(None, true);
+
+        assert!(!attempt.attempted);
+        assert_eq!(attempt.status, "skipped");
+        assert!(attempt.recoverable);
+        assert!(attempt.command_spec.is_none());
+        assert!(attempt.asset_checks.is_empty());
+        assert!(attempt
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no selected engine profile"));
+    }
+
+    #[test]
+    fn installed_app_engine_launch_missing_engine_is_structured_unavailable() {
+        let profile = EngineProfileDto {
+            name: "Missing engine".to_string(),
+            engine_path: String::new(),
+            model_path: None,
+            config_path: None,
+            working_dir: None,
+            backend: EngineBackend::GenericGtp,
+        };
+
+        let attempt = installed_app_engine_launch_attempt(Some(profile), true);
+
+        assert!(attempt.attempted);
+        assert_eq!(attempt.status, "unavailable");
+        assert!(attempt.recoverable);
+        assert_eq!(attempt.error_kind.as_deref(), Some("missingEnginePath"));
+        assert!(attempt.command_spec.is_none());
+        assert_eq!(attempt.asset_checks.len(), 1);
+        assert_eq!(attempt.asset_checks[0].label, "engine binary");
+        assert!(!attempt.asset_checks[0].exists);
+    }
+
+    #[test]
+    fn installed_app_engine_launch_can_be_disabled_without_spawning() {
+        let profile = EngineProfileDto {
+            name: "Disabled launch".to_string(),
+            engine_path: "/definitely/missing/katago".to_string(),
+            model_path: None,
+            config_path: None,
+            working_dir: None,
+            backend: EngineBackend::GenericGtp,
+        };
+
+        let attempt = installed_app_engine_launch_attempt(Some(profile), false);
+
+        assert!(!attempt.attempted);
+        assert_eq!(attempt.status, "skipped");
+        assert!(attempt.recoverable);
+        assert!(attempt.command_spec.is_none());
+        assert_eq!(attempt.asset_checks.len(), 1);
+        assert_eq!(
+            attempt.error_message.as_deref(),
+            Some("engine launch attempt disabled by request")
+        );
     }
 
     #[test]

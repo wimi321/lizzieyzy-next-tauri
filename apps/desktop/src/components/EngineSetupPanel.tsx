@@ -65,6 +65,21 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
     !hasKnownMissingRequiredAssets;
   const canSave = profileName.trim().length > 0 && Number.isFinite(visits) && visits > 0;
   const canDeleteProfile = selectedProfileId !== "default" && profiles.length > 1;
+  const localAssetCheckStatus = assetChecks.length === 0
+    ? "not-checked"
+    : hasKnownMissingRequiredAssets
+      ? "missing-required"
+      : "ready";
+  const runtimeAssetCheckStatus = runtimeAssetValidation
+    ? runtimeAssetValidation.placeholders.length > 0 || runtimeAssetValidation.missing.length > 0
+      ? "problems"
+      : runtimeAssetValidation.layout.candidates.length > 0
+        ? "ready"
+        : "unavailable"
+    : runtimeAssetStatus.startsWith("Runtime asset check failed")
+      ? "error"
+      : "checking";
+  const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
 
   useEffect(() => {
     let isMounted = true;
@@ -266,7 +281,42 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
   }
 
   return (
-    <section className="engine-setup-panel" aria-label="KataGo engine setup" data-testid="engine-setup-panel">
+    <section
+      className="engine-setup-panel"
+      aria-label="KataGo engine setup"
+      data-testid="engine-setup-panel"
+      data-profile-count={profiles.length}
+      data-selected-profile-id={selectedProfileId}
+      data-selected-profile-name={selectedProfile?.profile.name ?? profileName}
+      data-engine-profile-status={profileStatus}
+      data-local-asset-check-status={localAssetCheckStatus}
+      data-runtime-asset-check-status={runtimeAssetCheckStatus}
+      data-missing-required-asset-count={missingRequiredAssets.length}
+      data-runtime-asset-candidate-count={runtimeAssetValidation?.layout.candidates.length ?? 0}
+      data-runtime-asset-missing-count={runtimeAssetValidation?.missing.length ?? 0}
+      data-runtime-asset-placeholder-count={runtimeAssetValidation?.placeholders.length ?? 0}
+    >
+      <div
+        className="engine-run-row"
+        aria-label="Installed app engine/profile proof"
+        data-testid="engine-runtime-proof"
+        data-profile-count={profiles.length}
+        data-selected-profile-id={selectedProfileId}
+        data-local-asset-check-status={localAssetCheckStatus}
+        data-runtime-asset-check-status={runtimeAssetCheckStatus}
+        data-can-run-katago={String(canRun)}
+      >
+        <strong>Engine runtime</strong>
+        <span data-testid="engine-profile-runtime-status" data-profile-count={profiles.length} data-selected-profile-id={selectedProfileId}>
+          {profiles.length > 0 ? `${profiles.length} profile${profiles.length === 1 ? "" : "s"} loaded` : "Profiles loading"}
+        </span>
+        <span data-testid="engine-asset-check-runtime-status" data-local-asset-check-status={localAssetCheckStatus}>
+          Local assets: {localAssetCheckStatus.replaceAll("-", " ")}
+        </span>
+        <span data-testid="engine-runtime-asset-check-status" data-runtime-asset-check-status={runtimeAssetCheckStatus}>
+          Runtime assets: {runtimeAssetCheckStatus.replaceAll("-", " ")}
+        </span>
+      </div>
       <div className="engine-run-row">
         <label>
           <span>Profile</span>

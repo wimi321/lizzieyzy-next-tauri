@@ -7,6 +7,7 @@ import {
   classifyProblems,
   deleteSgfNode,
   editSgfMove,
+  installedAppRuntimeProof,
   isTauriRuntime,
   listenToKataGoAnalysisEvents,
   loadEngineProfileSettings,
@@ -21,7 +22,8 @@ import {
   saveSgfDocument,
   startKataGoGameAnalysis,
   updateSgfNodeComment,
-  updateSgfNodeProperties
+  updateSgfNodeProperties,
+  type InstalledAppRuntimeProofDto
 } from "./api/backend";
 import {
   fetchFoxProvider,
@@ -61,6 +63,12 @@ type RuntimeSmokeCheckName =
   | "target_state_change_sync"
   | "arbitrary_ocr_not_covered"
   | "external_client_not_covered"
+  | "backend_runtime_proof_observed"
+  | "runtime_source_observed"
+  | "backend_availability_observed"
+  | "sgf_workflow_state_observed"
+  | "engine_profile_status_observed"
+  | "engine_asset_status_observed"
   | "webview_dom_observed"
   | "webview_click_observed"
   | "visible_targets_verified"
@@ -112,11 +120,12 @@ type RuntimeSmokeReport = {
   readboard?: ReadboardLiveSmokeEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
+  installedAppRuntimeProof?: InstalledAppRuntimeProofEvidence;
   error?: string;
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -342,6 +351,28 @@ type WebviewClickEvidence = {
   actionStatus: string | null;
   targetElement: ElementSmokeEvidence;
 };
+type InstalledAppRuntimeProofEvidence = {
+  tauriRuntimeObserved: boolean;
+  browserFallbackUsed: boolean;
+  runtimeSource?: string;
+  backendAvailability?: string;
+  backendAvailable?: boolean;
+  backendRuntimeProof?: InstalledAppRuntimeProofDto;
+  backendRuntimeProofSummary?: Record<string, unknown>;
+  runtimeRoot?: ElementSmokeEvidence;
+  backendStatus?: ElementSmokeEvidence;
+  sgfWorkflow?: ElementSmokeEvidence;
+  engineProfile?: ElementSmokeEvidence;
+  engineAssets?: ElementSmokeEvidence;
+  runtimeAssets?: ElementSmokeEvidence;
+  boundaries: {
+    browserFallbackDoesNotClaimTauri: true;
+    webviewDomClickCovered: false;
+    nativeDialogCovered: false;
+    fullLegacyParity: false;
+    releaseParity: false;
+  };
+};
 type ElementSmokeEvidence = {
   selector: string;
   tagName: string;
@@ -457,6 +488,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runProviderLivePhase(report);
     } else if (resolvedConfig.phase === "webview-dom-click") {
       await runWebviewDomClickPhase(report);
+    } else if (resolvedConfig.phase === "installed-app-runtime-proof") {
+      await runInstalledAppRuntimeProofPhase(report);
     } else if (resolvedConfig.phase === "readboard-live") {
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
@@ -1320,6 +1353,286 @@ async function runProviderLivePhase(report: RuntimeSmokeReport) {
   });
 }
 
+async function runInstalledAppRuntimeProofPhase(report: RuntimeSmokeReport) {
+  const evidence: InstalledAppRuntimeProofEvidence = {
+    tauriRuntimeObserved: false,
+    browserFallbackUsed: false,
+    boundaries: {
+      browserFallbackDoesNotClaimTauri: true,
+      webviewDomClickCovered: false,
+      nativeDialogCovered: false,
+      fullLegacyParity: false,
+      releaseParity: false
+    }
+  };
+  report.installedAppRuntimeProof = evidence;
+
+  await check(report, "browser_fallback_excluded", async () => {
+    if (!isTauriRuntime()) throw new Error("installed-app-runtime-proof must run inside the real Tauri runtime; browser fallback is only reported by DOM selectors.");
+    evidence.tauriRuntimeObserved = true;
+    evidence.browserFallbackUsed = false;
+    return {
+      tauriRuntimeObserved: true,
+      browserFallbackUsed: false,
+      userAgent: typeof navigator === "undefined" ? null : navigator.userAgent,
+      platform: typeof navigator === "undefined" ? null : navigator.platform
+    };
+  });
+
+  await check(report, "backend_runtime_proof_observed", async () => {
+    const proof = await installedAppRuntimeProof();
+    const summary = summarizeInstalledAppRuntimeProof(proof);
+    if (summary.browserFallbackUsed === true) {
+      throw new Error("Installed app backend proof reported browser fallback; this cannot count as Tauri runtime proof.");
+    }
+    const runtimeSource = typeof summary.runtimeSource === "string" ? summary.runtimeSource.toLowerCase() : "";
+    if (!runtimeSource || runtimeSource.includes("browser")) {
+      throw new Error(`Installed app backend proof did not report a Tauri runtime source; observed ${summary.runtimeSource || "missing"}.`);
+    }
+    evidence.backendRuntimeProof = proof;
+    evidence.backendRuntimeProofSummary = summary;
+    return {
+      ...summary,
+      raw: proof
+    };
+  });
+
+  await check(report, "runtime_source_observed", async () => {
+    const root = await waitForVisibleElement('[data-testid="installed-app-runtime-proof"]', "installed app runtime proof");
+    const runtimeSource = root.dataset.runtimeSource ?? "";
+    if (runtimeSource !== "tauri") throw new Error(`Runtime source must be tauri in installed app proof; observed ${runtimeSource || "missing"}.`);
+    if (root.dataset.browserFallbackUsed !== "false" || root.dataset.tauriRuntimeObserved !== "true") {
+      throw new Error("Installed app proof must expose tauriRuntimeObserved=true and browserFallbackUsed=false.");
+    }
+    evidence.runtimeSource = runtimeSource;
+    evidence.runtimeRoot = elementSmokeEvidence(root, '[data-testid="installed-app-runtime-proof"]');
+    return {
+      runtimeSource,
+      tauriRuntimeObserved: root.dataset.tauriRuntimeObserved,
+      browserFallbackUsed: root.dataset.browserFallbackUsed,
+      root: evidence.runtimeRoot
+    };
+  });
+
+  await check(report, "backend_availability_observed", async () => {
+    const root = await waitForRuntimeProofState((element) => element.dataset.backendAvailability !== "checking", "backend availability to finish checking");
+    const backendStatus = await waitForVisibleElement('[data-testid="backend-availability"]', "backend availability label");
+    const availability = root.dataset.backendAvailability ?? "";
+    const available = root.dataset.backendAvailable === "true";
+    if (availability !== "available" || !available) {
+      throw new Error(`Installed app proof requires backend availability; observed ${availability || "missing"}.`);
+    }
+    evidence.backendAvailability = availability;
+    evidence.backendAvailable = available;
+    evidence.backendStatus = elementSmokeEvidence(backendStatus, '[data-testid="backend-availability"]');
+    return {
+      backendAvailability: availability,
+      backendAvailable: available,
+      backendStatus: evidence.backendStatus
+    };
+  });
+
+  await check(report, "sgf_workflow_state_observed", async () => {
+    const root = await waitForVisibleElement('[data-testid="installed-app-runtime-proof"]', "installed app runtime proof");
+    const sgfWorkflow = await waitForVisibleElement('[data-testid="sgf-workflow-state"]', "SGF workflow state");
+    const workflowState = root.dataset.sgfWorkflowState ?? "";
+    if (!workflowState || workflowState === "loading-tree") throw new Error(`SGF workflow state was not stable; observed ${workflowState || "missing"}.`);
+    evidence.sgfWorkflow = elementSmokeEvidence(sgfWorkflow, '[data-testid="sgf-workflow-state"]');
+    return {
+      workflowState,
+      treeLoaded: root.dataset.sgfTreeLoaded,
+      currentMove: root.dataset.sgfCurrentMove,
+      maxMove: root.dataset.sgfMaxMove,
+      dirty: root.dataset.sgfDirty,
+      sgfWorkflow: evidence.sgfWorkflow
+    };
+  });
+
+  await check(report, "engine_profile_status_observed", async () => {
+    const engine = await waitForEngineRuntimeProofState((element) => Number(element.dataset.profileCount ?? 0) > 0, "engine profiles to load");
+    const profile = await waitForVisibleElement('[data-testid="engine-profile-runtime-status"]', "engine profile runtime status");
+    const profileCount = Number(engine.dataset.profileCount ?? 0);
+    if (!Number.isFinite(profileCount) || profileCount < 1) throw new Error("Engine profile proof did not expose a loaded profile.");
+    evidence.engineProfile = elementSmokeEvidence(profile, '[data-testid="engine-profile-runtime-status"]');
+    return {
+      profileCount,
+      selectedProfileId: engine.dataset.selectedProfileId ?? "",
+      profile: evidence.engineProfile
+    };
+  });
+
+  await check(report, "engine_asset_status_observed", async () => {
+    const engine = await waitForEngineRuntimeProofState((element) => element.dataset.runtimeAssetCheckStatus !== "checking", "runtime asset status to finish checking");
+    const localAsset = await waitForVisibleElement('[data-testid="engine-asset-check-runtime-status"]', "local engine asset status");
+    const runtimeAsset = await waitForVisibleElement('[data-testid="engine-runtime-asset-check-status"]', "runtime engine asset status");
+    const localStatus = engine.dataset.localAssetCheckStatus ?? "";
+    const runtimeStatus = engine.dataset.runtimeAssetCheckStatus ?? "";
+    if (!localStatus || !runtimeStatus) throw new Error("Engine asset proof did not expose local/runtime asset statuses.");
+    evidence.engineAssets = elementSmokeEvidence(localAsset, '[data-testid="engine-asset-check-runtime-status"]');
+    evidence.runtimeAssets = elementSmokeEvidence(runtimeAsset, '[data-testid="engine-runtime-asset-check-status"]');
+    return {
+      localAssetCheckStatus: localStatus,
+      runtimeAssetCheckStatus: runtimeStatus,
+      canRunKataGo: engine.dataset.canRunKatago,
+      localAsset: evidence.engineAssets,
+      runtimeAsset: evidence.runtimeAssets
+    };
+  });
+
+  await check(report, "scope_boundaries_recorded", async () => evidence.boundaries);
+}
+
+function summarizeInstalledAppRuntimeProof(proof: InstalledAppRuntimeProofDto): Record<string, unknown> {
+  const runtime = requiredRecord(proof.runtime, "installed_app_runtime_proof.runtime");
+  const bundle = requiredRecord(proof.bundle, "installed_app_runtime_proof.bundle");
+  const assets = requiredRecord(proof.assets, "installed_app_runtime_proof.assets");
+  const profileStatus = requiredRecord(proof.profileStatus, "installed_app_runtime_proof.profileStatus");
+  const engineLaunchAttempt = requiredRecord(proof.engineLaunchAttempt, "installed_app_runtime_proof.engineLaunchAttempt");
+  const boundaries = requiredRecord(proof.boundaries, "installed_app_runtime_proof.boundaries");
+  const runtimeSource = requiredString(runtime.source, "installed_app_runtime_proof.runtime.source");
+  const resourceDir = nullableString(runtime.resourceDir, "installed_app_runtime_proof.runtime.resourceDir");
+  const appDataDir = nullableString(runtime.appDataDir, "installed_app_runtime_proof.runtime.appDataDir");
+  const currentExe = nullableString(runtime.currentExe, "installed_app_runtime_proof.runtime.currentExe");
+  const version = nullableString(runtime.version, "installed_app_runtime_proof.runtime.version");
+  const identifier = nullableString(runtime.identifier, "installed_app_runtime_proof.runtime.identifier");
+  const browserFallbackUsed = booleanField(boundaries, "browserFallbackUsed") === true || runtimeSource.toLowerCase().includes("browser");
+
+  return {
+    command: "installed_app_runtime_proof",
+    schema: requiredString(proof.schema, "installed_app_runtime_proof.schema"),
+    status: requiredString(proof.status, "installed_app_runtime_proof.status"),
+    runtimeSource,
+    browserFallbackUsed,
+    runtime: {
+      ...runtime,
+      source: runtimeSource,
+      resourceDir,
+      appDataDir,
+      tauriRuntimeObserved: booleanField(runtime, "tauriRuntimeObserved"),
+      devServerRequired: booleanField(runtime, "devServerRequired"),
+      currentExe,
+      debugAssertions: runtime.debugAssertions ?? null,
+      version,
+      identifier
+    },
+    bundle,
+    resource: { resourceDir },
+    appData: { appDataDir },
+    assets: summarizeInstalledAppAssets(assets),
+    profileStatus,
+    engineLaunchAttempt: summarizeEngineLaunchAttempt(engineLaunchAttempt),
+    boundaries
+  };
+}
+
+function summarizeInstalledAppAssets(assets: Record<string, unknown>): Record<string, unknown> {
+  const validation = isRecord(assets.validation)
+    ? assets.validation
+    : isRecord(assets.runtimeAssetValidation)
+      ? assets.runtimeAssetValidation
+      : null;
+  const missing = arrayFieldLength(validation ?? assets, "missing");
+  const placeholders = arrayFieldLength(validation ?? assets, "placeholders");
+  const exists = arrayFieldLength(validation ?? assets, "exists");
+  const checks = arrayFieldLength(validation ?? assets, "checks");
+  const rawStatus = stringField(assets, "status")?.toLowerCase() ?? "";
+  const status = missing + placeholders > 0
+    ? "problem"
+    : /unavailable|missing|skipped|not[_ -]?found|not[_ -]?configured/.test(rawStatus)
+      ? "unavailable"
+      : /error|fail|problem|invalid|placeholder/.test(rawStatus)
+        ? "problem"
+        : /ready|ok|available/.test(rawStatus)
+          ? "ready"
+          : checks > 0 || exists > 0
+            ? "observed"
+            : "unavailable";
+  const warnings = Array.isArray(assets.warnings) ? assets.warnings.filter((item): item is string => typeof item === "string") : [];
+  return {
+    status,
+    commandStatus: stringField(assets, "status") ?? null,
+    checks,
+    exists,
+    missing,
+    placeholders,
+    warnings,
+    validation: validation ? { checks, exists, missing, placeholders } : null,
+    details: assets
+  };
+}
+
+function summarizeEngineLaunchAttempt(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error("engineLaunchAttempt must be a structured object.");
+  const rawStatus = stringField(value, "status") ?? stringField(value, "result") ?? stringField(value, "outcome");
+  const available = booleanField(value, "available")
+    ?? booleanField(value, "success")
+    ?? booleanField(value, "launched")
+    ?? booleanField(value, "engineAvailable");
+  const normalized = normalizeEngineLaunchAvailability(rawStatus, available);
+  return {
+    status: rawStatus ?? normalized,
+    availability: normalized,
+    launchSucceeded: normalized === "available",
+    attempted: booleanField(value, "attempted") ?? booleanField(value, "launchAttempted") ?? true,
+    message: stringField(value, "message") ?? stringField(value, "error") ?? stringField(value, "reason") ?? null,
+    details: value
+  };
+}
+
+function normalizeEngineLaunchAvailability(rawStatus: string | null, available: boolean | null): "available" | "problem" | "unavailable" | "observed" {
+  if (available === true) return "available";
+  if (available === false) return "unavailable";
+  const status = rawStatus?.toLowerCase() ?? "";
+  if (/missing|unavailable|not[_ -]?found|not[_ -]?configured/.test(status)) return "unavailable";
+  if (/error|fail|problem|invalid/.test(status)) return "problem";
+  if (/success|launched|available|ok/.test(status)) return "available";
+  return "observed";
+}
+
+function requiredRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${label} must be a structured object.`);
+  return value;
+}
+
+function nullableString(value: unknown, label: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error(`${label} must be a string or null.`);
+  return value;
+}
+
+function arrayFieldLength(value: Record<string, unknown>, key: string): number {
+  const field = value[key];
+  return Array.isArray(field) ? field.length : 0;
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | null {
+  const field = value[key];
+  return typeof field === "string" && field.trim() ? field.trim() : null;
+}
+
+function booleanField(value: Record<string, unknown>, key: string): boolean | null {
+  const field = value[key];
+  return typeof field === "boolean" ? field : null;
+}
+
+async function waitForRuntimeProofState(predicate: (element: HTMLElement) => boolean, label: string): Promise<HTMLElement> {
+  return await waitForElementState('[data-testid="installed-app-runtime-proof"]', label, predicate);
+}
+
+async function waitForEngineRuntimeProofState(predicate: (element: HTMLElement) => boolean, label: string): Promise<HTMLElement> {
+  return await waitForElementState('[data-testid="engine-runtime-proof"]', label, predicate);
+}
+
+async function waitForElementState(selector: string, label: string, predicate: (element: HTMLElement) => boolean): Promise<HTMLElement> {
+  const deadline = Date.now() + 4_000;
+  while (Date.now() < deadline) {
+    const element = document.querySelector(selector);
+    if (element instanceof HTMLElement && isElementVisible(element) && predicate(element)) return element;
+    await delay(50);
+  }
+  throw new Error(`Timed out waiting for ${label} (${selector}).`);
+}
+
 async function runWebviewDomClickPhase(report: RuntimeSmokeReport) {
   const evidence: WebviewDomClickEvidence = {
     tauriRuntimeObserved: false,
@@ -1683,13 +1996,14 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "katago-live-workflow-cache" ||
     value === "readboard-live" ||
     value === "provider-live" ||
-    value === "webview-dom-click"
+    value === "webview-dom-click" ||
+    value === "installed-app-runtime-proof"
   ) return value;
   return "full";
 }
 
 function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
-  return phase !== "provider-live" && phase !== "readboard-live" && phase !== "webview-dom-click";
+  return phase !== "provider-live" && phase !== "readboard-live" && phase !== "webview-dom-click" && phase !== "installed-app-runtime-proof";
 }
 
 function requireRuntimeSmokeSgfPath(sgfPath: string | null): string {

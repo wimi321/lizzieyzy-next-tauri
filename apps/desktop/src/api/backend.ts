@@ -127,6 +127,43 @@ export type RuntimeAssetValidationDto = {
   warnings: string[];
 };
 
+export type InstalledAppRuntimeInfoDto = {
+  source: string;
+  resourceDir: string | null;
+  appDataDir: string | null;
+  tauriRuntimeObserved?: boolean;
+  devServerRequired?: boolean;
+  currentExe?: string | null;
+  debugAssertions?: unknown;
+  version?: string | null;
+  identifier?: string | null;
+  [key: string]: unknown;
+};
+
+export type InstalledAppRuntimeAssetsDto = {
+  status: string;
+  validation?: RuntimeAssetValidationDto | null;
+  runtimeAssetValidation?: RuntimeAssetValidationDto | null;
+  checks?: RuntimeAssetValidationEntryDto[];
+  exists?: RuntimeAssetValidationEntryDto[];
+  missing?: RuntimeAssetValidationEntryDto[];
+  placeholders?: RuntimeAssetValidationEntryDto[];
+  warnings?: string[];
+  message?: string | null;
+  [key: string]: unknown;
+};
+
+export type InstalledAppRuntimeProofDto = {
+  schema: string;
+  status: string;
+  runtime: InstalledAppRuntimeInfoDto;
+  bundle: Record<string, unknown>;
+  assets: InstalledAppRuntimeAssetsDto;
+  profileStatus: Record<string, unknown>;
+  engineLaunchAttempt: Record<string, unknown>;
+  boundaries: Record<string, unknown>;
+};
+
 export type AnalysisProgressPayload = {
   job_id: string;
   completed: number;
@@ -170,7 +207,13 @@ declare global {
   }
 }
 
+export type FrontendRuntimeSource = "tauri" | "browser-fallback";
+
 export const isTauriRuntime = () => typeof window !== "undefined" && (window.__TAURI_INTERNALS__ !== undefined || isTauri());
+
+export function frontendRuntimeSource(): FrontendRuntimeSource {
+  return isTauriRuntime() ? "tauri" : "browser-fallback";
+}
 
 export async function getHealth(): Promise<AppHealthDto> {
   if (!isTauriRuntime()) {
@@ -378,6 +421,13 @@ export async function validateRuntimeAssetLayout(): Promise<RuntimeAssetValidati
     };
   }
   return await invoke<RuntimeAssetValidationDto>("validate_runtime_asset_layout");
+}
+
+export async function installedAppRuntimeProof(): Promise<InstalledAppRuntimeProofDto> {
+  if (!isTauriRuntime()) {
+    throw new Error("Installed app runtime proof requires the Tauri desktop backend; browser fallback cannot provide installed app proof.");
+  }
+  return await invoke<InstalledAppRuntimeProofDto>("installed_app_runtime_proof");
 }
 
 export async function replaySgfPositions(sgfText: string): Promise<PositionDto[]> {

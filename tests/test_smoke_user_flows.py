@@ -52,6 +52,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("desktop_sgf_editing_ux_smoke", pending_names)
             self.assertIn("desktop_ui_click_smoke", pending_names)
             self.assertIn("legacy_shell_menu_action_smoke", pending_names)
+            self.assertIn("native_menu_shortcut_smoke", pending_names)
             self.assertIn("tauri_window_runtime_smoke", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
@@ -1256,6 +1257,157 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("checksums.entries[1].artifactPresent must be true", pending["multiplatform_packaging_smoke"])
             self.assertIn("checksums missing platforms: windows", pending["multiplatform_packaging_smoke"])
 
+    def test_valid_native_menu_shortcut_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_native_menu_shortcut_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("native_menu_shortcut_smoke", pass_names)
+            self.assertNotIn("native_menu_shortcut_smoke", pending_names)
+
+    def test_missing_native_menu_shortcut_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_menu_shortcut_smoke", failures)
+            self.assertIn("native_menu_shortcut_smoke", pending)
+            self.assertIn(smoke_user_flows.NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE, pending["native_menu_shortcut_smoke"])
+
+    def test_native_menu_shortcut_evidence_rejects_overclaims(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_menu_shortcut_evidence()
+            evidence["fullShortcutParity"] = True
+            evidence["fullLegacyMenuParity"] = True
+            evidence["webviewDomProof"] = True
+            evidence["releasePublished"] = True
+            evidence["windowsLinuxCovered"] = True
+            evidence["providerCompleted"] = True
+            evidence["readboardCompleted"] = True
+            evidence["ocrCompleted"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["productionSigned"] = True
+            boundaries["notarized"] = True
+            write_json(root / smoke_user_flows.NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_menu_shortcut_smoke", failures)
+            self.assertIn("native_menu_shortcut_smoke", pending)
+            detail = pending["native_menu_shortcut_smoke"]
+            self.assertIn("fullShortcutParity must be false", detail)
+            self.assertIn("fullLegacyMenuParity must be false", detail)
+            self.assertIn("webviewDomProof must be false", detail)
+            self.assertIn("releasePublished must be false", detail)
+            self.assertIn("windowsLinuxCovered must be false", detail)
+            self.assertIn("providerCompleted must be false", detail)
+            self.assertIn("readboardCompleted must be false", detail)
+            self.assertIn("ocrCompleted must be false", detail)
+            self.assertIn("productionSigned must be false", detail)
+            self.assertIn("notarized must be false", detail)
+
+    def test_native_menu_shortcut_requires_input_editing_safety(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_menu_shortcut_evidence()
+            evidence["inputEditingSafe"] = False
+            find_evidence_check(evidence, "input_editing_safe")["details"]["inputEditingSafe"] = False
+            write_json(root / smoke_user_flows.NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_menu_shortcut_smoke", failures)
+            self.assertIn("native_menu_shortcut_smoke", pending)
+            self.assertIn("inputEditingSafe must be true", pending["native_menu_shortcut_smoke"])
+            self.assertIn("input_editing_safe.inputEditingSafe must be true", pending["native_menu_shortcut_smoke"])
+
+    def test_native_menu_shortcut_helper_event_name_pattern_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_native_menu_shortcut_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            passes = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("native_menu_shortcut_smoke", failures)
+            self.assertNotIn("native_menu_shortcut_smoke", pending)
+            self.assertIn("native_menu_shortcut_smoke", passes)
+
+    def test_native_menu_shortcut_rejects_helper_with_wrong_event_name(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            backend_path = root / smoke_user_flows.BACKEND_SOURCE
+            backend_path.write_text(
+                backend_path.read_text(encoding="utf-8").replace(
+                    f'const canonicalFallback = "{smoke_user_flows.NATIVE_MENU_EVENT_NAME}"',
+                    'const canonicalFallback = "legacy://menu-action"',
+                ),
+                encoding="utf-8",
+            )
+            write_valid_native_menu_shortcut_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("native_menu_shortcut_smoke", pending)
+            self.assertIn(f"frontend listener must include {smoke_user_flows.NATIVE_MENU_EVENT_NAME}", pending["native_menu_shortcut_smoke"])
+
+    def test_native_menu_shortcut_rejects_snake_case_action_id_drift(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_legacy_actions_fixture(
+                root,
+                action_id_overrides={"help.backendStatus": "help.backend_status"},
+            )
+            write_valid_native_menu_shortcut_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("native_menu_shortcut_smoke", pending)
+            self.assertIn(
+                "Rust native menu action ids must exactly align with frontend legacyActionMatrix action ids",
+                pending["native_menu_shortcut_smoke"],
+            )
+
+    def test_native_menu_shortcut_rejects_bogus_evidence_group(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_menu_shortcut_evidence()
+            evidence["groups"] = ["File", "Edit", "View", "Engine", "Tools", "Help"]
+            write_json(root / smoke_user_flows.NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("native_menu_shortcut_smoke", pending)
+            self.assertIn("groups must exactly equal File, Game, Analysis, View, Engine, Tools, Help", pending["native_menu_shortcut_smoke"])
+
     def test_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1776,6 +1928,7 @@ def create_complete_smoke_fixture(
     commands = [
         *smoke_user_flows.TAURI_COMMANDS,
         smoke_user_flows.LEGACY_IMPORT_CAPTURE_HELPER_COMMAND,
+        "native_menu_contract",
         *[
             command
             for group in smoke_user_flows.TAURI_COMMAND_GROUPS.values()
@@ -1798,6 +1951,21 @@ def create_complete_smoke_fixture(
     write(
         root / "apps/desktop/src-tauri/src/lib.rs",
         f"""
+        const NATIVE_MENU_EVENT_NAME: &str = "{smoke_user_flows.NATIVE_MENU_EVENT_NAME}";
+
+        struct NativeMenuActionSpec {{
+            menu_id: &'static str,
+            action_id: &'static str,
+            target_id: &'static str,
+            label: &'static str,
+            menu_path: &'static [&'static str],
+            accelerator: Option<&'static str>,
+        }}
+
+        const NATIVE_MENU_ACTIONS: &[NativeMenuActionSpec] = &[
+{native_menu_actions_fixture_source()}
+        ];
+
         {command_functions}
 
         fn run() {{
@@ -1835,6 +2003,13 @@ def write_valid_desktop_ui_click_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.DESKTOP_UI_CLICK_SMOKE_EVIDENCE,
         valid_desktop_ui_click_evidence(),
+    )
+
+
+def write_valid_native_menu_shortcut_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE,
+        valid_native_menu_shortcut_evidence(),
     )
 
 
@@ -1889,6 +2064,50 @@ def write_valid_multiplatform_packaging_evidence(root: Path) -> None:
         root / smoke_user_flows.MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE,
         valid_multiplatform_packaging_evidence(),
     )
+
+
+def canonical_legacy_actions() -> list[dict[str, object]]:
+    return [
+        {"id": "file.open", "group": "File", "label": "Open", "shortcut": "Mod+O"},
+        {"id": "file.save", "group": "File", "label": "Save", "shortcut": "Mod+S"},
+        {"id": "file.saveAs", "group": "File", "label": "Save As", "shortcut": "Mod+Shift+S"},
+        {"id": "file.importSgf", "group": "File", "label": "Import SGF", "shortcut": "Mod+I"},
+        {"id": "game.loadSample", "group": "Game", "label": "Load sample", "shortcut": "Mod+Shift+L"},
+        {"id": "game.parseSgf", "group": "Game", "label": "Parse SGF", "shortcut": "Mod+Enter"},
+        {"id": "analysis.runReview", "group": "Analysis", "label": "Run review", "shortcut": "Mod+R"},
+        {"id": "analysis.katagoPanel", "group": "Analysis", "label": "KataGo panel", "target": "profiles", "shortcut": "Mod+Shift+K"},
+        {"id": "view.candidates", "group": "View", "label": "Candidates", "target": "candidates", "shortcut": "Mod+1"},
+        {"id": "view.ownership", "group": "View", "label": "Ownership", "target": "ownership", "shortcut": "Mod+2"},
+        {"id": "view.policy", "group": "View", "label": "Policy", "target": "policy", "shortcut": "Mod+3"},
+        {"id": "engine.profiles", "group": "Engine", "label": "Profiles", "target": "profiles", "shortcut": "Mod+4"},
+        {"id": "engine.assets", "group": "Engine", "label": "Assets", "target": "assets", "shortcut": "Mod+5"},
+        {"id": "tools.providers", "group": "Tools", "label": "Providers", "target": "providers", "shortcut": "Mod+6"},
+        {"id": "tools.preferences", "group": "Tools", "label": "Preferences", "target": "preferences", "shortcut": "Mod+7"},
+        {"id": "help.backendStatus", "group": "Help", "label": "Backend status", "target": "backend-status", "shortcut": "Mod+/"},
+    ]
+
+
+def native_menu_actions_fixture_source() -> str:
+    blocks: list[str] = []
+    for action in canonical_legacy_actions():
+        action_id = str(action["id"])
+        group = str(action["group"])
+        label = str(action["label"])
+        menu_id = "legacy-menu-" + action_id.replace(".", "-").replace("Sgf", "-sgf").replace("As", "-as").replace("Sample", "-sample").replace("Review", "-review").replace("Panel", "-panel").replace("Status", "-status").lower()
+        target = str(action.get("target") or action_id.split(".")[-1])
+        blocks.append(
+            f"""
+            NativeMenuActionSpec {{
+                menu_id: "{menu_id}",
+                action_id: "{action_id}",
+                target_id: "{target}",
+                label: "{label}",
+                menu_path: &["{group}", "{label}"],
+                accelerator: None,
+            }},
+            """
+        )
+    return "\n".join(blocks)
 
 
 def valid_katago_live_evidence() -> dict[str, object]:
@@ -2212,6 +2431,92 @@ def valid_multiplatform_packaging_evidence() -> dict[str, object]:
                 },
             },
         ],
+    }
+
+
+def valid_native_menu_shortcut_evidence() -> dict[str, object]:
+    false_boundaries = {
+        "fullShortcutParity": False,
+        "fullLegacyMenuParity": False,
+        "webviewDomProof": False,
+        "osNativeMenuFullParity": False,
+        "releasePublished": False,
+        "productionSigned": False,
+        "notarized": False,
+        "providerParityCovered": False,
+        "readboardParityCovered": False,
+        "ocrExternalCaptureCovered": False,
+        "windowsLinuxCovered": False,
+    }
+    return {
+        "schema": smoke_user_flows.NATIVE_MENU_SHORTCUT_SMOKE_SCHEMA,
+        "name": "native_menu_shortcut_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "eventName": smoke_user_flows.NATIVE_MENU_EVENT_NAME,
+        "groups": smoke_user_flows.NATIVE_MENU_GROUPS,
+        "actionIds": [str(action["id"]) for action in canonical_legacy_actions()],
+        "nativeMenuSurface": True,
+        "nativeMenuEventBridge": True,
+        "keyboardShortcutSurface": True,
+        "actionIdsAligned": True,
+        "inputEditingSafe": True,
+        **false_boundaries,
+        "checks": [
+            {
+                "name": "native_menu_surface",
+                "status": "pass",
+                "details": {
+                    "nativeMenuSurface": True,
+                    "menus": smoke_user_flows.NATIVE_MENU_GROUPS,
+                },
+            },
+            {
+                "name": "native_menu_event_bridge",
+                "status": "pass",
+                "details": {
+                    "nativeMenuEventBridge": True,
+                    "eventName": smoke_user_flows.NATIVE_MENU_EVENT_NAME,
+                },
+            },
+            {
+                "name": "keyboard_shortcut_surface",
+                "status": "pass",
+                "details": {
+                    "keyboardShortcutSurface": True,
+                    "shortcutCount": 8,
+                },
+            },
+            {
+                "name": "action_ids_aligned",
+                "status": "pass",
+                "details": {
+                    "actionIdsAligned": True,
+                    "sharedActionIds": ["open-sgf", "save-sgf", "toggle-candidates"],
+                },
+            },
+            {
+                "name": "input_editing_safe",
+                "status": "pass",
+                "details": {
+                    "inputEditingSafe": True,
+                    "textInputBypass": True,
+                },
+            },
+            {
+                "name": "scope_boundaries",
+                "status": "pass",
+                "details": false_boundaries,
+            },
+        ],
+        "boundaries": {
+            **false_boundaries,
+            "providerCompleted": False,
+            "readboardCompleted": False,
+            "ocrCompleted": False,
+            "windowsCovered": False,
+            "linuxCovered": False,
+        },
     }
 
 
@@ -2771,50 +3076,56 @@ def create_legacy_shell_fixture(
     disabled_entries = disabled_entries or set()
     disabled_entries_with_handler = disabled_entries_with_handler or set()
     omitted_entries = omitted_entries or set()
-    menu_blocks: list[str] = []
-    for group, items in smoke_user_flows.LEGACY_SHELL_MENU_SURFACE.items():
-        item_blocks: list[str] = []
-        for item in items:
-            if (group, item) in omitted_entries:
-                continue
-            if (group, item) in disabled_entries:
-                item_blocks.append(f'{{ label: "{item}", disabled: true }}')
-            elif (group, item) in disabled_entries_with_handler:
-                handler_name = "on" + "".join(part for part in re_identifier_parts(item))
-                item_blocks.append(f'{{ label: "{item}", onSelect: {handler_name}, disabled: true }}')
-            else:
-                handler_name = "on" + "".join(part for part in re_identifier_parts(item))
-                item_blocks.append(f'{{ label: "{item}", onSelect: {handler_name}, disabled: isBusy }}')
-        menu_blocks.append(
-            f"""
-            {{
-              label: "{group}",
-              items: [
-                {",".join(item_blocks)}
-              ]
-            }}
-            """
-        )
+    disabled = disabled_entries | disabled_entries_with_handler
+    create_legacy_actions_fixture(root, disabled_entries=disabled, omitted_entries=omitted_entries)
     write(
         root / smoke_user_flows.LEGACY_SHELL_SOURCE,
-        f"""
+        """
+        import { legacyActionMatrix } from "../domain/legacyActions";
+
         export function LegacyShell() {{
           const isBusy = false;
           const dirty = false;
-          const onCandidates = () => undefined;
-          const onOwnership = () => undefined;
-          const onPolicy = () => undefined;
-          const onProfiles = () => undefined;
-          const onAssets = () => undefined;
-          const onProviders = () => undefined;
-          const onPreferences = () => undefined;
-          const onBackendstatus = () => undefined;
-          const menuGroups = [
-            {",".join(menu_blocks)}
-          ];
-          return <main data-testid="legacy-shell"><nav className="legacy-menubar" aria-label="Application menu" data-testid="legacy-menubar"><span>File</span>{{menuGroups}}</nav><section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar"><button title="Open SGF">Open</button><button title="Save SGF">Save</button><button title="Save SGF as">Save As</button><span>{{dirty ? "Unsaved" : "Saved"}}</span><span>{{dirty ? "Unsaved changes" : "Saved"}}</span></section><footer className="legacy-statusbar" data-testid="legacy-statusbar" /></main>;
+          const toolbarMenuSurfaceTokens = "Application menu Main toolbar Open SGF Save SGF Save SGF as File Open Save Save As View Candidates Engine Tools";
+          const groups = new Map();
+          for (const action of legacyActionMatrix) {
+            const items = groups.get(action.group) ?? [];
+            items.push({ action, disabled: isBusy });
+            groups.set(action.group, items);
+          }
+          const menuGroups = Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+          return <main data-testid="legacy-shell"><span hidden>{toolbarMenuSurfaceTokens}</span><nav className="legacy-menubar" aria-label="Application menu" data-testid="legacy-menubar">{menuGroups.map((group) => <details key={group.label} className="legacy-menu"><summary>{group.label}</summary>{group.items.map((item) => <button data-legacy-action={item.action.id} data-testid={`legacy-menu-${group.label.toLowerCase()}-${item.action.label.toLowerCase().replaceAll(" ", "-")}`} disabled={item.disabled}>{item.action.label}</button>)}</details>)}</nav><section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar"><button title="Open SGF">Open</button><button title="Save SGF">Save</button><button title="Save SGF as">Save As</button><span>{dirty ? "Unsaved" : "Saved"}</span><span>{dirty ? "Unsaved changes" : "Saved"}</span></section><footer className="legacy-statusbar" data-testid="legacy-statusbar" /></main>;
         }}
         """,
+    )
+
+
+def create_legacy_actions_fixture(
+    root: Path,
+    *,
+    disabled_entries: set[tuple[str, str]] | None = None,
+    omitted_entries: set[tuple[str, str]] | None = None,
+    action_id_overrides: dict[str, str] | None = None,
+) -> None:
+    disabled_entries = disabled_entries or set()
+    omitted_entries = omitted_entries or set()
+    action_id_overrides = action_id_overrides or {}
+    action_blocks: list[str] = []
+    for action in canonical_legacy_actions():
+        group = str(action["group"])
+        label = str(action["label"])
+        if (group, label) in omitted_entries:
+            continue
+        action_id = action_id_overrides.get(str(action["id"]), str(action["id"]))
+        disabled = ", disabled: true" if (group, label) in disabled_entries else ""
+        target = f', target: "{action["target"]}"' if action.get("target") else ""
+        shortcut = f', shortcut: "{action["shortcut"]}"' if action.get("shortcut") else ""
+        action_blocks.append(
+            f'  {{ id: "{action_id}", group: "{group}", label: "{label}"{target}{shortcut}{disabled} }}'
+        )
+    write(
+        root / smoke_user_flows.LEGACY_ACTIONS_SOURCE,
+        "export const legacyActionMatrix = [\n" + ",\n".join(action_blocks) + "\n];\n",
     )
 
 
@@ -2846,6 +3157,20 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
           path: string | null;
           sgfText: string;
         }};
+
+        export async function listenToLegacyMenuActionEvents(onAction: (actionId: string) => void): Promise<() => void> {{
+          const eventNames = await legacyNativeMenuEventNames();
+          return () => undefined;
+        }}
+
+        async function legacyNativeMenuEventNames(): Promise<string[]> {{
+          const canonicalFallback = "{smoke_user_flows.NATIVE_MENU_EVENT_NAME}";
+          return uniqueStrings([canonicalFallback, "legacy://menu-action", "legacy-menu-action"]);
+        }}
+
+        function uniqueStrings(values: Array<string | null | undefined>): string[] {{
+          return values.filter((value): value is string => typeof value === "string");
+        }}
 
         export type RuntimeAssetPathDto = {{
           label: string;

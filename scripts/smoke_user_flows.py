@@ -57,6 +57,65 @@ DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS = [
 ]
 DESKTOP_UI_CLICK_SMOKE_EVIDENCE = "docs/qa/desktop-ui-click-smoke-macos.json"
 DESKTOP_UI_CLICK_SMOKE_SCHEMA = "lizzieyzy.desktop-ui-click-smoke.v1"
+NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE = "docs/qa/native-menu-shortcut-smoke-macos.json"
+NATIVE_MENU_SHORTCUT_SMOKE_SCHEMA = "lizzieyzy.native-menu-shortcut-smoke.v1"
+NATIVE_MENU_SHORTCUT_SMOKE_REQUIRED_CHECKS = [
+    "native_menu_surface",
+    "native_menu_event_bridge",
+    "keyboard_shortcut_surface",
+    "action_ids_aligned",
+    "input_editing_safe",
+    "scope_boundaries",
+]
+NATIVE_MENU_SHORTCUT_REQUIRED_TRUE_FIELDS = [
+    "nativeMenuSurface",
+    "nativeMenuEventBridge",
+    "keyboardShortcutSurface",
+    "actionIdsAligned",
+    "inputEditingSafe",
+]
+NATIVE_MENU_SHORTCUT_REQUIRED_FALSE_FIELDS = [
+    "fullShortcutParity",
+    "fullLegacyMenuParity",
+    "webviewDomProof",
+    "osNativeMenuFullParity",
+    "releasePublished",
+    "productionSigned",
+    "notarized",
+    "providerParityCovered",
+    "readboardParityCovered",
+    "ocrExternalCaptureCovered",
+    "windowsLinuxCovered",
+]
+NATIVE_MENU_SHORTCUT_FORBIDDEN_TRUE_FIELDS = {
+    "fullShortcutParity": "fullShortcutParity must be false",
+    "fullLegacyMenuParity": "fullLegacyMenuParity must be false",
+    "fullLegacyParity": "fullLegacyParity must be false",
+    "fullLegacyParityCovered": "fullLegacyParityCovered must be false",
+    "webviewDomProof": "webviewDomProof must be false",
+    "webviewDomCovered": "webviewDomCovered must be false",
+    "webviewDomAutomationCovered": "webviewDomAutomationCovered must be false",
+    "osNativeMenuFullParity": "osNativeMenuFullParity must be false",
+    "releasePublished": "releasePublished must be false",
+    "productionSigned": "productionSigned must be false",
+    "notarized": "notarized must be false",
+    "providerCompleted": "providerCompleted must be false",
+    "providerCovered": "providerCovered must be false",
+    "providerParityCovered": "providerParityCovered must be false",
+    "readboardCompleted": "readboardCompleted must be false",
+    "readboardCovered": "readboardCovered must be false",
+    "readboardParityCovered": "readboardParityCovered must be false",
+    "ocrCompleted": "ocrCompleted must be false",
+    "ocrCovered": "ocrCovered must be false",
+    "ocrCaptureCovered": "ocrCaptureCovered must be false",
+    "ocrExternalCaptureCovered": "ocrExternalCaptureCovered must be false",
+    "externalClientCaptureCovered": "externalClientCaptureCovered must be false",
+    "windowsLinuxCovered": "windowsLinuxCovered must be false",
+    "windowsCovered": "windowsCovered must be false",
+    "windowsParityCovered": "windowsParityCovered must be false",
+    "linuxCovered": "linuxCovered must be false",
+    "linuxParityCovered": "linuxParityCovered must be false",
+}
 LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS = [
     ("View:Candidates", "candidates"),
     ("View:Ownership", "ownership"),
@@ -189,6 +248,7 @@ TAURI_COMMAND_GROUPS = {
     ],
 }
 LEGACY_SHELL_SOURCE = "apps/desktop/src/components/LegacyShell.tsx"
+LEGACY_ACTIONS_SOURCE = "apps/desktop/src/domain/legacyActions.ts"
 APP_SOURCE = "apps/desktop/src/App.tsx"
 BACKEND_SOURCE = "apps/desktop/src/api/backend.ts"
 PROVIDER_API_SOURCE = "apps/desktop/src/api/providers.ts"
@@ -204,6 +264,8 @@ LEGACY_SHELL_MENU_SURFACE = {
     "Tools": ["Providers", "Preferences"],
     "Help": ["Backend status"],
 }
+NATIVE_MENU_GROUPS = ["File", "Game", "Analysis", "View", "Engine", "Tools", "Help"]
+NATIVE_MENU_EVENT_NAME = "legacy://native-menu-action"
 
 
 @dataclass
@@ -355,10 +417,11 @@ class UserFlowSmoke:
                 self.pass_(name, ", ".join(commands) + " are defined and registered")
 
     def check_legacy_shell_menu_surface(self) -> None:
-        text = self.read_text(LEGACY_SHELL_SOURCE)
-        if text is None:
+        shell_text = self.read_text(LEGACY_SHELL_SOURCE)
+        actions_text = self.read_text(LEGACY_ACTIONS_SOURCE)
+        if shell_text is None or actions_text is None:
             return
-        failures = missing_legacy_shell_menu_surface(text, LEGACY_SHELL_MENU_SURFACE)
+        failures = missing_legacy_shell_menu_surface(shell_text, actions_text, LEGACY_SHELL_MENU_SURFACE)
         if failures:
             self.fail("legacy_shell_menu_surface", "; ".join(failures))
             return
@@ -835,6 +898,7 @@ class UserFlowSmoke:
         self.check_desktop_sgf_editing_ux_smoke_evidence()
         self.check_desktop_ui_click_smoke_evidence()
         self.check_legacy_shell_menu_action_smoke_evidence()
+        self.check_native_menu_shortcut_smoke_evidence()
         self.check_tauri_window_runtime_smoke_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
@@ -940,6 +1004,30 @@ class UserFlowSmoke:
         self.pass_(
             "legacy_shell_menu_action_smoke",
             f"scoped browser-rendered LegacyShell menu action smoke evidence passes with {len(LEGACY_SHELL_MENU_ACTION_REQUIRED_TARGETS)} menu targets",
+        )
+
+    def check_native_menu_shortcut_smoke_evidence(self) -> None:
+        evidence_path = self.path(NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "native_menu_shortcut_smoke",
+                f"TODO gate: record scoped macOS OS-native menu and keyboard shortcut evidence at {NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_native_menu_shortcut_smoke_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "native_menu_shortcut_smoke",
+                f"{NATIVE_MENU_SHORTCUT_SMOKE_EVIDENCE} is present but not valid scoped macOS native menu/shortcut PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "native_menu_shortcut_smoke",
+            "scoped macOS OS-native menu and keyboard shortcut evidence passes with action-id, event-bridge, input-editing, and boundary checks",
         )
 
     def check_tauri_window_runtime_smoke_evidence(self) -> None:
@@ -1363,6 +1451,160 @@ def validate_desktop_ui_click_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_desktop_ui_click_clicked_controls(evidence.get("clickedControls")))
     failures.extend(validate_desktop_ui_click_visible_assertions(evidence.get("visibleAssertions")))
     failures.extend(validate_desktop_ui_click_boundaries(evidence.get("boundaries")))
+    return failures
+
+
+def validate_native_menu_shortcut_smoke_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != NATIVE_MENU_SHORTCUT_SMOKE_SCHEMA:
+        failures.append(f"schema must be {NATIVE_MENU_SHORTCUT_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("eventName") != NATIVE_MENU_EVENT_NAME:
+        failures.append(f"eventName must be {NATIVE_MENU_EVENT_NAME}")
+    for key in NATIVE_MENU_SHORTCUT_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in NATIVE_MENU_SHORTCUT_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in NATIVE_MENU_SHORTCUT_SMOKE_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in NATIVE_MENU_SHORTCUT_SMOKE_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    failures.extend(validate_native_menu_shortcut_checks(check_by_name))
+    failures.extend(validate_native_menu_shortcut_evidence_groups(evidence))
+    failures.extend(validate_native_menu_shortcut_source_facts(evidence, root))
+    failures.extend(validate_native_menu_shortcut_forbidden_claims(evidence))
+    return failures
+
+
+def validate_native_menu_shortcut_checks(check_by_name: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    expected_flags = {
+        "native_menu_surface": "nativeMenuSurface",
+        "native_menu_event_bridge": "nativeMenuEventBridge",
+        "keyboard_shortcut_surface": "keyboardShortcutSurface",
+        "action_ids_aligned": "actionIdsAligned",
+        "input_editing_safe": "inputEditingSafe",
+    }
+    for check_name, flag in expected_flags.items():
+        evidence = check_evidence(check_by_name.get(check_name))
+        if evidence is None:
+            failures.append(f"{check_name} evidence must be an object")
+            continue
+        if evidence.get(flag) is not True:
+            failures.append(f"{check_name}.{flag} must be true")
+    boundary_evidence = check_evidence(check_by_name.get("scope_boundaries"))
+    if boundary_evidence is None:
+        failures.append("scope_boundaries evidence must be an object")
+    else:
+        for key in NATIVE_MENU_SHORTCUT_REQUIRED_FALSE_FIELDS:
+            if boundary_evidence.get(key) is not False:
+                failures.append(f"scope_boundaries.{key} must be false")
+    return failures
+
+
+def validate_native_menu_shortcut_evidence_groups(evidence: dict[str, Any]) -> list[str]:
+    groups = evidence.get("groups")
+    if not isinstance(groups, list) or not all(isinstance(group, str) for group in groups):
+        return ["groups must be a list of strings"]
+    if groups != NATIVE_MENU_GROUPS:
+        return ["groups must exactly equal " + ", ".join(NATIVE_MENU_GROUPS)]
+    return []
+
+
+def validate_native_menu_shortcut_source_facts(evidence: dict[str, Any], root: Path) -> list[str]:
+    failures: list[str] = []
+    rust_path = root / "apps/desktop/src-tauri/src/lib.rs"
+    frontend_path = root / BACKEND_SOURCE
+    actions_path = root / LEGACY_ACTIONS_SOURCE
+    rust_text = rust_path.read_text(encoding="utf-8") if rust_path.is_file() else ""
+    frontend_text = frontend_path.read_text(encoding="utf-8") if frontend_path.is_file() else ""
+    actions_text = actions_path.read_text(encoding="utf-8") if actions_path.is_file() else ""
+    if not rust_text:
+        return ["Rust Tauri source missing for native menu source-fact validation"]
+    if not frontend_text:
+        return ["frontend backend source missing for native menu source-fact validation"]
+    if not actions_text:
+        return ["legacyActions source missing for native menu source-fact validation"]
+
+    rust_event_name = extract_rust_string_const(rust_text, "NATIVE_MENU_EVENT_NAME")
+    if rust_event_name != NATIVE_MENU_EVENT_NAME:
+        failures.append(f"Rust NATIVE_MENU_EVENT_NAME must be {NATIVE_MENU_EVENT_NAME}")
+    frontend_event_names = extract_frontend_legacy_menu_event_names(frontend_text)
+    if NATIVE_MENU_EVENT_NAME not in frontend_event_names:
+        failures.append(f"frontend listener must include {NATIVE_MENU_EVENT_NAME}")
+    if rust_event_name and rust_event_name not in frontend_event_names:
+        failures.append("Rust NATIVE_MENU_EVENT_NAME must equal a frontend listened event name")
+    if not has_tauri_command_function(rust_text, "native_menu_contract"):
+        failures.append("native_menu_contract command function missing")
+    if not command_registered_in_handler(rust_text, "native_menu_contract"):
+        failures.append("native_menu_contract invoke handler missing")
+
+    rust_actions = parse_rust_native_menu_actions(rust_text)
+    frontend_actions = parse_legacy_action_matrix(actions_text)
+    if not rust_actions:
+        failures.append("Rust native menu actions missing")
+    if not frontend_actions:
+        failures.append("frontend legacyActionMatrix actions missing")
+    if rust_actions and frontend_actions:
+        rust_ids = [action["action_id"] for action in rust_actions]
+        frontend_ids = [action["id"] for action in frontend_actions]
+        if rust_ids != frontend_ids:
+            failures.append("Rust native menu action ids must exactly align with frontend legacyActionMatrix action ids")
+        rust_groups = unique_ordered([action["group"] for action in rust_actions])
+        frontend_groups = unique_ordered([action["group"] for action in frontend_actions])
+        if rust_groups != NATIVE_MENU_GROUPS:
+            failures.append("Rust native menu groups must exactly equal " + ", ".join(NATIVE_MENU_GROUPS))
+        if frontend_groups != NATIVE_MENU_GROUPS:
+            failures.append("frontend legacyActionMatrix groups must exactly equal " + ", ".join(NATIVE_MENU_GROUPS))
+        evidence_ids = evidence.get("actionIds")
+        if not isinstance(evidence_ids, list) or not all(isinstance(action_id, str) for action_id in evidence_ids):
+            failures.append("actionIds must be a list of strings")
+        elif evidence_ids != rust_ids:
+            failures.append("actionIds must exactly match Rust/frontend canonical action ids")
+    return failures
+
+
+def validate_native_menu_shortcut_forbidden_claims(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+
+    def walk(value: Any, key_path: str) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                next_path = f"{key_path}.{key}" if key_path else str(key)
+                if key in NATIVE_MENU_SHORTCUT_FORBIDDEN_TRUE_FIELDS and child is True:
+                    failures.append(f"{next_path} {NATIVE_MENU_SHORTCUT_FORBIDDEN_TRUE_FIELDS[key]}")
+                walk(child, next_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{key_path}[{index}]")
+
+    walk(evidence, "")
     return failures
 
 
@@ -3154,21 +3396,178 @@ def command_registered_in_handler(text: str, command: str) -> bool:
     return False
 
 
-def missing_legacy_shell_menu_surface(text: str, menu_surface: dict[str, list[str]]) -> list[str]:
+def parse_legacy_action_matrix(text: str) -> list[dict[str, str]]:
+    matrix_match = re.search(r"\blegacyActionMatrix\b[^=]*=\s*\[", text)
+    if not matrix_match:
+        return []
+    start = matrix_match.end() - 1
+    end = find_matching_delimiter(text, start, "[", "]")
+    if end is None:
+        return []
+    matrix_body = text[start + 1 : end]
+    actions: list[dict[str, str]] = []
+    for object_body in top_level_object_bodies(matrix_body):
+        action = {
+            "body": object_body,
+            "id": extract_ts_object_string_field(object_body, "id"),
+            "group": extract_ts_object_string_field(object_body, "group"),
+            "label": extract_ts_object_string_field(object_body, "label"),
+            "disabled": extract_ts_object_boolean_field(object_body, "disabled"),
+        }
+        if action["id"] and action["group"] and action["label"]:
+            actions.append(action)
+    return actions
+
+
+def parse_rust_native_menu_actions(text: str) -> list[dict[str, str]]:
+    actions_match = re.search(r"\bNATIVE_MENU_ACTIONS\s*:\s*&\[[^\]]+\]\s*=\s*&\[", text)
+    if not actions_match:
+        return []
+    start = actions_match.end() - 1
+    end = find_matching_delimiter(text, start, "[", "]")
+    if end is None:
+        return []
+    actions_body = text[start + 1 : end]
+    actions: list[dict[str, str]] = []
+    for object_body in top_level_rust_struct_bodies(actions_body, "NativeMenuActionSpec"):
+        menu_path = extract_rust_menu_path(object_body)
+        action = {
+            "body": object_body,
+            "action_id": extract_rust_object_string_field(object_body, "action_id"),
+            "group": menu_path[0] if menu_path else "",
+            "label": extract_rust_object_string_field(object_body, "label"),
+        }
+        if action["action_id"] and action["group"] and action["label"]:
+            actions.append(action)
+    return actions
+
+
+def extract_rust_string_const(text: str, const_name: str) -> str | None:
+    match = re.search(r"\bconst\s+" + re.escape(const_name) + r"\s*:\s*&str\s*=\s*\"([^\"]+)\"", text)
+    return match.group(1) if match else None
+
+
+def extract_frontend_legacy_menu_event_names(text: str) -> list[str]:
+    function_body = find_ts_function_body(text, "listenToLegacyMenuActionEvents")
+    if function_body is None:
+        return []
+    event_names = re.findall(r"[\"']([^\"']+)[\"']", function_body)
+    helper_names = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", function_body)
+    for helper_name in helper_names:
+        if helper_name in {"listen", "Promise", "map", "onAction", "legacyActionFromPayload"}:
+            continue
+        helper_body = find_ts_function_body(text, helper_name)
+        if helper_body is None:
+            continue
+        event_names.extend(re.findall(r"[\"']([^\"']+)[\"']", helper_body))
+    return unique_ordered(event_names)
+
+
+def find_ts_function_body(text: str, function_name: str) -> str | None:
+    starts = [
+        text.find("function " + function_name),
+        text.find("async function " + function_name),
+        text.find("export function " + function_name),
+        text.find("export async function " + function_name),
+        text.find("const " + function_name),
+        text.find("let " + function_name),
+    ]
+    start = min((index for index in starts if index >= 0), default=-1)
+    if start < 0:
+        return None
+    open_index = text.find("{", start)
+    if open_index < 0:
+        return None
+    close_index = find_matching_delimiter(text, open_index, "{", "}")
+    if close_index is None:
+        return None
+    return text[open_index + 1 : close_index]
+
+
+def top_level_object_bodies(text: str) -> list[str]:
+    bodies: list[str] = []
+    index = 0
+    while index < len(text):
+        if text[index] != "{":
+            index += 1
+            continue
+        end = find_matching_delimiter(text, index, "{", "}")
+        if end is None:
+            break
+        bodies.append(text[index + 1 : end])
+        index = end + 1
+    return bodies
+
+
+def top_level_rust_struct_bodies(text: str, struct_name: str) -> list[str]:
+    bodies: list[str] = []
+    pattern = re.compile(r"\b" + re.escape(struct_name) + r"\s*\{")
+    for match in pattern.finditer(text):
+        start = text.find("{", match.start())
+        end = find_matching_delimiter(text, start, "{", "}")
+        if end is not None:
+            bodies.append(text[start + 1 : end])
+    return bodies
+
+
+def extract_ts_object_string_field(text: str, field: str) -> str:
+    match = re.search(r"\b" + re.escape(field) + r"\s*:\s*([\"'])(.*?)\1", text)
+    return match.group(2) if match else ""
+
+
+def extract_ts_object_boolean_field(text: str, field: str) -> str:
+    match = re.search(r"\b" + re.escape(field) + r"\s*:\s*(true|false)\b", text)
+    return match.group(1) if match else ""
+
+
+def extract_rust_object_string_field(text: str, field: str) -> str:
+    match = re.search(r"\b" + re.escape(field) + r"\s*:\s*\"([^\"]+)\"", text)
+    return match.group(1) if match else ""
+
+
+def extract_rust_menu_path(text: str) -> list[str]:
+    match = re.search(r"\bmenu_path\s*:\s*&\[(.*?)\]", text, re.S)
+    if not match:
+        return []
+    return re.findall(r"\"([^\"]+)\"", match.group(1))
+
+
+def unique_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered
+
+
+def missing_legacy_shell_menu_surface(shell_text: str, actions_text: str, menu_surface: dict[str, list[str]]) -> list[str]:
     failures: list[str] = []
+    if "legacyActionMatrix" not in shell_text:
+        failures.append("LegacyShell must render menuGroups from legacyActionMatrix")
+    if "menuGroups.map" not in shell_text:
+        failures.append("LegacyShell must render mapped menu groups")
+    actions = parse_legacy_action_matrix(actions_text)
+    if not actions:
+        return failures + ["legacyActionMatrix actions missing"]
+    actions_by_group_label = {
+        (action["group"], action["label"]): action
+        for action in actions
+    }
     for group_label, item_labels in menu_surface.items():
-        group_body = find_legacy_menu_group_body(text, group_label)
-        if group_body is None:
+        if group_label not in {action["group"] for action in actions}:
             failures.append(f"{group_label} menu group missing")
             continue
         for item_label in item_labels:
-            item_body = find_legacy_menu_item_body(group_body, item_label)
-            if item_body is None:
+            action = actions_by_group_label.get((group_label, item_label))
+            if action is None:
                 failures.append(f"{group_label}/{item_label} menu entry missing")
                 continue
-            if has_literal_disabled_true(item_body):
+            if action.get("disabled") == "true":
                 failures.append(f"{group_label}/{item_label} has literal disabled: true")
-            if not has_identifiable_menu_entry(item_body, item_label):
+            if not has_identifiable_menu_entry(action.get("body", ""), item_label) and "data-legacy-action" not in shell_text:
                 failures.append(f"{group_label}/{item_label} lacks data-testid or recognizable label")
     return failures
 

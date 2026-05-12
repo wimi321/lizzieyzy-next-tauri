@@ -217,35 +217,54 @@ def create_user_flow_inputs(root: Path, *, omitted_commands: set[str]) -> None:
         }}
         """,
     )
+    create_legacy_actions_fixture(root, smoke_user_flows)
     create_legacy_shell_fixture(root, smoke_user_flows)
 
 
+def create_legacy_actions_fixture(root: Path, smoke_user_flows) -> None:
+    actions = [
+        ("file.open", "File", "Open"),
+        ("file.save", "File", "Save"),
+        ("file.saveAs", "File", "Save As"),
+        ("file.importSgf", "File", "Import SGF"),
+        ("game.loadSample", "Game", "Load sample"),
+        ("game.parseSgf", "Game", "Parse SGF"),
+        ("analysis.runReview", "Analysis", "Run review"),
+        ("analysis.katagoPanel", "Analysis", "KataGo panel"),
+        ("view.candidates", "View", "Candidates"),
+        ("view.ownership", "View", "Ownership"),
+        ("view.policy", "View", "Policy"),
+        ("engine.profiles", "Engine", "Profiles"),
+        ("engine.assets", "Engine", "Assets"),
+        ("tools.providers", "Tools", "Providers"),
+        ("tools.preferences", "Tools", "Preferences"),
+        ("help.backendStatus", "Help", "Backend status"),
+    ]
+    action_rows = [
+        f'  {{ id: "{action_id}", group: "{group}", label: "{label}" }}'
+        for action_id, group, label in actions
+    ]
+    write(
+        root / smoke_user_flows.LEGACY_ACTIONS_SOURCE,
+        "export const legacyActionMatrix = [\n" + ",\n".join(action_rows) + "\n];\n",
+    )
+
+
 def create_legacy_shell_fixture(root: Path, smoke_user_flows) -> None:
-    menu_blocks: list[str] = []
-    for group, items in smoke_user_flows.LEGACY_SHELL_MENU_SURFACE.items():
-        item_blocks = [
-            f'{{ label: "{item}", onSelect: () => focusTarget("{slug_menu_target(item)}"), disabled: isBusy }}'
-            for item in items
-        ]
-        menu_blocks.append(
-            f"""
-            {{
-              label: "{group}",
-              items: [
-                {",".join(item_blocks)}
-              ]
-            }}
-            """
-        )
     write(
         root / smoke_user_flows.LEGACY_SHELL_SOURCE,
-        f"""
+        """
+        import { legacyActionMatrix } from "../domain/legacyActions";
+
         export function LegacyShell() {{
           const isBusy = false;
-          const focusTarget = (target: string) => target;
-          const menuGroups = [
-            {",".join(menu_blocks)}
-          ];
+          const groups = new Map();
+          for (const action of legacyActionMatrix) {
+            const items = groups.get(action.group) ?? [];
+            items.push({ action, disabled: isBusy });
+            groups.set(action.group, items);
+          }
+          const menuGroups = Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
           return (
             <nav data-testid="legacy-menubar">
               {{menuGroups.map((group) => (
@@ -256,10 +275,10 @@ def create_legacy_shell_fixture(root: Path, smoke_user_flows) -> None:
                       key={{item.label}}
                       type="button"
                       disabled={{item.disabled}}
+                      data-legacy-action={{item.action.id}}
                       data-testid={{`legacy-menu-${{group.label.toLowerCase()}}-${{item.label.toLowerCase().replaceAll(" ", "-")}}`}}
-                      onClick={{() => item.onSelect()}}
                     >
-                      {{item.label}}
+                      {{item.action.label}}
                     </button>
                   ))}}
                 </details>

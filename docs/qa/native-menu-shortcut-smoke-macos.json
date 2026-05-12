@@ -1,0 +1,154 @@
+{
+  "schema": "lizzieyzy.native-menu-shortcut-smoke.v1",
+  "name": "native_menu_shortcut_smoke",
+  "status": "pass",
+  "platform": "macos",
+  "collectionMethod": "scoped_source_plus_macos_native_menu_shortcut_evidence",
+  "eventName": "legacy://native-menu-action",
+  "groups": [
+    "File",
+    "Game",
+    "Analysis",
+    "View",
+    "Engine",
+    "Tools",
+    "Help"
+  ],
+  "actionIds": [
+    "file.open",
+    "file.save",
+    "file.saveAs",
+    "file.importSgf",
+    "game.loadSample",
+    "game.parseSgf",
+    "analysis.runReview",
+    "analysis.katagoPanel",
+    "view.candidates",
+    "view.ownership",
+    "view.policy",
+    "engine.profiles",
+    "engine.assets",
+    "tools.providers",
+    "tools.preferences",
+    "help.backendStatus"
+  ],
+  "nativeMenuSurface": true,
+  "nativeMenuEventBridge": true,
+  "keyboardShortcutSurface": true,
+  "actionIdsAligned": true,
+  "inputEditingSafe": true,
+  "fullShortcutParity": false,
+  "fullLegacyMenuParity": false,
+  "webviewDomProof": false,
+  "osNativeMenuFullParity": false,
+  "releasePublished": false,
+  "productionSigned": false,
+  "notarized": false,
+  "providerParityCovered": false,
+  "readboardParityCovered": false,
+  "ocrExternalCaptureCovered": false,
+  "windowsLinuxCovered": false,
+  "checks": [
+    {
+      "name": "native_menu_surface",
+      "status": "pass",
+      "details": {
+        "nativeMenuSurface": true,
+        "platform": "macos",
+        "menus": [
+          "File",
+          "Game",
+          "Analysis",
+          "View",
+          "Engine",
+          "Tools",
+          "Help"
+        ],
+        "scope": "OS-native menu surface presence for this batch"
+      }
+    },
+    {
+      "name": "native_menu_event_bridge",
+      "status": "pass",
+      "details": {
+        "nativeMenuEventBridge": true,
+        "eventName": "legacy://native-menu-action",
+        "scope": "native menu actions are bridged to the app action surface"
+      }
+    },
+    {
+      "name": "keyboard_shortcut_surface",
+      "status": "pass",
+      "details": {
+        "keyboardShortcutSurface": true,
+        "scope": "keyboard shortcut surface exists for the scoped action set"
+      }
+    },
+    {
+      "name": "action_ids_aligned",
+      "status": "pass",
+      "details": {
+        "actionIdsAligned": true,
+        "scope": "native menu items and keyboard shortcuts share scoped action ids"
+      }
+    },
+    {
+      "name": "input_editing_safe",
+      "status": "pass",
+      "details": {
+        "inputEditingSafe": true,
+        "scope": "shortcut handling preserves normal text input editing"
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "fullShortcutParity": false,
+        "fullLegacyMenuParity": false,
+        "webviewDomProof": false,
+        "osNativeMenuFullParity": false,
+        "releasePublished": false,
+        "productionSigned": false,
+        "notarized": false,
+        "providerParityCovered": false,
+        "readboardParityCovered": false,
+        "ocrExternalCaptureCovered": false,
+        "windowsLinuxCovered": false
+      }
+    }
+  ],
+  "boundaries": {
+    "fullShortcutParity": false,
+    "fullLegacyMenuParity": false,
+    "fullLegacyParity": false,
+    "fullLegacyParityCovered": false,
+    "webviewDomProof": false,
+    "webviewDomCovered": false,
+    "webviewDomAutomationCovered": false,
+    "osNativeMenuFullParity": false,
+    "releasePublished": false,
+    "productionSigned": false,
+    "notarized": false,
+    "providerCompleted": false,
+    "providerCovered": false,
+    "providerParityCovered": false,
+    "readboardCompleted": false,
+    "readboardCovered": false,
+    "readboardParityCovered": false,
+    "ocrCompleted": false,
+    "ocrCovered": false,
+    "ocrCaptureCovered": false,
+    "ocrExternalCaptureCovered": false,
+    "externalClientCaptureCovered": false,
+    "windowsLinuxCovered": false,
+    "windowsCovered": false,
+    "windowsParityCovered": false,
+    "linuxCovered": false,
+    "linuxParityCovered": false
+  },
+  "notes": [
+    "Scoped macOS evidence only.",
+    "This is not full shortcut parity, full legacy menu parity, WebView DOM proof, release proof, provider/readboard/OCR proof, or Windows/Linux parity evidence."
+  ]
+}

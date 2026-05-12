@@ -250,7 +250,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
   }
 
   return (
-    <section className="engine-setup-panel" aria-label="KataGo engine setup">
+    <section className="engine-setup-panel" aria-label="KataGo engine setup" data-testid="engine-setup-panel">
       <div className="engine-run-row">
         <label>
           <span>Profile</span>
@@ -269,7 +269,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       </div>
       <div className="engine-run-row" aria-label="Bundled runtime asset status">
         <strong>Bundled/runtime assets</strong>
-        <button type="button" onClick={() => void handleCheckRuntimeAssets()} disabled={disabled} title="Refresh runtime assets">Refresh</button>
+        <button type="button" data-testid="engine-runtime-assets-refresh" onClick={() => void handleCheckRuntimeAssets()} disabled={disabled} title="Refresh runtime assets">Refresh</button>
         <span className="message">{runtimeAssetStatus}</span>
       </div>
       {runtimeAssetValidation && (
@@ -295,7 +295,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         <label>
           <span>Engine</span>
           <div className="path-input-row">
-            <input value={enginePath} onChange={(event) => updatePath(setEnginePath, event.target.value)} placeholder="/path/to/katago" aria-invalid={isKnownMissing(assetChecks, "engine binary")} title={pathCheckTitle(assetChecks, "engine binary")} />
+            <input data-testid="engine-path-input" value={enginePath} onChange={(event) => updatePath(setEnginePath, event.target.value)} placeholder="/path/to/katago" aria-invalid={isKnownMissing(assetChecks, "engine binary")} title={pathCheckTitle(assetChecks, "engine binary")} />
             <button type="button" className="path-picker-button" onClick={() => void handlePickPath("Engine", enginePath, false, setEnginePath)}>
               Browse
             </button>
@@ -304,7 +304,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         <label>
           <span>Model</span>
           <div className="path-input-row">
-            <input value={modelPath} onChange={(event) => updatePath(setModelPath, event.target.value)} placeholder="/path/to/model.bin.gz" aria-invalid={isKnownMissing(assetChecks, "model")} title={pathCheckTitle(assetChecks, "model")} />
+            <input data-testid="engine-model-input" value={modelPath} onChange={(event) => updatePath(setModelPath, event.target.value)} placeholder="/path/to/model.bin.gz" aria-invalid={isKnownMissing(assetChecks, "model")} title={pathCheckTitle(assetChecks, "model")} />
             <button type="button" className="path-picker-button" onClick={() => void handlePickPath("Model", modelPath, false, setModelPath)}>
               Browse
             </button>
@@ -313,7 +313,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         <label>
           <span>Config</span>
           <div className="path-input-row">
-            <input value={configPath} onChange={(event) => updatePath(setConfigPath, event.target.value)} placeholder="/path/to/analysis.cfg" aria-invalid={isKnownMissing(assetChecks, "config")} title={pathCheckTitle(assetChecks, "config")} />
+            <input data-testid="engine-config-input" value={configPath} onChange={(event) => updatePath(setConfigPath, event.target.value)} placeholder="/path/to/analysis.cfg" aria-invalid={isKnownMissing(assetChecks, "config")} title={pathCheckTitle(assetChecks, "config")} />
             <button type="button" className="path-picker-button" onClick={() => void handlePickPath("Config", configPath, false, setConfigPath)}>
               Browse
             </button>
@@ -322,7 +322,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         <label>
           <span>Work dir</span>
           <div className="path-input-row">
-            <input value={workingDir} onChange={(event) => updatePath(setWorkingDir, event.target.value)} placeholder="Optional" aria-invalid={isKnownMissing(assetChecks, "working directory")} title={pathCheckTitle(assetChecks, "working directory")} />
+            <input data-testid="engine-working-dir-input" value={workingDir} onChange={(event) => updatePath(setWorkingDir, event.target.value)} placeholder="Optional" aria-invalid={isKnownMissing(assetChecks, "working directory")} title={pathCheckTitle(assetChecks, "working directory")} />
             <button type="button" className="path-picker-button" onClick={() => void handlePickPath("Work dir", workingDir, true, setWorkingDir)}>
               Browse
             </button>
@@ -334,11 +334,11 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
           <span>Max visits</span>
           <input type="number" min={1} step={1} value={maxVisits} onChange={(event) => setMaxVisits(event.target.value)} />
         </label>
-        <button onClick={handleRun} disabled={!canRun}>{disabled ? "Running..." : "Run KataGo"}</button>
-        <button onClick={handleAnalyzeGame} disabled={!canRun} title="Analyze every move">{disabled ? "Running..." : "Analyze game"}</button>
+        <button data-testid="engine-run-katago" onClick={handleRun} disabled={!canRun}>{disabled ? "Running..." : "Run KataGo"}</button>
+        <button data-testid="engine-analyze-game" onClick={handleAnalyzeGame} disabled={!canRun} title="Analyze every move">{disabled ? "Running..." : "Analyze game"}</button>
         {isAnalysisActive && <button onClick={() => void onCancelAnalysis?.()} disabled={!onCancelAnalysis}>Cancel</button>}
-        <button onClick={() => void handleSaveProfile()} disabled={!canSave}>Save profile</button>
-        <button onClick={() => void handleCheckAssets()} disabled={disabled}>Check assets</button>
+        <button data-testid="engine-save-profile" onClick={() => void handleSaveProfile()} disabled={!canSave}>Save profile</button>
+        <button data-testid="engine-check-assets" onClick={() => void handleCheckAssets()} disabled={disabled}>Check assets</button>
       </div>
       {(isAnalysisActive || analysisProgress) && (
         <div className="analysis-progress" aria-live="polite">

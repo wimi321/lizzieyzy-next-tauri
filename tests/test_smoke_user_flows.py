@@ -50,6 +50,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
             self.assertIn("desktop_sgf_editing_ux_smoke", pending_names)
+            self.assertIn("desktop_ui_click_smoke", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
@@ -162,6 +163,74 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("collectionMethod must be source_static_plus_tauri_runtime_chain", pending["desktop_sgf_editing_ux_smoke"])
             self.assertIn("runtimeDomObserved must be false", pending["desktop_sgf_editing_ux_smoke"])
             self.assertIn("screenshotObserved must be false", pending["desktop_sgf_editing_ux_smoke"])
+
+    def test_valid_desktop_ui_click_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_desktop_ui_click_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("desktop_ui_click_smoke", pass_names)
+            self.assertNotIn("desktop_ui_click_smoke", pending_names)
+
+    def test_desktop_ui_click_evidence_requires_screenshots(self) -> None:
+        self.assert_invalid_desktop_ui_click_evidence_pending(
+            lambda evidence: evidence.__setitem__("screenshots", []),
+            "screenshots must include at least two records",
+        )
+
+    def test_desktop_ui_click_evidence_rejects_native_dialog_claim(self) -> None:
+        self.assert_invalid_desktop_ui_click_evidence_pending(
+            lambda evidence: evidence["boundaries"].__setitem__("nativeFileDialogCovered", True),
+            "boundaries.nativeFileDialogCovered must be false",
+        )
+
+    def test_desktop_ui_click_evidence_requires_browser_dom(self) -> None:
+        self.assert_invalid_desktop_ui_click_evidence_pending(
+            lambda evidence: evidence.__setitem__("browserDomObserved", False),
+            "browserDomObserved must be true",
+        )
+
+    def test_desktop_ui_click_evidence_requires_clicked_controls(self) -> None:
+        self.assert_invalid_desktop_ui_click_evidence_pending(
+            lambda evidence: evidence.__setitem__("clickedControls", []),
+            "clickedControls must include at least one control",
+        )
+
+    def test_desktop_ui_click_evidence_rejects_local_absolute_screenshot_paths(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["path"] = "/Users/haoc/Documents/lizzieyzy-next/docs/qa/screenshots/local.png"
+
+        self.assert_invalid_desktop_ui_click_evidence_pending(
+            mutate,
+            "screenshots[0].path must not be a local absolute path",
+        )
+
+    def assert_invalid_desktop_ui_click_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_desktop_ui_click_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.DESKTOP_UI_CLICK_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("desktop_ui_click_smoke", failures)
+            self.assertIn("desktop_ui_click_smoke", pending)
+            self.assertIn(expected_detail, pending["desktop_ui_click_smoke"])
 
     def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1036,6 +1105,13 @@ def write_valid_desktop_sgf_editing_ux_evidence(root: Path) -> None:
     )
 
 
+def write_valid_desktop_ui_click_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.DESKTOP_UI_CLICK_SMOKE_EVIDENCE,
+        valid_desktop_ui_click_evidence(),
+    )
+
+
 def write_valid_katago_live_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, valid_katago_live_evidence())
 
@@ -1545,6 +1621,45 @@ def valid_desktop_sgf_editing_ux_evidence() -> dict[str, object]:
             {"name": name, "status": "pass", "details": {"covered": True}}
             for name in smoke_user_flows.DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS
         ],
+    }
+
+
+def valid_desktop_ui_click_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.DESKTOP_UI_CLICK_SMOKE_SCHEMA,
+        "name": "desktop_ui_click_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "browserDomObserved": True,
+        "screenshotObserved": True,
+        "clickObserved": True,
+        "screenshots": [
+            {
+                "label": "initial-workspace",
+                "path": "docs/qa/screenshots/desktop-ui-click-initial.png",
+                "sha256": "a" * 64,
+            },
+            {
+                "label": "after-tree-click",
+                "path": "docs/qa/screenshots/desktop-ui-click-after-tree.png",
+                "sha256": "b" * 64,
+            },
+        ],
+        "clickedControls": [
+            {"label": "SGF tree node", "selector": ".sgf-tree-node", "clicked": True},
+            {"label": "Save Comment", "selector": "button:has-text('Save Comment')", "clicked": True},
+        ],
+        "visibleAssertions": [
+            {"label": "LegacyShell", "selector": "[data-testid='legacy-shell']", "visible": True, "status": "pass"},
+            {"label": "SGF tree", "selector": ".sgf-tree-panel", "visible": True, "status": "pass"},
+            {"label": "Annotation editor", "selector": ".sgf-annotation-editor", "visible": True, "status": "pass"},
+        ],
+        "boundaries": {
+            "nativeFileDialogCovered": False,
+            "tauriWebviewDomObserved": False,
+            "fullNativeDialogProof": False,
+            "fullLegacyParityCovered": False,
+        },
     }
 
 

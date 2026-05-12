@@ -251,10 +251,10 @@ export function LegacyShell({
       </header>
 
       <section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar">
-        <button type="button" onClick={() => void onOpen()} disabled={isBusy} title="Open SGF">Open</button>
-        <button type="button" onClick={() => void onSave()} disabled={isBusy || !canSave} title="Save SGF">Save</button>
-        <button type="button" onClick={() => void onSaveAs()} disabled={isBusy} title="Save SGF as">Save As</button>
-        <label className={`file-button legacy-tool-file${isBusy ? " file-button-disabled" : ""}`} title="Import SGF">
+        <button type="button" data-testid="toolbar-open-sgf" onClick={() => void onOpen()} disabled={isBusy} title="Open SGF">Open</button>
+        <button type="button" data-testid="toolbar-save-sgf" onClick={() => void onSave()} disabled={isBusy || !canSave} title="Save SGF">Save</button>
+        <button type="button" data-testid="toolbar-save-as-sgf" onClick={() => void onSaveAs()} disabled={isBusy} title="Save SGF as">Save As</button>
+        <label className={`file-button legacy-tool-file${isBusy ? " file-button-disabled" : ""}`} data-testid="toolbar-import-sgf" title="Import SGF">
           Import
           <input ref={importInputRef} id={fileInputId} type="file" accept=".sgf,.txt,application/x-go-sgf,text/plain" disabled={isBusy} onChange={(event) => {
             void onImportFile(event.target.files?.[0] ?? null);
@@ -262,9 +262,9 @@ export function LegacyShell({
           }} />
         </label>
         <span className="legacy-toolbar-divider" aria-hidden="true" />
-        <button type="button" onClick={() => void onLoadSample()} disabled={isBusy} title="Load sample game">Sample</button>
-        <button type="button" onClick={() => void onParseSgf()} disabled={isBusy} title="Parse SGF source">Parse</button>
-        <button type="button" onClick={() => void onRunReview()} disabled={isBusy} title="Run review">Review</button>
+        <button type="button" data-testid="toolbar-load-sample" onClick={() => void onLoadSample()} disabled={isBusy} title="Load sample game">Sample</button>
+        <button type="button" data-testid="toolbar-parse-sgf" onClick={() => void onParseSgf()} disabled={isBusy} title="Parse SGF source">Parse</button>
+        <button type="button" data-testid="toolbar-run-review" onClick={() => void onRunReview()} disabled={isBusy} title="Run review">Review</button>
         <span className="legacy-toolbar-spacer" />
         <div className="legacy-document-chip" title={documentTitle}>
           <strong>{documentName}{dirty ? " *" : ""}</strong>
@@ -295,11 +295,11 @@ export function LegacyShell({
             <strong title={documentTitle}>{documentName}{dirty ? " *" : ""}</strong>
             <span>{dirty ? "Unsaved changes" : "Saved"}</span>
           </div>
-          <textarea value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
+          <textarea data-testid="sgf-source-textarea" value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
           <div className="button-row">
-            <button type="button" onClick={() => void onOpen()} disabled={isBusy}>Open</button>
-            <button type="button" onClick={() => void onSave()} disabled={isBusy || !canSave}>Save</button>
-            <button type="button" onClick={() => void onSaveAs()} disabled={isBusy}>Save As</button>
+            <button type="button" data-testid="sgf-source-open" onClick={() => void onOpen()} disabled={isBusy}>Open</button>
+            <button type="button" data-testid="sgf-source-save" onClick={() => void onSave()} disabled={isBusy || !canSave}>Save</button>
+            <button type="button" data-testid="sgf-source-save-as" onClick={() => void onSaveAs()} disabled={isBusy}>Save As</button>
             <label className={`file-button${isBusy ? " file-button-disabled" : ""}`}>
               Import SGF
               <input type="file" accept=".sgf,.txt,application/x-go-sgf,text/plain" disabled={isBusy} onChange={(event) => {
@@ -307,9 +307,9 @@ export function LegacyShell({
                 event.currentTarget.value = "";
               }} />
             </label>
-            <button type="button" onClick={() => void onLoadSample()} disabled={isBusy}>Load sample</button>
-            <button type="button" onClick={() => void onParseSgf()} disabled={isBusy}>Parse SGF</button>
-            <button type="button" onClick={() => void onRunReview()} disabled={isBusy}>Run review</button>
+            <button type="button" data-testid="sgf-source-load-sample" onClick={() => void onLoadSample()} disabled={isBusy}>Load sample</button>
+            <button type="button" data-testid="sgf-source-parse" onClick={() => void onParseSgf()} disabled={isBusy}>Parse SGF</button>
+            <button type="button" data-testid="sgf-source-run-review" onClick={() => void onRunReview()} disabled={isBusy}>Run review</button>
           </div>
         </section>
         {providerPanel}

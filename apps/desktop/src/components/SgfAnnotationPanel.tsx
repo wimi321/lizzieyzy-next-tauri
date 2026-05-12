@@ -63,7 +63,7 @@ export function SgfAnnotationPanel({ selectedNode, disabled = false, isSaving = 
   }
 
   return (
-    <section className="sgf-annotation-editor" aria-label="SGF node annotations">
+    <section className="sgf-annotation-editor" aria-label="SGF node annotations" data-testid="sgf-annotation-editor">
       <div className="sgf-properties-header">
         <div>
           <h3>Annotations</h3>
@@ -77,8 +77,9 @@ export function SgfAnnotationPanel({ selectedNode, disabled = false, isSaving = 
           return (
             <div key={field.key} className="sgf-property-field">
               <span>{field.key} {field.label}</span>
-              <textarea
-                value={textValue}
+                <textarea
+                  data-testid={`sgf-annotation-${field.key.toLowerCase()}-values`}
+                  value={textValue}
                 onChange={(event) => handleTextChange(field.key, event.target.value)}
                 disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations}
                 spellCheck={false}
@@ -89,25 +90,26 @@ export function SgfAnnotationPanel({ selectedNode, disabled = false, isSaving = 
                 {values.length > 0 ? values.join(", ") : "No values"}
               </span>
               <div className="sgf-node-actions" aria-label={`${field.key} annotation value controls`}>
-                <input
-                  value={addDraft[field.key] ?? ""}
+                  <input
+                    data-testid={`sgf-annotation-${field.key.toLowerCase()}-add-input`}
+                    value={addDraft[field.key] ?? ""}
                   onChange={(event) => setAddDraft((current) => ({ ...current, [field.key]: event.target.value }))}
                   disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations}
                   spellCheck={false}
                   aria-label={`Add ${field.key} annotation value`}
                   placeholder={field.placeholder}
                 />
-                <button type="button" onClick={() => handleAddValue(field.key)} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations}>
+                  <button type="button" data-testid={`sgf-annotation-${field.key.toLowerCase()}-add`} onClick={() => handleAddValue(field.key)} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations}>
                   Add
                 </button>
-                <button type="button" onClick={() => handleClear(field.key)} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations || values.length === 0}>
+                  <button type="button" data-testid={`sgf-annotation-${field.key.toLowerCase()}-clear`} onClick={() => handleClear(field.key)} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations || values.length === 0}>
                   Clear
                 </button>
               </div>
               {values.length > 0 && (
                 <div className="sgf-node-actions" aria-label={`${field.key} existing annotation values`}>
                   {values.map((value) => (
-                    <button key={value} type="button" onClick={() => handleRemoveValue(field.key, value)} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations}>
+                      <button key={value} type="button" data-testid={`sgf-annotation-${field.key.toLowerCase()}-remove`} onClick={() => handleRemoveValue(field.key, value)} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations}>
                       Remove {value}
                     </button>
                   ))}
@@ -119,7 +121,7 @@ export function SgfAnnotationPanel({ selectedNode, disabled = false, isSaving = 
       </div>
       <p className="sgf-properties-note">Values accept comma or line separated SGF coordinates. LB/AR/LN use SGF colon syntax. Empty fields delete that annotation property.</p>
       {error ? <p className="sgf-comment-note" role="alert">{error}</p> : null}
-      <button type="button" onClick={handleSave} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations || updates.length === 0}>
+      <button type="button" data-testid="sgf-annotations-save" onClick={handleSave} disabled={!selectedNode || disabled || isSaving || !onSaveAnnotations || updates.length === 0}>
         {isSaving ? "Saving..." : "Save Annotations"}
       </button>
     </section>

@@ -58,6 +58,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("tauri_webview_dom_click_smoke", pending_names)
             self.assertIn("legacy_layout_parity_smoke", pending_names)
             self.assertIn("legacy_shortcut_layout_evidence", pending_names)
+            self.assertIn("legacy_ui_gap_closure", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("installed_app_runtime_workflow", pending_names)
             self.assertIn("bundled_katago_installed_app_smoke", pending_names)
@@ -703,6 +704,103 @@ class SmokeUserFlowsTests(unittest.TestCase):
             "fullLegacyParity must be false",
         )
 
+    def test_valid_legacy_ui_gap_closure_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_json(root / smoke_user_flows.LEGACY_UI_GAP_CLOSURE_EVIDENCE, valid_legacy_ui_gap_closure_evidence())
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("legacy_ui_gap_closure", pass_names)
+            self.assertNotIn("legacy_ui_gap_closure", pending_names)
+
+    def test_legacy_ui_gap_closure_rejects_static_only_pass(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["runtimeObserved"] = False
+            evidence["sourceStaticOnly"] = True
+            evidence["collectionMethod"] = "source_static_only_summary"
+
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            mutate,
+            "runtimeObserved must be true",
+        )
+
+    def test_legacy_ui_gap_closure_rejects_missing_current_action(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            unsupported = evidence["unsupportedExternalOnlyActions"]
+            assert isinstance(unsupported, list)
+            evidence["unsupportedExternalOnlyActions"] = [
+                entry
+                for entry in unsupported
+                if not (isinstance(entry, dict) and entry.get("actionId") == "file.new")
+            ]
+
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            mutate,
+            "legacy UI gap closure missing current legacyActionMatrix action ids: file.new",
+        )
+
+    def test_legacy_ui_gap_closure_rejects_bogus_action(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            matrix = evidence["actionMatrix"]
+            assert isinstance(matrix, list)
+            bogus = dict(matrix[0])
+            bogus["actionId"] = "bogus.action"
+            matrix.append(bogus)
+
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            mutate,
+            "actionMatrix contains unknown actionId bogus.action",
+        )
+
+    def test_legacy_ui_gap_closure_rejects_stale_runtime_source(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            runtime_source = evidence["runtimeSource"]
+            assert isinstance(runtime_source, dict)
+            runtime_source["path"] = "docs/qa/stale-shortcut-layout.json"
+
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            mutate,
+            f"runtimeSource.path must be {smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_EVIDENCE}",
+        )
+
+    def test_legacy_ui_gap_closure_requires_screenshots_hash_and_size(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first.pop("sha256", None)
+            first.pop("sizeBytes", None)
+
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            mutate,
+            "screenshots[0].sha256 must be a 64-character hex sha256",
+        )
+
+    def test_legacy_ui_gap_closure_requires_unsupported_action_list(self) -> None:
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            lambda evidence: evidence.__setitem__("unsupportedExternalOnlyActions", []),
+            "unsupportedExternalOnlyActions must include scoped unsupported/external-only actions",
+        )
+
+    def test_legacy_ui_gap_closure_rejects_full_parity_overclaim(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullLegacyParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullShortcutParity"] = True
+
+        self.assert_invalid_legacy_ui_gap_closure_pending(
+            mutate,
+            "fullLegacyParity must be false",
+        )
+
     def assert_invalid_legacy_layout_parity_pending(self, mutate_evidence, expected_detail: str) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -724,6 +822,22 @@ class SmokeUserFlowsTests(unittest.TestCase):
         mutate_evidence(evidence)
         failures = smoke_user_flows.validate_legacy_shortcut_layout_evidence(evidence)
         self.assertIn(expected_detail, "; ".join(failures))
+
+    def assert_invalid_legacy_ui_gap_closure_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_legacy_ui_gap_closure_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.LEGACY_UI_GAP_CLOSURE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("legacy_ui_gap_closure", failures)
+            self.assertIn("legacy_ui_gap_closure", pending)
+            self.assertIn(expected_detail, pending["legacy_ui_gap_closure"])
 
     def test_valid_installed_macos_app_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -3929,22 +4043,29 @@ def create_readboard_ocr_corpus_fixtures(root: Path) -> None:
 
 def canonical_legacy_actions() -> list[dict[str, object]]:
     return [
-        {"id": "file.open", "group": "File", "label": "Open", "shortcut": "Mod+O"},
-        {"id": "file.save", "group": "File", "label": "Save", "shortcut": "Mod+S"},
-        {"id": "file.saveAs", "group": "File", "label": "Save As", "shortcut": "Mod+Shift+S"},
-        {"id": "file.importSgf", "group": "File", "label": "Import SGF", "shortcut": "Mod+I"},
-        {"id": "game.loadSample", "group": "Game", "label": "Load sample", "shortcut": "Mod+Shift+L"},
-        {"id": "game.parseSgf", "group": "Game", "label": "Parse SGF", "shortcut": "Mod+Enter"},
-        {"id": "analysis.runReview", "group": "Analysis", "label": "Run review", "shortcut": "Mod+R"},
-        {"id": "analysis.katagoPanel", "group": "Analysis", "label": "KataGo panel", "target": "profiles", "shortcut": "Mod+Shift+K"},
-        {"id": "view.candidates", "group": "View", "label": "Candidates", "target": "candidates", "shortcut": "Mod+1"},
-        {"id": "view.ownership", "group": "View", "label": "Ownership", "target": "ownership", "shortcut": "Mod+2"},
-        {"id": "view.policy", "group": "View", "label": "Policy", "target": "policy", "shortcut": "Mod+3"},
-        {"id": "engine.profiles", "group": "Engine", "label": "Profiles", "target": "profiles", "shortcut": "Mod+4"},
-        {"id": "engine.assets", "group": "Engine", "label": "Assets", "target": "assets", "shortcut": "Mod+5"},
-        {"id": "tools.providers", "group": "Tools", "label": "Providers", "target": "providers", "shortcut": "Mod+6"},
-        {"id": "tools.preferences", "group": "Tools", "label": "Preferences", "target": "preferences", "shortcut": "Mod+7"},
-        {"id": "help.backendStatus", "group": "Help", "label": "Backend status", "target": "backend-status", "shortcut": "Mod+/"},
+        {"id": "file.new", "group": "File", "label": "New", "targetSelector": "[data-testid='legacy-shell']", "shortcut": "Mod+N"},
+        {"id": "file.open", "group": "File", "label": "Open", "targetSelector": "[data-testid='toolbar-open-sgf']", "shortcut": "Mod+O"},
+        {"id": "file.save", "group": "File", "label": "Save", "targetSelector": "[data-testid='toolbar-save-sgf']", "shortcut": "Mod+S"},
+        {"id": "file.saveAs", "group": "File", "label": "Save As", "targetSelector": "[data-testid='toolbar-save-as-sgf']", "shortcut": "Mod+Shift+S"},
+        {"id": "file.importSgf", "group": "File", "label": "Import SGF", "targetSelector": "[data-testid='toolbar-import-sgf']", "shortcut": "Mod+I"},
+        {"id": "game.loadSample", "group": "Game", "label": "Load sample", "targetSelector": "[data-testid='toolbar-load-sample']", "shortcut": "Mod+Shift+L"},
+        {"id": "game.parseSgf", "group": "Game", "label": "Parse SGF", "targetSelector": "[data-testid='toolbar-parse-sgf']", "shortcut": "Mod+Enter"},
+        {"id": "game.firstMove", "group": "Game", "label": "First move", "target": "timeline", "targetSelector": "[data-testid='legacy-move-slider']", "shortcut": "Mod+ArrowLeft"},
+        {"id": "game.previousMove", "group": "Game", "label": "Previous move", "target": "timeline", "targetSelector": "[data-testid='legacy-move-slider']", "shortcut": "Mod+Shift+ArrowLeft"},
+        {"id": "game.nextMove", "group": "Game", "label": "Next move", "target": "timeline", "targetSelector": "[data-testid='legacy-move-slider']", "shortcut": "Mod+Shift+ArrowRight"},
+        {"id": "game.lastMove", "group": "Game", "label": "Last move", "target": "timeline", "targetSelector": "[data-testid='legacy-move-slider']", "shortcut": "Mod+ArrowRight"},
+        {"id": "analysis.runReview", "group": "Analysis", "label": "Run review", "targetSelector": "[data-testid='toolbar-run-review']", "shortcut": "Mod+R"},
+        {"id": "analysis.katagoPanel", "group": "Analysis", "label": "KataGo panel", "target": "profiles", "targetSelector": "[data-testid='engine-setup-panel']", "shortcut": "Mod+Shift+K"},
+        {"id": "view.candidates", "group": "View", "label": "Candidates", "target": "candidates", "targetSelector": "[data-testid='analysis-panel']", "shortcut": "Mod+1"},
+        {"id": "view.ownership", "group": "View", "label": "Ownership", "target": "ownership", "targetSelector": "[data-testid='legacy-board-pane']", "shortcut": "Mod+2"},
+        {"id": "view.policy", "group": "View", "label": "Policy", "target": "policy", "targetSelector": "[data-testid='analysis-panel']", "shortcut": "Mod+3"},
+        {"id": "view.sgfSource", "group": "View", "label": "SGF source", "target": "sgf-source", "targetSelector": "[data-testid='sgf-source-textarea']", "shortcut": "Mod+8"},
+        {"id": "engine.profiles", "group": "Engine", "label": "Profiles", "target": "profiles", "targetSelector": "[data-testid='engine-setup-panel']", "shortcut": "Mod+4"},
+        {"id": "engine.assets", "group": "Engine", "label": "Assets", "target": "assets", "targetSelector": "[data-testid='engine-check-assets']", "shortcut": "Mod+5"},
+        {"id": "tools.providers", "group": "Tools", "label": "Providers", "target": "providers", "targetSelector": "[data-testid='provider-panel']", "shortcut": "Mod+6"},
+        {"id": "tools.preferences", "group": "Tools", "label": "Preferences", "target": "preferences", "targetSelector": "[data-testid='preferences-panel']", "shortcut": "Mod+7"},
+        {"id": "help.backendStatus", "group": "Help", "label": "Backend status", "target": "backend-status", "targetSelector": "[data-testid='legacy-statusbar']", "shortcut": "Mod+/"},
+        {"id": "help.about", "group": "Help", "label": "About", "target": "about", "targetSelector": "[data-testid='legacy-about-target']", "shortcut": "Mod+Shift+/"},
     ]
 
 
@@ -5807,23 +5928,23 @@ def valid_tauri_webview_dom_click_evidence() -> dict[str, object]:
 
 
 def valid_legacy_action_shortcut_matrix() -> list[dict[str, object]]:
-    entries = [
-        ("file.open", "File/Open", "Mod+O", "[data-testid='toolbar-open-sgf']"),
-        ("game.loadSample", "Game/Load sample", "Mod+Shift+L", "[data-testid='toolbar-load-sample']"),
-        ("game.parseSgf", "Game/Parse SGF", "Mod+Enter", "[data-testid='toolbar-parse-sgf']"),
-        ("analysis.runReview", "Analysis/Run review", "Mod+R", "[data-testid='toolbar-run-review']"),
-        ("view.candidates", "View/Candidates", "Mod+1", "[data-testid='legacy-board-pane']"),
-        ("engine.profiles", "Engine/Profiles", "Mod+4", "[data-testid='engine-setup-panel']"),
-        ("tools.providers", "Tools/Providers", "Mod+6", "[data-testid='provider-panel']"),
-        ("tools.preferences", "Tools/Preferences", "Mod+7", "[data-testid='preferences-panel']"),
-        ("help.backendStatus", "Help/Backend status", "Mod+/", "[data-testid='legacy-backend-status']"),
-    ]
+    scoped_ids = {
+        "file.open",
+        "game.loadSample",
+        "game.parseSgf",
+        "analysis.runReview",
+        "view.candidates",
+        "engine.profiles",
+        "tools.providers",
+        "tools.preferences",
+        "help.backendStatus",
+    }
     return [
         {
-            "actionId": action_id,
-            "menuPath": menu_path,
-            "shortcut": shortcut,
-            "targetSelector": target_selector,
+            "actionId": str(action["id"]),
+            "menuPath": f"{action['group']}/{action['label']}",
+            "shortcut": str(action["shortcut"]),
+            "targetSelector": str(action["targetSelector"]),
             "inputEditingBehavior": {
                 "inputEditingSafe": True,
                 "suppressedInTextInput": True,
@@ -5832,13 +5953,14 @@ def valid_legacy_action_shortcut_matrix() -> list[dict[str, object]]:
             "disabledOrAvailability": "available or safely disabled depending current document state",
             "observedBy": ["runtime-click", "runtime-shortcut", "visible-target"],
             "visibleTargetAssertion": {
-                "label": menu_path,
-                "selector": target_selector,
+                "label": f"{action['group']}/{action['label']}",
+                "selector": str(action["targetSelector"]),
                 "visible": True,
                 "status": "pass",
             },
         }
-        for action_id, menu_path, shortcut, target_selector in entries
+        for action in canonical_legacy_actions()
+        if action["id"] in scoped_ids
     ]
 
 
@@ -5877,6 +5999,88 @@ def static_only_legacy_shortcut_layout_evidence() -> dict[str, object]:
             "osNativeMenuParity": False,
             "nativeDialogParity": False,
         },
+    }
+
+
+def valid_legacy_ui_gap_closure_evidence() -> dict[str, object]:
+    source = valid_legacy_shortcut_layout_evidence()
+    action_matrix = source["actionMatrix"]
+    assert isinstance(action_matrix, list)
+    covered_ids = {
+        str(action.get("actionId"))
+        for action in action_matrix
+        if isinstance(action, dict) and isinstance(action.get("actionId"), str)
+    }
+    unsupported_actions = []
+    for action in canonical_legacy_actions():
+        action_id = str(action["id"])
+        if action_id in covered_ids:
+            continue
+        reason = (
+            "Blocked for this scoped gap-closure proof because New is destructive and requires separate reset/dirty-state confirmation evidence."
+            if action_id == "file.new"
+            else "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input."
+        )
+        unsupported_actions.append(
+            {
+                "actionId": action_id,
+                "menuPath": f"{action['group']}/{action['label']}",
+                "shortcut": str(action["shortcut"]),
+                "targetSelector": str(action["targetSelector"]),
+                "reason": reason,
+                "covered": False,
+                "runtimeObserved": False,
+            }
+        )
+    boundaries = {
+        "fullLegacyParity": False,
+        "fullShortcutParity": False,
+        "fullLayoutParity": False,
+        "pixelPerfectLayoutParity": False,
+        "osNativeMenuParity": False,
+        "nativeDialogParity": False,
+        "releaseParity": False,
+    }
+    return {
+        "schema": smoke_user_flows.LEGACY_UI_GAP_CLOSURE_SCHEMA,
+        "name": "legacy_ui_gap_closure",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "aggregated_from_runtime_legacy_shortcut_layout_evidence",
+        "runtimeObserved": True,
+        "sourceStaticOnly": False,
+        "browserOnly": False,
+        "artifactOnly": False,
+        "runtimeSource": {
+            "kind": "runtime_legacy_shortcut_layout_evidence",
+            "path": smoke_user_flows.LEGACY_SHORTCUT_LAYOUT_EVIDENCE,
+        },
+        "sourceFacts": {
+            "legacyActionMatrix": smoke_user_flows.LEGACY_ACTIONS_SOURCE,
+            "currentActionCount": len(canonical_legacy_actions()),
+        },
+        "clickedObservedCount": source["clickedObservedCount"],
+        "shortcutObservedCount": source["shortcutObservedCount"],
+        "visibleTargetCount": source["visibleTargetCount"],
+        "inputEditingProtection": {
+            "verified": True,
+            "textInputSuppressionObserved": True,
+            "observedCount": 3,
+        },
+        "scopedCoveredActionIds": [str(action_id) for action_id in [action["id"] for action in canonical_legacy_actions()] if action_id in covered_ids],
+        "actionMatrix": source["actionMatrix"],
+        "screenshots": source["screenshots"],
+        "unsupportedExternalOnlyActions": unsupported_actions,
+        "checks": [
+            {"name": "runtime_action_matrix_observed", "status": "pass", "details": {"coveredActionCount": len(covered_ids)}},
+            {"name": "menu_shortcut_targets_observed", "status": "pass", "details": {"clickedObservedCount": 8}},
+            {"name": "input_editing_protection", "status": "pass", "details": {"observedCount": 3}},
+            {"name": "screenshots_recorded", "status": "pass", "details": {"count": 5}},
+            {"name": "unsupported_external_actions_recorded", "status": "pass", "details": {"count": len(unsupported_actions)}},
+            {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
+        ],
+        **boundaries,
+        "boundaries": boundaries,
     }
 
 
@@ -7069,9 +7273,10 @@ def create_legacy_actions_fixture(
         action_id = action_id_overrides.get(str(action["id"]), str(action["id"]))
         disabled = ", disabled: true" if (group, label) in disabled_entries else ""
         target = f', target: "{action["target"]}"' if action.get("target") else ""
+        target_selector = f', targetSelector: "{action["targetSelector"]}"' if action.get("targetSelector") else ""
         shortcut = f', shortcut: "{action["shortcut"]}"' if action.get("shortcut") else ""
         action_blocks.append(
-            f'  {{ id: "{action_id}", group: "{group}", label: "{label}"{target}{shortcut}{disabled} }}'
+            f'  {{ id: "{action_id}", group: "{group}", label: "{label}", menuPath: ["{group}", "{label}"]{target}{target_selector}{shortcut}{disabled} }}'
         )
     write(
         root / smoke_user_flows.LEGACY_ACTIONS_SOURCE,

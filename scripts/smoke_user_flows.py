@@ -150,6 +150,8 @@ LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE = "docs/qa/legacy-layout-parity-smoke-macos.
 LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA = "lizzieyzy.legacy-layout-parity-smoke.v1"
 LEGACY_SHORTCUT_LAYOUT_EVIDENCE = "docs/qa/legacy-shortcut-layout-evidence-macos.json"
 LEGACY_SHORTCUT_LAYOUT_SCHEMA = "lizzieyzy.legacy-shortcut-layout-evidence.v1"
+LEGACY_UI_GAP_CLOSURE_EVIDENCE = "docs/qa/legacy-ui-gap-closure-macos.json"
+LEGACY_UI_GAP_CLOSURE_SCHEMA = "lizzieyzy.legacy-ui-gap-closure.v1"
 LEGACY_LAYOUT_REQUIRED_SCREENSHOTS = [
     "default review",
     "sgf editing",
@@ -183,6 +185,23 @@ LEGACY_SHORTCUT_LAYOUT_REQUIRED_FALSE_FIELDS = [
     "pixelPerfectLayoutParity",
     "osNativeMenuParity",
     "nativeDialogParity",
+]
+LEGACY_UI_GAP_CLOSURE_REQUIRED_FALSE_FIELDS = [
+    "fullLegacyParity",
+    "fullShortcutParity",
+    "fullLayoutParity",
+    "pixelPerfectLayoutParity",
+    "osNativeMenuParity",
+    "nativeDialogParity",
+    "releaseParity",
+]
+LEGACY_UI_GAP_CLOSURE_REQUIRED_CHECKS = [
+    "runtime_action_matrix_observed",
+    "menu_shortcut_targets_observed",
+    "input_editing_protection",
+    "screenshots_recorded",
+    "unsupported_external_actions_recorded",
+    "scope_boundaries_recorded",
 ]
 LEGACY_ACTION_LAYOUT_REQUIRED_GROUPS = ["File", "Game", "Analysis", "View", "Engine", "Tools", "Help"]
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
@@ -1351,6 +1370,7 @@ class UserFlowSmoke:
         self.check_tauri_webview_dom_click_smoke_evidence()
         self.check_legacy_layout_parity_smoke_evidence()
         self.check_legacy_shortcut_layout_evidence()
+        self.check_legacy_ui_gap_closure_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_installed_app_runtime_workflow_evidence()
         self.check_bundled_katago_installed_app_smoke_evidence()
@@ -1587,6 +1607,30 @@ class UserFlowSmoke:
         self.pass_(
             "legacy_shortcut_layout_evidence",
             "scoped legacy action/shortcut/layout runtime evidence passes with action matrix, screenshots, input-editing, and boundary checks",
+        )
+
+    def check_legacy_ui_gap_closure_evidence(self) -> None:
+        evidence_path = self.path(LEGACY_UI_GAP_CLOSURE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "legacy_ui_gap_closure",
+                f"TODO gate: record scoped legacy UI/menu/shortcut gap-closure runtime evidence at {LEGACY_UI_GAP_CLOSURE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(LEGACY_UI_GAP_CLOSURE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_legacy_ui_gap_closure_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "legacy_ui_gap_closure",
+                f"{LEGACY_UI_GAP_CLOSURE_EVIDENCE} is present but not valid scoped legacy UI/menu/shortcut gap-closure runtime evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "legacy_ui_gap_closure",
+            "scoped legacy UI/menu/shortcut gap-closure evidence passes with action ids, menu paths, shortcuts, targets, runtime counts, screenshots, unsupported actions, and boundary checks",
         )
 
     def check_installed_macos_app_smoke_evidence(self) -> None:
@@ -3026,6 +3070,287 @@ def validate_legacy_shortcut_layout_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_legacy_layout_visible_assertions(evidence.get("visibleAssertions")))
     failures.extend(validate_legacy_layout_no_critical_overlap_or_clipping(evidence))
     failures.extend(validate_legacy_shortcut_layout_boundaries(evidence))
+    return failures
+
+
+def validate_legacy_ui_gap_closure_evidence(evidence: Any, root: Path | None = None) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != LEGACY_UI_GAP_CLOSURE_SCHEMA:
+        failures.append(f"schema must be {LEGACY_UI_GAP_CLOSURE_SCHEMA}")
+    if evidence.get("name") != "legacy_ui_gap_closure":
+        failures.append("name must be legacy_ui_gap_closure")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+
+    failures.extend(validate_legacy_ui_gap_runtime_observed(evidence))
+    failures.extend(validate_legacy_ui_gap_counts(evidence))
+    failures.extend(validate_legacy_action_shortcut_matrix(evidence))
+    failures.extend(validate_legacy_ui_gap_input_editing_protection(evidence))
+    failures.extend(validate_legacy_ui_gap_screenshots(evidence.get("screenshots")))
+    failures.extend(validate_legacy_ui_gap_unsupported_actions(evidence.get("unsupportedExternalOnlyActions")))
+    failures.extend(validate_legacy_ui_gap_source_alignment(evidence, root or ROOT))
+    failures.extend(validate_legacy_ui_gap_checks(evidence))
+    failures.extend(validate_legacy_ui_gap_boundaries(evidence))
+    return failures
+
+
+def validate_legacy_ui_gap_runtime_observed(evidence: dict[str, Any]) -> list[str]:
+    failures = validate_legacy_layout_runtime_observed(evidence)
+    collection_method = str(evidence.get("collectionMethod", "")).lower()
+    if "runtime" not in collection_method:
+        failures.append("collectionMethod must include runtime evidence")
+    if evidence.get("browserOnly") is True or evidence.get("artifactOnly") is True:
+        failures.append("browserOnly/artifactOnly evidence is not accepted for PASS")
+    if evidence.get("runtimeObserved") is True and evidence.get("sourceStaticOnly") is True:
+        failures.append("runtimeObserved cannot be true when sourceStaticOnly is true")
+    runtime_source = evidence.get("runtimeSource")
+    if not non_empty_proof(runtime_source):
+        failures.append("runtimeSource must identify the runtime evidence source")
+    return failures
+
+
+def validate_legacy_ui_gap_counts(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    clicked_count = int_or_none(first_present(evidence, "clickedObservedCount", "clickedCount"))
+    shortcut_count = int_or_none(first_present(evidence, "shortcutObservedCount", "shortcutCount"))
+    visible_count = int_or_none(first_present(evidence, "visibleTargetCount", "visibleTargetsCount"))
+    if clicked_count is None or clicked_count < 4:
+        failures.append("clickedObservedCount must be at least 4")
+    if shortcut_count is None or shortcut_count < 4:
+        failures.append("shortcutObservedCount must be at least 4")
+    if visible_count is None or visible_count < 8:
+        failures.append("visibleTargetCount must be at least 8")
+    return failures
+
+
+def validate_legacy_ui_gap_input_editing_protection(evidence: dict[str, Any]) -> list[str]:
+    protection = first_present(evidence, "inputEditingProtection", "inputEditingSafety", "inputEditing")
+    if not isinstance(protection, dict):
+        return ["inputEditingProtection must be an object"]
+    failures: list[str] = []
+    if protection.get("verified") is not True and protection.get("inputEditingSafe") is not True:
+        failures.append("inputEditingProtection.verified must be true")
+    if protection.get("textInputSuppressionObserved") is not True and protection.get("suppressedInTextInput") is not True:
+        failures.append("inputEditingProtection.textInputSuppressionObserved must be true")
+    observed_count = int_or_none(first_present(protection, "observedCount", "checkedCount"))
+    if observed_count is None or observed_count < 2:
+        failures.append("inputEditingProtection.observedCount must be at least 2")
+    return failures
+
+
+def validate_legacy_ui_gap_screenshots(value: Any) -> list[str]:
+    failures = validate_desktop_ui_click_screenshots(value)
+    if not isinstance(value, list):
+        return failures
+    if len(value) < 3:
+        failures.append("screenshots must include at least three runtime records")
+    for index, screenshot in enumerate(value):
+        if not isinstance(screenshot, dict):
+            continue
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be non-empty")
+        elif path.startswith(("/Users/", "/tmp/", "~")):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+        sha = screenshot.get("sha256")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        size_bytes = int_or_none(first_present(screenshot, "sizeBytes", "bytes"))
+        if size_bytes is None or size_bytes <= 0:
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        source = screenshot.get("source")
+        if not isinstance(source, str) or "runtime" not in source.lower():
+            failures.append(f"screenshots[{index}].source must mention runtime")
+        captured_after = screenshot.get("capturedAfterActionId")
+        if not isinstance(captured_after, str) or not captured_after.strip():
+            failures.append(f"screenshots[{index}].capturedAfterActionId must be non-empty")
+    return failures
+
+
+def validate_legacy_ui_gap_unsupported_actions(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["unsupportedExternalOnlyActions must be a list"]
+    failures: list[str] = []
+    if not value:
+        failures.append("unsupportedExternalOnlyActions must include scoped unsupported/external-only actions")
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            failures.append(f"unsupportedExternalOnlyActions[{index}] must be an object")
+            continue
+        for key in ("actionId", "menuPath", "reason"):
+            if not isinstance(entry.get(key), str) or not entry.get(key, "").strip():
+                failures.append(f"unsupportedExternalOnlyActions[{index}].{key} must be non-empty")
+        if entry.get("covered") is True or entry.get("runtimeObserved") is True:
+            failures.append(f"unsupportedExternalOnlyActions[{index}] must not be marked covered/runtimeObserved")
+    return failures
+
+
+def validate_legacy_ui_gap_source_alignment(evidence: dict[str, Any], root: Path) -> list[str]:
+    failures: list[str] = []
+    actions_path = root / LEGACY_ACTIONS_SOURCE
+    if not actions_path.is_file():
+        return ["legacyActions source missing for legacy UI gap closure validation"]
+    expected_actions = parse_legacy_action_matrix(actions_path.read_text(encoding="utf-8"))
+    if not expected_actions:
+        return ["legacyActionMatrix actions missing for legacy UI gap closure validation"]
+
+    runtime_source = evidence.get("runtimeSource")
+    if not isinstance(runtime_source, dict):
+        failures.append("runtimeSource must be an object")
+    else:
+        if runtime_source.get("path") != LEGACY_SHORTCUT_LAYOUT_EVIDENCE:
+            failures.append(f"runtimeSource.path must be {LEGACY_SHORTCUT_LAYOUT_EVIDENCE}")
+        if runtime_source.get("kind") != "runtime_legacy_shortcut_layout_evidence":
+            failures.append("runtimeSource.kind must be runtime_legacy_shortcut_layout_evidence")
+    source_facts = evidence.get("sourceFacts")
+    if not isinstance(source_facts, dict):
+        failures.append("sourceFacts must be an object")
+    elif source_facts.get("legacyActionMatrix") != LEGACY_ACTIONS_SOURCE:
+        failures.append(f"sourceFacts.legacyActionMatrix must be {LEGACY_ACTIONS_SOURCE}")
+
+    expected_by_id = {action["id"]: action for action in expected_actions}
+    expected_ids = list(expected_by_id)
+    covered_entries = first_present(evidence, "actionMatrix", "legacyActionMatrix", "actions")
+    unsupported_entries = evidence.get("unsupportedExternalOnlyActions")
+    if not isinstance(covered_entries, list):
+        covered_entries = []
+    if not isinstance(unsupported_entries, list):
+        unsupported_entries = []
+
+    covered_by_id: dict[str, dict[str, Any]] = {}
+    for index, entry in enumerate(covered_entries):
+        if not isinstance(entry, dict):
+            continue
+        action_id = entry.get("actionId")
+        if not isinstance(action_id, str) or not action_id.strip():
+            continue
+        if action_id in covered_by_id:
+            failures.append(f"actionMatrix duplicate actionId {action_id}")
+        covered_by_id[action_id] = entry
+        if action_id not in expected_by_id:
+            failures.append(f"actionMatrix contains unknown actionId {action_id}")
+
+    unsupported_by_id: dict[str, dict[str, Any]] = {}
+    for index, entry in enumerate(unsupported_entries):
+        if not isinstance(entry, dict):
+            continue
+        action_id = entry.get("actionId")
+        if not isinstance(action_id, str) or not action_id.strip():
+            continue
+        if action_id in unsupported_by_id:
+            failures.append(f"unsupportedExternalOnlyActions duplicate actionId {action_id}")
+        unsupported_by_id[action_id] = entry
+        if action_id not in expected_by_id:
+            failures.append(f"unsupportedExternalOnlyActions contains unknown actionId {action_id}")
+
+    covered_ids = set(covered_by_id)
+    unsupported_ids = set(unsupported_by_id)
+    duplicated = sorted(covered_ids & unsupported_ids)
+    if duplicated:
+        failures.append("action ids must not be both covered and unsupported: " + ", ".join(duplicated))
+    missing = [action_id for action_id in expected_ids if action_id not in covered_ids and action_id not in unsupported_ids]
+    if missing:
+        failures.append("legacy UI gap closure missing current legacyActionMatrix action ids: " + ", ".join(missing))
+
+    scoped_subset_ids = evidence.get("scopedCoveredActionIds")
+    if not isinstance(scoped_subset_ids, list) or any(not isinstance(item, str) for item in scoped_subset_ids):
+        failures.append("scopedCoveredActionIds must list covered action ids")
+    else:
+        if scoped_subset_ids != [action_id for action_id in expected_ids if action_id in covered_ids]:
+            failures.append("scopedCoveredActionIds must exactly match covered current action ids in source order")
+
+    if "file.new" in covered_by_id:
+        failures.append("file.new must be blocked/unsupported for this scoped gap-closure evidence")
+    file_new = unsupported_by_id.get("file.new")
+    if not isinstance(file_new, dict):
+        failures.append("unsupportedExternalOnlyActions must include file.new blocked semantics")
+    elif "block" not in str(file_new.get("reason", "")).lower() and "destructive" not in str(file_new.get("reason", "")).lower():
+        failures.append("file.new unsupported reason must describe blocked/destructive semantics")
+
+    for action_id, entry in covered_by_id.items():
+        expected = expected_by_id.get(action_id)
+        if expected is None:
+            continue
+        failures.extend(validate_legacy_ui_gap_action_matches_source(entry, expected, f"actionMatrix[{action_id}]"))
+    for action_id, entry in unsupported_by_id.items():
+        expected = expected_by_id.get(action_id)
+        if expected is None:
+            continue
+        failures.extend(validate_legacy_ui_gap_action_matches_source(entry, expected, f"unsupportedExternalOnlyActions[{action_id}]", allow_missing_selector=True))
+        if entry.get("covered") is not False:
+            failures.append(f"unsupportedExternalOnlyActions[{action_id}].covered must be false")
+        if entry.get("runtimeObserved") is not False:
+            failures.append(f"unsupportedExternalOnlyActions[{action_id}].runtimeObserved must be false")
+    return failures
+
+
+def validate_legacy_ui_gap_action_matches_source(
+    entry: dict[str, Any],
+    expected: dict[str, str],
+    label: str,
+    *,
+    allow_missing_selector: bool = False,
+) -> list[str]:
+    failures: list[str] = []
+    expected_menu_path = normalize_menu_path(expected.get("menuPath", ""))
+    actual_menu_path = normalize_menu_path(str(entry.get("menuPath", "")))
+    if actual_menu_path != expected_menu_path:
+        failures.append(f"{label}.menuPath must match current legacyActionMatrix ({expected_menu_path})")
+    if entry.get("shortcut") != expected.get("shortcut"):
+        failures.append(f"{label}.shortcut must match current legacyActionMatrix ({expected.get('shortcut')})")
+    expected_selector = expected.get("targetSelector")
+    actual_selector = entry.get("targetSelector")
+    if expected_selector:
+        if allow_missing_selector and actual_selector in (None, ""):
+            return failures
+        if actual_selector != expected_selector:
+            failures.append(f"{label}.targetSelector must match current legacyActionMatrix ({expected_selector})")
+    return failures
+
+
+def normalize_menu_path(value: str) -> str:
+    return "/".join(part.strip() for part in re.split(r"\s*(?:/|>)\s*", value.strip()) if part.strip())
+
+
+def validate_legacy_ui_gap_checks(evidence: dict[str, Any]) -> list[str]:
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return ["checks must be a list"]
+    failures: list[str] = []
+    check_by_name = {
+        str(check.get("name")): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+    missing = [name for name in LEGACY_UI_GAP_CLOSURE_REQUIRED_CHECKS if name not in check_by_name]
+    if missing:
+        failures.append("checks missing " + ", ".join(missing))
+    not_pass = [
+        name
+        for name in LEGACY_UI_GAP_CLOSURE_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() not in {"pass", "passed"}
+    ]
+    if not_pass:
+        failures.append("required checks must pass: " + ", ".join(not_pass))
+    return failures
+
+
+def validate_legacy_ui_gap_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+        boundaries = {}
+    for key in LEGACY_UI_GAP_CLOSURE_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is True:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
     return failures
 
 
@@ -8085,9 +8410,14 @@ def parse_legacy_action_matrix(text: str) -> list[dict[str, str]]:
             "id": extract_ts_object_string_field(object_body, "id"),
             "group": extract_ts_object_string_field(object_body, "group"),
             "label": extract_ts_object_string_field(object_body, "label"),
+            "menuPath": extract_ts_object_menu_path(object_body),
+            "shortcut": extract_ts_object_string_field(object_body, "shortcut"),
+            "targetSelector": extract_ts_object_string_field(object_body, "targetSelector"),
             "disabled": extract_ts_object_boolean_field(object_body, "disabled"),
         }
         if action["id"] and action["group"] and action["label"]:
+            if not action["menuPath"]:
+                action["menuPath"] = f"{action['group']}/{action['label']}"
             actions.append(action)
     return actions
 
@@ -8186,6 +8516,14 @@ def top_level_rust_struct_bodies(text: str, struct_name: str) -> list[str]:
 def extract_ts_object_string_field(text: str, field: str) -> str:
     match = re.search(r"\b" + re.escape(field) + r"\s*:\s*([\"'])(.*?)\1", text)
     return match.group(2) if match else ""
+
+
+def extract_ts_object_menu_path(text: str) -> str:
+    match = re.search(r"\bmenuPath\s*:\s*\[(.*?)\]", text, re.S)
+    if not match:
+        return ""
+    parts = re.findall(r"([\"'])(.*?)\1", match.group(1))
+    return "/".join(part[1] for part in parts)
 
 
 def extract_ts_object_boolean_field(text: str, field: str) -> str:

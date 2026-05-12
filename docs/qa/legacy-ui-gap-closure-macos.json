@@ -1,0 +1,527 @@
+{
+  "actionMatrix": [
+    {
+      "actionId": "file.open",
+      "disabledOrAvailability": "visible toolbar control is present; native dialog remains out of scope",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "File/Open",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+O",
+      "targetSelector": "[data-testid='toolbar-open-sgf']",
+      "visibleTargetAssertion": {
+        "label": "File/Open",
+        "selector": "[data-testid='toolbar-open-sgf']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "game.loadSample",
+      "disabledOrAvailability": "visible toolbar control is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Game/Load sample",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+Shift+L",
+      "targetSelector": "[data-testid='toolbar-load-sample']",
+      "visibleTargetAssertion": {
+        "label": "Game/Load sample",
+        "selector": "[data-testid='toolbar-load-sample']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "game.parseSgf",
+      "disabledOrAvailability": "visible toolbar control is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Game/Parse SGF",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+Enter",
+      "targetSelector": "[data-testid='toolbar-parse-sgf']",
+      "visibleTargetAssertion": {
+        "label": "Game/Parse SGF",
+        "selector": "[data-testid='toolbar-parse-sgf']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "analysis.runReview",
+      "disabledOrAvailability": "visible toolbar control is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Analysis/Run review",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+R",
+      "targetSelector": "[data-testid='toolbar-run-review']",
+      "visibleTargetAssertion": {
+        "label": "Analysis/Run review",
+        "selector": "[data-testid='toolbar-run-review']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "view.candidates",
+      "disabledOrAvailability": "visible board target is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "View/Candidates",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+1",
+      "targetSelector": "[data-testid='analysis-panel']",
+      "visibleTargetAssertion": {
+        "label": "View/Candidates",
+        "selector": "[data-testid='analysis-panel']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "engine.profiles",
+      "disabledOrAvailability": "visible engine target is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Engine/Profiles",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+4",
+      "targetSelector": "[data-testid='engine-setup-panel']",
+      "visibleTargetAssertion": {
+        "label": "Engine/Profiles",
+        "selector": "[data-testid='engine-setup-panel']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "tools.providers",
+      "disabledOrAvailability": "visible provider/readboard target is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Tools/Providers",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+6",
+      "targetSelector": "[data-testid='provider-panel']",
+      "visibleTargetAssertion": {
+        "label": "Tools/Providers",
+        "selector": "[data-testid='provider-panel']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "tools.preferences",
+      "disabledOrAvailability": "visible preferences target is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Tools/Preferences",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+7",
+      "targetSelector": "[data-testid='preferences-panel']",
+      "visibleTargetAssertion": {
+        "label": "Tools/Preferences",
+        "selector": "[data-testid='preferences-panel']",
+        "status": "pass",
+        "visible": true
+      }
+    },
+    {
+      "actionId": "help.backendStatus",
+      "disabledOrAvailability": "visible backend-status target is present in browser runtime evidence",
+      "inputEditingBehavior": {
+        "inputEditingSafe": true,
+        "status": "pass",
+        "suppressedInTextInput": true
+      },
+      "menuPath": "Help/Backend status",
+      "observedBy": [
+        "browser-runtime-click",
+        "runtime-shortcut",
+        "visible-target"
+      ],
+      "shortcut": "Mod+/",
+      "targetSelector": "[data-testid='legacy-statusbar']",
+      "visibleTargetAssertion": {
+        "label": "Help/Backend status",
+        "selector": "[data-testid='legacy-statusbar']",
+        "status": "pass",
+        "visible": true
+      }
+    }
+  ],
+  "artifactOnly": false,
+  "boundaries": {
+    "fullLayoutParity": false,
+    "fullLegacyParity": false,
+    "fullShortcutParity": false,
+    "nativeDialogParity": false,
+    "osNativeMenuParity": false,
+    "pixelPerfectLayoutParity": false,
+    "releaseParity": false
+  },
+  "browserOnly": false,
+  "checks": [
+    {
+      "details": {
+        "coveredActionCount": 9,
+        "currentActionCount": 23,
+        "source": "legacy_shortcut_layout_evidence"
+      },
+      "name": "runtime_action_matrix_observed",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "clickedObservedCount": 8,
+        "shortcutObservedCount": 9,
+        "visibleTargetCount": 10
+      },
+      "name": "menu_shortcut_targets_observed",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "observedCount": 9,
+        "textInputSuppressionObserved": true
+      },
+      "name": "input_editing_protection",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "count": 5,
+        "source": "runtime screenshots from legacy shortcut/layout evidence"
+      },
+      "name": "screenshots_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "count": 14
+      },
+      "name": "unsupported_external_actions_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boundaries": {
+          "fullLayoutParity": false,
+          "fullLegacyParity": false,
+          "fullShortcutParity": false,
+          "nativeDialogParity": false,
+          "osNativeMenuParity": false,
+          "pixelPerfectLayoutParity": false,
+          "releaseParity": false
+        }
+      },
+      "name": "scope_boundaries_recorded",
+      "status": "pass"
+    }
+  ],
+  "clickedObservedCount": 8,
+  "collectionMethod": "aggregated_from_runtime_legacy_shortcut_layout_evidence",
+  "fullLayoutParity": false,
+  "fullLegacyParity": false,
+  "fullShortcutParity": false,
+  "inputEditingProtection": {
+    "observedCount": 9,
+    "textInputSuppressionObserved": true,
+    "verified": true
+  },
+  "name": "legacy_ui_gap_closure",
+  "nativeDialogParity": false,
+  "osNativeMenuParity": false,
+  "pixelPerfectLayoutParity": false,
+  "platform": "macos",
+  "releaseParity": false,
+  "runtimeObserved": true,
+  "runtimeSource": {
+    "kind": "runtime_legacy_shortcut_layout_evidence",
+    "path": "docs/qa/legacy-shortcut-layout-evidence-macos.json",
+    "schema": "lizzieyzy.legacy-shortcut-layout-evidence.v1"
+  },
+  "schema": "lizzieyzy.legacy-ui-gap-closure.v1",
+  "scopedCoveredActionIds": [
+    "file.open",
+    "game.loadSample",
+    "game.parseSgf",
+    "analysis.runReview",
+    "view.candidates",
+    "engine.profiles",
+    "tools.providers",
+    "tools.preferences",
+    "help.backendStatus"
+  ],
+  "screenshots": [
+    {
+      "bytes": 202577,
+      "capturedAfterActionId": "view.candidates",
+      "label": "default review layout desktop 1280x840",
+      "name": "default review layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-default-review-layout.png",
+      "sha256": "bccb0087018813bed5d1eec60db3ab27e7ed9211844512bf25d85134b47c3ec1",
+      "sizeBytes": 202577,
+      "source": "existing-vite-playwright-runtime-screenshot",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 152093,
+      "capturedAfterActionId": "game.parseSgf",
+      "label": "SGF editing layout narrow desktop 960x840",
+      "name": "SGF editing layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-sgf-editing-layout.png",
+      "sha256": "ca86f265cddc516e453025bf56867c8ed9c9c0220eea62ba0e3fabc2927eebd3",
+      "sizeBytes": 152093,
+      "source": "existing-vite-playwright-runtime-screenshot",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    },
+    {
+      "bytes": 173037,
+      "capturedAfterActionId": "analysis.runReview",
+      "label": "KataGo analysis layout short window 1280x620",
+      "name": "KataGo analysis layout short window 1280x620",
+      "path": "docs/qa/screenshots/legacy-layout-short-window-1280x620-katago-analysis-layout.png",
+      "sha256": "b9a2880ac90e3308043f691826cd6086fc2f944ef1b0f41d08188ebb33e2285d",
+      "sizeBytes": 173037,
+      "source": "existing-vite-playwright-runtime-screenshot",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 242601,
+      "capturedAfterActionId": "tools.providers",
+      "label": "provider/readboard layout desktop 1280x840",
+      "name": "provider/readboard layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-provider-readboard-layout.png",
+      "sha256": "74571a9a6b481fafd1ea58e27c505e2986e68c2364b641d1d42531f4c591cd0c",
+      "sizeBytes": 242601,
+      "source": "existing-vite-playwright-runtime-screenshot",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 184682,
+      "capturedAfterActionId": "tools.preferences",
+      "label": "engine/preferences layout narrow desktop 960x840",
+      "name": "engine/preferences layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-engine-preferences-layout.png",
+      "sha256": "09e16fd8d2f6f7f89e7612ba3431dd514fc7ba249277eadb8629536afa4cb44f",
+      "sizeBytes": 184682,
+      "source": "existing-vite-playwright-runtime-screenshot",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    }
+  ],
+  "shortcutObservedCount": 9,
+  "sourceFacts": {
+    "currentActionCount": 23,
+    "legacyActionMatrix": "apps/desktop/src/domain/legacyActions.ts"
+  },
+  "sourceStaticOnly": false,
+  "status": "pass",
+  "unsupportedExternalOnlyActions": [
+    {
+      "actionId": "file.new",
+      "covered": false,
+      "menuPath": "File/New",
+      "reason": "Blocked for this scoped gap-closure proof because New is destructive and requires separate reset/dirty-state confirmation evidence.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+N",
+      "targetSelector": "[data-testid='legacy-shell']"
+    },
+    {
+      "actionId": "file.save",
+      "covered": false,
+      "menuPath": "File/Save",
+      "reason": "Native dialog/import side effects are covered by separate scoped native-dialog or SGF workflow gates, not by this gap-closure proof.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+S",
+      "targetSelector": "[data-testid='toolbar-save-sgf']"
+    },
+    {
+      "actionId": "file.saveAs",
+      "covered": false,
+      "menuPath": "File/Save As",
+      "reason": "Native dialog/import side effects are covered by separate scoped native-dialog or SGF workflow gates, not by this gap-closure proof.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+Shift+S",
+      "targetSelector": "[data-testid='toolbar-save-as-sgf']"
+    },
+    {
+      "actionId": "file.importSgf",
+      "covered": false,
+      "menuPath": "File/Import SGF",
+      "reason": "Native dialog/import side effects are covered by separate scoped native-dialog or SGF workflow gates, not by this gap-closure proof.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+I",
+      "targetSelector": "[data-testid='toolbar-import-sgf']"
+    },
+    {
+      "actionId": "game.firstMove",
+      "covered": false,
+      "menuPath": "Game/First move",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+ArrowLeft",
+      "targetSelector": "[data-testid='legacy-move-slider']"
+    },
+    {
+      "actionId": "game.previousMove",
+      "covered": false,
+      "menuPath": "Game/Previous move",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+Shift+ArrowLeft",
+      "targetSelector": "[data-testid='legacy-move-slider']"
+    },
+    {
+      "actionId": "game.nextMove",
+      "covered": false,
+      "menuPath": "Game/Next move",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+Shift+ArrowRight",
+      "targetSelector": "[data-testid='legacy-move-slider']"
+    },
+    {
+      "actionId": "game.lastMove",
+      "covered": false,
+      "menuPath": "Game/Last move",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+ArrowRight",
+      "targetSelector": "[data-testid='legacy-move-slider']"
+    },
+    {
+      "actionId": "analysis.katagoPanel",
+      "covered": false,
+      "menuPath": "Analysis/KataGo panel",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+Shift+K",
+      "targetSelector": "[data-testid='engine-setup-panel']"
+    },
+    {
+      "actionId": "view.ownership",
+      "covered": false,
+      "menuPath": "View/Ownership",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+2",
+      "targetSelector": "[data-testid='legacy-board-pane']"
+    },
+    {
+      "actionId": "view.policy",
+      "covered": false,
+      "menuPath": "View/Policy",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+3",
+      "targetSelector": "[data-testid='analysis-panel']"
+    },
+    {
+      "actionId": "view.sgfSource",
+      "covered": false,
+      "menuPath": "View/SGF source",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+8",
+      "targetSelector": "[data-testid='sgf-source-textarea']"
+    },
+    {
+      "actionId": "engine.assets",
+      "covered": false,
+      "menuPath": "Engine/Assets",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+5",
+      "targetSelector": "[data-testid='engine-check-assets']"
+    },
+    {
+      "actionId": "help.about",
+      "covered": false,
+      "menuPath": "Help/About",
+      "reason": "Current action exists in legacyActionMatrix but was not observed in the scoped runtime shortcut/layout evidence input.",
+      "runtimeObserved": false,
+      "shortcut": "Mod+Shift+/",
+      "targetSelector": "[data-testid='legacy-about-target']"
+    }
+  ],
+  "visibleTargetCount": 10
+}

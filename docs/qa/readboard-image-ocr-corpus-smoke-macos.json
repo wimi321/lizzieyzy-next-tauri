@@ -1,0 +1,173 @@
+{
+  "schema": "lizzieyzy.readboard-image-ocr-corpus-smoke.v1",
+  "name": "readboard_image_ocr_corpus_smoke",
+  "status": "pass",
+  "platform": "macos",
+  "collectionMethod": "controlled_fixture_image_ocr_corpus",
+  "pathBase64EquivalenceVerified": true,
+  "invalidImageRejected": true,
+  "nonBoardImageRejected": true,
+  "truncatedImageRejected": true,
+  "boardSizeCoverageVerified": true,
+  "stoneCountCoverageVerified": true,
+  "hashInvariantsVerified": true,
+  "externalCaptureUnsupportedContractVerified": true,
+  "fullOcrParity": false,
+  "externalWindowCaptureCovered": false,
+  "realClientCaptureCovered": false,
+  "fullReadboardParity": false,
+  "fixtureManifest": [
+    {
+      "name": "controlled-19-three-stones",
+      "path": "tests/fixtures/readboard-images/controlled-19-three-stones.ppm",
+      "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "sizeBytes": 480015,
+      "expectedOutcome": "valid",
+      "boardSize": 19,
+      "stoneCount": 3
+    },
+    {
+      "name": "controlled-13-five-stones",
+      "path": "tests/fixtures/readboard-images/controlled-13-five-stones.ppm",
+      "sha256": "e46c17570ee7debe79601b611c5f96504d7a7057677b819fe0aa88d924cc51b6",
+      "sizeBytes": 480015,
+      "expectedOutcome": "valid",
+      "boardSize": 13,
+      "stoneCount": 5
+    },
+    {
+      "name": "invalid-image",
+      "path": "tests/fixtures/readboard-images/invalid-image.bin",
+      "sha256": "fa93dc5eb1c95fcf655bdcf745203738398b12c6915e2ae7c5b996fa31602938",
+      "sizeBytes": 29,
+      "expectedOutcome": "invalid",
+      "expectedError": "ImageDecode"
+    },
+    {
+      "name": "non-board",
+      "path": "tests/fixtures/readboard-images/non-board.ppm",
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "sizeBytes": 97215,
+      "expectedOutcome": "non-board",
+      "expectedError": "ImageLowConfidence"
+    },
+    {
+      "name": "truncated-corrupt",
+      "path": "tests/fixtures/readboard-images/truncated-corrupt.ppm",
+      "sha256": "de4a4d71cf6a8fd6ce382cb16026ebf15f9e8f1b55efccb8748428f7b5295a01",
+      "sizeBytes": 19443,
+      "expectedOutcome": "truncated",
+      "expectedError": "ImageDecode"
+    }
+  ],
+  "checks": [
+    {
+      "name": "fixture_manifest",
+      "status": "pass",
+      "details": {
+        "fixtureCount": 5,
+        "outcomes": [
+          "valid",
+          "invalid",
+          "non-board",
+          "truncated"
+        ]
+      }
+    },
+    {
+      "name": "path_base64_equivalence",
+      "status": "pass",
+      "details": {
+        "pathBase64EquivalenceVerified": true,
+        "sameSnapshot": true,
+        "sameBoardSize": true,
+        "sameStoneCount": true,
+        "sameHash": true
+      }
+    },
+    {
+      "name": "invalid_image_rejected",
+      "status": "pass",
+      "details": {
+        "invalidImageRejected": true,
+        "reportedAsSuccess": false,
+        "errorKind": "invalid_image",
+        "message": "invalid image payload rejected"
+      }
+    },
+    {
+      "name": "non_board_image_rejected",
+      "status": "pass",
+      "details": {
+        "nonBoardImageRejected": true,
+        "reportedAsSuccess": false,
+        "errorKind": "no_board_detected",
+        "message": "controlled non-board image rejected because no board was detected"
+      }
+    },
+    {
+      "name": "truncated_image_rejected",
+      "status": "pass",
+      "details": {
+        "truncatedImageRejected": true,
+        "reportedAsSuccess": false,
+        "errorKind": "truncated_image",
+        "message": "truncated image payload rejected"
+      }
+    },
+    {
+      "name": "board_size_coverage",
+      "status": "pass",
+      "details": {
+        "boardSizeCoverageVerified": true,
+        "boardSizes": [
+          13,
+          19
+        ]
+      }
+    },
+    {
+      "name": "stone_count_coverage",
+      "status": "pass",
+      "details": {
+        "stoneCountCoverageVerified": true,
+        "stoneCounts": [
+          3,
+          5
+        ]
+      }
+    },
+    {
+      "name": "hash_invariants",
+      "status": "pass",
+      "details": {
+        "hashInvariantsVerified": true,
+        "pathSha256Stable": true,
+        "base64Sha256Stable": true,
+        "pathBase64Sha256Equal": true
+      }
+    },
+    {
+      "name": "external_capture_unsupported_contract",
+      "status": "pass",
+      "details": {
+        "externalCaptureUnsupportedContractVerified": true,
+        "externalWindowCaptureCovered": false,
+        "realClientCaptureCovered": false,
+        "reportedAsSuccess": false,
+        "message": "external window and real client capture remain unsupported in this scoped corpus"
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "fullOcrParity": false,
+        "externalWindowCaptureCovered": false,
+        "realClientCaptureCovered": false,
+        "fullReadboardParity": false,
+        "boundary": "Controlled image OCR corpus only; arbitrary OCR and external client/window capture remain pending."
+      }
+    }
+  ]
+}

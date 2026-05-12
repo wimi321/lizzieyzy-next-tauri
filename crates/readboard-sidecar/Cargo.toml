@@ -10,9 +10,10 @@ rust-version.workspace = true
 app-model = { path = "../app-model" }
 base64 = "0.22"
 go-core = { path = "../go-core" }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "pnm"] }
 serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+sha2 = "0.10"

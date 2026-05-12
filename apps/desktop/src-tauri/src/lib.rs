@@ -12,8 +12,8 @@ use engine_manager::{
 use go_core::ReadBoardLocalContext;
 use katago_protocol::{AnalysisBatchQueryOptions, AnalysisQueryOptions};
 use provider_core::{
-    invalid_payload, invalid_request, invalid_url, not_implemented, timeout, transport_failed,
-    ProviderResult, ProviderTransport,
+    invalid_payload, invalid_request, invalid_url, timeout, transport_failed, ProviderResult,
+    ProviderTransport,
 };
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -951,10 +951,37 @@ fn readboard_sidecar_sync_snapshot(
 #[tauri::command]
 fn legacy_capture_external_window(
     request: LegacyExternalCaptureRequest,
-) -> Result<ReadboardSidecarSyncSnapshotResult, ProviderError> {
+) -> Result<LegacyImportCaptureHelperResult, ProviderError> {
     validate_legacy_external_capture_request(&request)?;
-    Err(not_implemented(
-        "external client/window capture unavailable; this recoverable helper contract does not implement OCR or native window capture",
+    Ok(legacy_import_capture_unsupported_result(
+        "external_window_capture",
+        "External window/client capture unsupported",
+        "External window/client capture is not implemented in this build. No SGF was imported and the board was not replaced.",
+        "real_external_capture_external_gate",
+        "External window/client capture helper is a recoverable unsupported path.",
+        BTreeMap::new(),
+        [
+            ("notImplementedBoundary", true),
+            ("externalCaptureUnavailable", true),
+            ("externalCaptureCovered", false),
+            ("nativeWindowCaptureCovered", false),
+            ("clientCaptureCovered", false),
+            (
+                "clientNameProvided",
+                request
+                    .client_name
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty()),
+            ),
+            (
+                "windowTitleProvided",
+                request
+                    .window_title
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty()),
+            ),
+            ("processIdProvided", request.process_id.is_some()),
+        ],
     ))
 }
 
@@ -1012,6 +1039,9 @@ fn legacy_import_capture_helper(
                 [
                     ("notImplementedBoundary", true),
                     ("externalCaptureUnavailable", true),
+                    ("externalCaptureCovered", false),
+                    ("nativeWindowCaptureCovered", false),
+                    ("clientCaptureCovered", false),
                     (
                         "clientNameProvided",
                         request
@@ -1024,6 +1054,7 @@ fn legacy_import_capture_helper(
                             .window_title
                             .is_some_and(|value| !value.trim().is_empty()),
                     ),
+                    ("processIdProvided", request.process_id.is_some()),
                 ],
             ))
         }
@@ -6503,6 +6534,37 @@ mod tests {
     }
 
     #[test]
+    fn readboard_sidecar_failed_image_extraction_does_not_poison_next_sync() {
+        let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
+            endpoint: None,
+            snapshot_id: Some("bad-image".to_string()),
+            image_path: None,
+            image_base64: Some("bm90LWEtcG5n".to_string()),
+            sgf_text: None,
+            metadata: std::collections::BTreeMap::new(),
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+        assert_eq!(sync_error.kind, ProviderErrorKind::InvalidPayload);
+
+        let result = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
+            endpoint: None,
+            snapshot_id: Some("protocol-after-failed-image".to_string()),
+            image_path: None,
+            image_base64: None,
+            sgf_text: Some("snapshot board_size=2 move_number=1 codes=3000".to_string()),
+            metadata: std::collections::BTreeMap::new(),
+            timeout_ms: Some(100),
+        })
+        .unwrap();
+
+        assert_eq!(result.snapshot_id, "protocol-after-failed-image");
+        let position = result.position.unwrap();
+        assert_eq!(position.board_size, 2);
+        assert_eq!(position.stones.len(), 1);
+    }
+
+    #[test]
     fn readboard_sidecar_sync_snapshot_rejects_empty_ocr_request() {
         let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
             endpoint: None,
@@ -6521,19 +6583,25 @@ mod tests {
 
     #[test]
     fn legacy_capture_external_window_reports_unsupported_contract() {
-        let capture_error = legacy_capture_external_window(LegacyExternalCaptureRequest {
+        let result = legacy_capture_external_window(LegacyExternalCaptureRequest {
             client_name: Some("Fox".to_string()),
             window_title: Some("Live game".to_string()),
             process_id: None,
             timeout_ms: Some(100),
         })
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(capture_error.kind, ProviderErrorKind::NotImplemented);
-        assert!(capture_error
-            .message
-            .contains("external client/window capture unavailable"));
-        assert!(capture_error.message.contains("recoverable"));
+        assert_eq!(result.kind, "external_window_capture");
+        assert_eq!(result.status, "recoverable_unsupported");
+        assert!(result.recoverable);
+        assert!(!result.imported);
+        assert_eq!(result.board_replacement, "none");
+        assert_eq!(result.details.get("boardReplacementApplied").unwrap(), "false");
+        assert_eq!(result.details.get("externalCaptureCovered").unwrap(), "false");
+        assert_eq!(result.details.get("nativeWindowCaptureCovered").unwrap(), "false");
+        assert_eq!(result.details.get("clientCaptureCovered").unwrap(), "false");
+        assert_eq!(result.details.get("clientNameProvided").unwrap(), "true");
+        assert_eq!(result.details.get("windowTitleProvided").unwrap(), "true");
     }
 
     #[test]
@@ -6642,6 +6710,10 @@ mod tests {
                 .contains("External window/client capture is not implemented"));
             assert_eq!(result.details.get("notImplementedBoundary").unwrap(), "true");
             assert_eq!(result.details.get("no_stale_board_replacement").unwrap(), "true");
+            assert_eq!(result.details.get("boardReplacementApplied").unwrap(), "false");
+            assert_eq!(result.details.get("externalCaptureCovered").unwrap(), "false");
+            assert_eq!(result.details.get("nativeWindowCaptureCovered").unwrap(), "false");
+            assert_eq!(result.details.get("clientCaptureCovered").unwrap(), "false");
         }
     }
 

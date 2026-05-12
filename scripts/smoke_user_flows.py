@@ -349,6 +349,37 @@ READBOARD_IMAGE_IMPORT_REQUIRED_FALSE_FIELDS = [
     "fullOcrParity",
     "externalCaptureCovered",
 ]
+READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE = "docs/qa/readboard-image-ocr-corpus-smoke-macos.json"
+READBOARD_IMAGE_OCR_CORPUS_SMOKE_SCHEMA = "lizzieyzy.readboard-image-ocr-corpus-smoke.v1"
+READBOARD_IMAGE_OCR_CORPUS_MIN_FIXTURES = 4
+READBOARD_IMAGE_OCR_CORPUS_REQUIRED_CHECKS = [
+    "fixture_manifest",
+    "path_base64_equivalence",
+    "invalid_image_rejected",
+    "non_board_image_rejected",
+    "truncated_image_rejected",
+    "board_size_coverage",
+    "stone_count_coverage",
+    "hash_invariants",
+    "external_capture_unsupported_contract",
+    "scope_boundaries",
+]
+READBOARD_IMAGE_OCR_CORPUS_REQUIRED_TRUE_FIELDS = [
+    "pathBase64EquivalenceVerified",
+    "invalidImageRejected",
+    "nonBoardImageRejected",
+    "truncatedImageRejected",
+    "boardSizeCoverageVerified",
+    "stoneCountCoverageVerified",
+    "hashInvariantsVerified",
+    "externalCaptureUnsupportedContractVerified",
+]
+READBOARD_IMAGE_OCR_CORPUS_REQUIRED_FALSE_FIELDS = [
+    "fullOcrParity",
+    "externalWindowCaptureCovered",
+    "realClientCaptureCovered",
+    "fullReadboardParity",
+]
 PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
 PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
 PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -1081,6 +1112,7 @@ class UserFlowSmoke:
         self.check_katago_live_desktop_workflow_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_readboard_image_import_smoke_evidence()
+        self.check_readboard_image_ocr_corpus_smoke_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
@@ -1497,6 +1529,30 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_image_import_smoke",
             "scoped controlled readboard image import MVP evidence passes with path/base64 import, rejection, snapshot, and boundary checks",
+        )
+
+    def check_readboard_image_ocr_corpus_smoke_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_image_ocr_corpus_smoke",
+                f"TODO gate: record scoped controlled readboard image OCR corpus evidence at {READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_readboard_image_ocr_corpus_smoke_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "readboard_image_ocr_corpus_smoke",
+                f"{READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE} is present but not valid scoped controlled image OCR corpus PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_image_ocr_corpus_smoke",
+            "scoped controlled readboard image OCR corpus evidence passes with manifest, path/base64 equivalence, rejection, coverage, hash, and unsupported external-capture boundary checks",
         )
 
     def check_provider_live_smoke_evidence(self) -> None:
@@ -3703,6 +3759,64 @@ def validate_readboard_image_import_smoke_evidence(evidence: Any, root: Path = R
     return failures
 
 
+def validate_readboard_image_ocr_corpus_smoke_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_IMAGE_OCR_CORPUS_SMOKE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_IMAGE_OCR_CORPUS_SMOKE_SCHEMA}")
+    if evidence.get("name") != "readboard_image_ocr_corpus_smoke":
+        failures.append("name must be readboard_image_ocr_corpus_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    collection_method = evidence.get("collectionMethod")
+    if collection_method not in {"controlled_fixture_image_ocr_corpus", "controlled_image_ocr_corpus"}:
+        failures.append("collectionMethod must be controlled_fixture_image_ocr_corpus")
+    for key in READBOARD_IMAGE_OCR_CORPUS_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in READBOARD_IMAGE_OCR_CORPUS_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in READBOARD_IMAGE_OCR_CORPUS_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in READBOARD_IMAGE_OCR_CORPUS_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    manifest = first_present(evidence, "fixtureManifest", "fixtures")
+    failures.extend(validate_readboard_ocr_fixture_manifest(manifest, root))
+    failures.extend(validate_readboard_ocr_path_base64_equivalence(check_by_name.get("path_base64_equivalence")))
+    failures.extend(validate_readboard_invalid_image_rejected(check_by_name.get("invalid_image_rejected")))
+    failures.extend(validate_readboard_non_board_image_rejected(check_by_name.get("non_board_image_rejected")))
+    failures.extend(validate_readboard_truncated_image_rejected(check_by_name.get("truncated_image_rejected")))
+    failures.extend(validate_readboard_ocr_board_size_coverage(check_by_name.get("board_size_coverage"), manifest))
+    failures.extend(validate_readboard_ocr_stone_count_coverage(check_by_name.get("stone_count_coverage"), manifest))
+    failures.extend(validate_readboard_ocr_hash_invariants(check_by_name.get("hash_invariants")))
+    failures.extend(validate_readboard_external_capture_unsupported_contract(check_by_name.get("external_capture_unsupported_contract")))
+    failures.extend(validate_readboard_ocr_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
+    return failures
+
+
 def validate_provider_live_smoke_evidence(evidence: Any) -> list[str]:
     if not isinstance(evidence, dict):
         return ["evidence root must be an object"]
@@ -4234,6 +4348,213 @@ def validate_readboard_image_scope_boundaries(check: Any, root_evidence: dict[st
     return failures
 
 
+def validate_readboard_ocr_fixture_manifest(manifest: Any, root: Path) -> list[str]:
+    if not isinstance(manifest, list):
+        return ["fixtureManifest must be a list"]
+    failures: list[str] = []
+    if len(manifest) < READBOARD_IMAGE_OCR_CORPUS_MIN_FIXTURES:
+        failures.append(
+            f"fixtureManifest must include at least {READBOARD_IMAGE_OCR_CORPUS_MIN_FIXTURES} fixtures"
+        )
+    outcomes: set[str] = set()
+    valid_paths: set[str] = set()
+    fixture_records: list[tuple[str, str, str]] = []
+    for index, fixture in enumerate(manifest):
+        label = f"fixtureManifest[{index}]"
+        if not isinstance(fixture, dict):
+            failures.append(f"{label} must be an object")
+            continue
+        name = fixture.get("name")
+        if not isinstance(name, str) or not name.strip():
+            failures.append(f"{label}.name must be non-empty")
+        path_value = fixture.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            failures.append(f"{label}.path must be non-empty")
+        else:
+            failures.extend(validate_repo_relative_path_artifact(root, path_value, fixture, label))
+        outcome = normalize_readboard_ocr_fixture_outcome(first_present(fixture, "expectedOutcome", "outcome", "class", "kind"))
+        if outcome:
+            outcomes.add(outcome)
+            if isinstance(path_value, str):
+                fixture_records.append((label, outcome, path_value))
+        if outcome == "valid":
+            if isinstance(path_value, str):
+                valid_paths.add(path_value)
+            if not positive_number(first_present(fixture, "boardSize", "board_size")):
+                failures.append(f"{label}.boardSize must be positive for valid fixtures")
+            stone_count = first_present(fixture, "stoneCount", "stone_count")
+            if not isinstance(stone_count, (int, float)) or stone_count < 0:
+                failures.append(f"{label}.stoneCount must be non-negative for valid fixtures")
+            if not isinstance(fixture.get("sha256"), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", fixture.get("sha256", "")):
+                failures.append(f"{label}.sha256 must provide a hash invariant for valid fixtures")
+        elif outcome in {"invalid", "non-board", "truncated"}:
+            expected_error = first_present(fixture, "expectedError", "errorKind")
+            if not isinstance(expected_error, str) or not expected_error.strip():
+                failures.append(f"{label}.expectedError must be non-empty for {outcome} fixtures")
+            if first_present(fixture, "boardSize", "board_size") is not None:
+                failures.append(f"{label}.boardSize must be absent for {outcome} fixtures")
+            if first_present(fixture, "stoneCount", "stone_count") is not None:
+                failures.append(f"{label}.stoneCount must be absent for {outcome} fixtures")
+        elif outcome:
+            failures.append(f"{label}.expectedOutcome is unsupported: {outcome}")
+    required_outcomes = {"valid", "invalid", "non-board", "truncated"}
+    missing_outcomes = [outcome for outcome in required_outcomes if outcome not in outcomes]
+    if missing_outcomes:
+        failures.append("fixtureManifest missing outcomes: " + ", ".join(missing_outcomes))
+    for label, outcome, path_value in fixture_records:
+        if outcome in {"invalid", "non-board", "truncated"} and path_value in valid_paths:
+            failures.append(f"{label}.path must not reuse a valid fixture artifact")
+    return failures
+
+
+def normalize_readboard_ocr_fixture_outcome(value: Any) -> str:
+    outcome = str(value or "").strip().lower().replace("_", "-")
+    aliases = {
+        "valid-controlled-board": "valid",
+        "board": "valid",
+        "success": "valid",
+        "invalid-image": "invalid",
+        "image-decode": "invalid",
+        "non-board-image": "non-board",
+        "nonboard": "non-board",
+        "low-confidence": "non-board",
+        "image-low-confidence": "non-board",
+        "truncated-corrupt": "truncated",
+        "truncated-image": "truncated",
+        "corrupt": "truncated",
+    }
+    return aliases.get(outcome, outcome)
+
+
+def validate_readboard_ocr_path_base64_equivalence(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["path_base64_equivalence evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("pathBase64EquivalenceVerified") is not True:
+        failures.append("path_base64_equivalence.pathBase64EquivalenceVerified must be true")
+    if evidence.get("sameSnapshot") is not True:
+        failures.append("path_base64_equivalence.sameSnapshot must be true")
+    if evidence.get("sameBoardSize") is not True:
+        failures.append("path_base64_equivalence.sameBoardSize must be true")
+    if evidence.get("sameStoneCount") is not True:
+        failures.append("path_base64_equivalence.sameStoneCount must be true")
+    if evidence.get("sameHash") is not True:
+        failures.append("path_base64_equivalence.sameHash must be true")
+    return failures
+
+
+def validate_readboard_truncated_image_rejected(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["truncated_image_rejected evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("truncatedImageRejected") is not True:
+        failures.append("truncated_image_rejected.truncatedImageRejected must be true")
+    if evidence.get("reportedAsSuccess") is not False:
+        failures.append("truncated_image_rejected.reportedAsSuccess must be false")
+    error_kind = first_present(evidence, "errorKind", "kind")
+    if not isinstance(error_kind, str) or not error_kind:
+        failures.append("truncated_image_rejected.errorKind must be non-empty")
+    message = evidence.get("message")
+    if not isinstance(message, str) or not message:
+        failures.append("truncated_image_rejected.message must be non-empty")
+    return failures
+
+
+def validate_readboard_ocr_board_size_coverage(check: Any, manifest: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["board_size_coverage evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("boardSizeCoverageVerified") is not True:
+        failures.append("board_size_coverage.boardSizeCoverageVerified must be true")
+    board_sizes = evidence.get("boardSizes")
+    if not isinstance(board_sizes, list) or len({item for item in board_sizes if item in {9, 13, 19}}) < 2:
+        failures.append("board_size_coverage.boardSizes must include at least two of 9, 13, 19")
+    if isinstance(manifest, list):
+        manifest_sizes = {
+            first_present(item, "boardSize", "board_size")
+            for item in manifest
+            if isinstance(item, dict)
+            and normalize_readboard_ocr_fixture_outcome(first_present(item, "expectedOutcome", "outcome", "class", "kind")) == "valid"
+            and first_present(item, "boardSize", "board_size") in {9, 13, 19}
+        }
+        if board_sizes and not set(board_sizes).issubset(manifest_sizes):
+            failures.append("board_size_coverage.boardSizes must be represented by valid fixtureManifest entries")
+    return failures
+
+
+def validate_readboard_ocr_stone_count_coverage(check: Any, manifest: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["stone_count_coverage evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("stoneCountCoverageVerified") is not True:
+        failures.append("stone_count_coverage.stoneCountCoverageVerified must be true")
+    stone_counts = evidence.get("stoneCounts")
+    if not isinstance(stone_counts, list) or len({item for item in stone_counts if isinstance(item, int) and item >= 0}) < 2:
+        failures.append("stone_count_coverage.stoneCounts must include at least two non-negative counts")
+    if isinstance(manifest, list):
+        manifest_counts = {
+            first_present(item, "stoneCount", "stone_count")
+            for item in manifest
+            if isinstance(item, dict)
+            and normalize_readboard_ocr_fixture_outcome(first_present(item, "expectedOutcome", "outcome", "class", "kind")) == "valid"
+            and isinstance(first_present(item, "stoneCount", "stone_count"), int)
+        }
+        if stone_counts and not set(stone_counts).issubset(manifest_counts):
+            failures.append("stone_count_coverage.stoneCounts must be represented by valid fixtureManifest entries")
+    return failures
+
+
+def validate_readboard_ocr_hash_invariants(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["hash_invariants evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("hashInvariantsVerified") is not True:
+        failures.append("hash_invariants.hashInvariantsVerified must be true")
+    for key in ("pathSha256Stable", "base64Sha256Stable", "pathBase64Sha256Equal"):
+        if evidence.get(key) is not True:
+            failures.append(f"hash_invariants.{key} must be true")
+    return failures
+
+
+def validate_readboard_external_capture_unsupported_contract(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["external_capture_unsupported_contract evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("externalCaptureUnsupportedContractVerified") is not True:
+        failures.append(
+            "external_capture_unsupported_contract.externalCaptureUnsupportedContractVerified must be true"
+        )
+    if evidence.get("externalWindowCaptureCovered") is not False:
+        failures.append("external_capture_unsupported_contract.externalWindowCaptureCovered must be false")
+    if evidence.get("realClientCaptureCovered") is not False:
+        failures.append("external_capture_unsupported_contract.realClientCaptureCovered must be false")
+    if evidence.get("reportedAsSuccess") is not False:
+        failures.append("external_capture_unsupported_contract.reportedAsSuccess must be false")
+    message = evidence.get("message")
+    if not isinstance(message, str) or "unsupported" not in message.lower():
+        failures.append("external_capture_unsupported_contract.message must mention unsupported")
+    return failures
+
+
+def validate_readboard_ocr_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    for key in READBOARD_IMAGE_OCR_CORPUS_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    return failures
+
+
 def validate_readboard_image_snapshot_fields(evidence: dict[str, Any], label: str) -> list[str]:
     failures: list[str] = []
     snapshot_id = first_present(evidence, "snapshotId", "snapshot_id")
@@ -4279,6 +4600,36 @@ def validate_repo_relative_artifact(root: Path, path_value: str, evidence: dict[
         failures.append(f"{label}.imageSha256 must be a 64-character hex sha256")
     elif expected_sha.lower() != actual_sha:
         failures.append(f"{label}.imageSha256 must match artifact sha256")
+    return failures
+
+
+def validate_repo_relative_path_artifact(root: Path, path_value: str, evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    path_text = path_value.strip()
+    path = Path(path_text)
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or path_text.startswith("~")
+        or path_text.startswith("/Users")
+        or path_text.startswith("/tmp")
+    ):
+        return [f"{label}.path must be repo-relative and sanitized"]
+    artifact = root / path
+    if not artifact.is_file():
+        return [f"{label}.path does not exist: {path_value}"]
+    data = artifact.read_bytes()
+    expected_bytes = evidence.get("sizeBytes")
+    if not isinstance(expected_bytes, int) or expected_bytes <= 0:
+        failures.append(f"{label}.sizeBytes must be positive")
+    elif expected_bytes != len(data):
+        failures.append(f"{label}.sizeBytes must match artifact size")
+    expected_sha = evidence.get("sha256")
+    actual_sha = hashlib.sha256(data).hexdigest()
+    if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha):
+        failures.append(f"{label}.sha256 must be a 64-character hex sha256")
+    elif expected_sha.lower() != actual_sha:
+        failures.append(f"{label}.sha256 must match artifact sha256")
     return failures
 
 

@@ -1,0 +1,42 @@
+{
+  "fixtures": [
+    {
+      "boardSize": 19,
+      "bytes": 480015,
+      "kind": "valid_controlled_board",
+      "path": "tests/fixtures/readboard-images/controlled-19-three-stones.ppm",
+      "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "stoneCount": 3
+    },
+    {
+      "boardSize": 13,
+      "bytes": 480015,
+      "kind": "valid_controlled_board",
+      "path": "tests/fixtures/readboard-images/controlled-13-five-stones.ppm",
+      "sha256": "e46c17570ee7debe79601b611c5f96504d7a7057677b819fe0aa88d924cc51b6",
+      "stoneCount": 5
+    },
+    {
+      "bytes": 97215,
+      "expectedError": "ImageLowConfidence",
+      "kind": "non_board",
+      "path": "tests/fixtures/readboard-images/non-board.ppm",
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92"
+    },
+    {
+      "bytes": 29,
+      "expectedError": "ImageDecode",
+      "kind": "invalid_image",
+      "path": "tests/fixtures/readboard-images/invalid-image.bin",
+      "sha256": "fa93dc5eb1c95fcf655bdcf745203738398b12c6915e2ae7c5b996fa31602938"
+    },
+    {
+      "bytes": 19443,
+      "expectedError": "ImageDecode",
+      "kind": "truncated_corrupt",
+      "path": "tests/fixtures/readboard-images/truncated-corrupt.ppm",
+      "sha256": "de4a4d71cf6a8fd6ce382cb16026ebf15f9e8f1b55efccb8748428f7b5295a01"
+    }
+  ],
+  "schema": "lizzieyzy.readboard-image-fixtures.v1"
+}

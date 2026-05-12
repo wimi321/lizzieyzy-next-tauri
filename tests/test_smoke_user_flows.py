@@ -64,6 +64,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("katago_live_desktop_workflow_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("readboard_image_import_smoke", pending_names)
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
 
@@ -1522,6 +1523,197 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("snapshot_verified.stoneCountVerified must be true", pending["readboard_image_import_smoke"])
             self.assertIn("snapshot_verified.toPlay must be black or white", pending["readboard_image_import_smoke"])
 
+    def test_valid_readboard_image_ocr_corpus_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_readboard_image_ocr_corpus_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_image_ocr_corpus_smoke", pass_names)
+            self.assertNotIn("readboard_image_ocr_corpus_smoke", pending_names)
+
+    def test_readboard_image_ocr_corpus_rejects_overclaims(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            evidence["fullOcrParity"] = True
+            evidence["externalWindowCaptureCovered"] = True
+            evidence["realClientCaptureCovered"] = True
+            evidence["fullReadboardParity"] = True
+            boundary = find_evidence_check(evidence, "scope_boundaries")["details"]
+            boundary["fullOcrParity"] = True
+            boundary["externalWindowCaptureCovered"] = True
+            boundary["realClientCaptureCovered"] = True
+            boundary["fullReadboardParity"] = True
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("fullOcrParity must be false", detail)
+            self.assertIn("externalWindowCaptureCovered must be false", detail)
+            self.assertIn("realClientCaptureCovered must be false", detail)
+            self.assertIn("fullReadboardParity must be false", detail)
+
+    def test_readboard_image_ocr_corpus_requires_manifest_artifacts(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            manifest = evidence["fixtureManifest"]
+            manifest[0]["path"] = "/Users/example/private.png"
+            manifest[1]["sha256"] = "0" * 64
+            manifest[2]["sizeBytes"] = 1
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("fixtureManifest[0].path must be repo-relative and sanitized", detail)
+            self.assertIn("fixtureManifest[1].sha256 must match artifact sha256", detail)
+            self.assertIn("fixtureManifest[2].sizeBytes must match artifact size", detail)
+
+    def test_readboard_image_ocr_corpus_rejects_happy_path_only(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            evidence["fixtureManifest"] = evidence["fixtureManifest"][:1]
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("fixtureManifest must include at least 4 fixtures", detail)
+            self.assertIn("fixtureManifest missing outcomes:", detail)
+            self.assertIn("invalid", detail)
+            self.assertIn("non-board", detail)
+            self.assertIn("truncated", detail)
+
+    def test_readboard_image_ocr_corpus_requires_rejection_and_equivalence_proofs(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            evidence["pathBase64EquivalenceVerified"] = False
+            evidence["truncatedImageRejected"] = False
+            find_evidence_check(evidence, "path_base64_equivalence")["details"]["sameHash"] = False
+            find_evidence_check(evidence, "truncated_image_rejected")["details"]["truncatedImageRejected"] = False
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("pathBase64EquivalenceVerified must be true", detail)
+            self.assertIn("path_base64_equivalence.sameHash must be true", detail)
+            self.assertIn("truncatedImageRejected must be true", detail)
+            self.assertIn("truncated_image_rejected.truncatedImageRejected must be true", detail)
+
+    def test_readboard_image_ocr_corpus_requires_coverage_and_hash_invariants(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            find_evidence_check(evidence, "board_size_coverage")["details"]["boardSizes"] = [19]
+            find_evidence_check(evidence, "stone_count_coverage")["details"]["stoneCounts"] = [3]
+            find_evidence_check(evidence, "hash_invariants")["details"]["pathBase64Sha256Equal"] = False
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("board_size_coverage.boardSizes must include at least two of 9, 13, 19", detail)
+            self.assertIn("stone_count_coverage.stoneCounts must include at least two non-negative counts", detail)
+            self.assertIn("hash_invariants.pathBase64Sha256Equal must be true", detail)
+
+    def test_readboard_image_ocr_corpus_requires_external_capture_unsupported_contract(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            external = find_evidence_check(evidence, "external_capture_unsupported_contract")["details"]
+            external["externalWindowCaptureCovered"] = True
+            external["realClientCaptureCovered"] = True
+            external["message"] = "captured"
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("external_capture_unsupported_contract.externalWindowCaptureCovered must be false", detail)
+            self.assertIn("external_capture_unsupported_contract.realClientCaptureCovered must be false", detail)
+            self.assertIn("external_capture_unsupported_contract.message must mention unsupported", detail)
+
+    def test_readboard_image_ocr_corpus_rejects_negative_artifact_reuse(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            valid_fixture = evidence["fixtureManifest"][0]
+            for fixture in evidence["fixtureManifest"]:
+                if fixture["expectedOutcome"] in {"invalid", "non-board", "truncated"}:
+                    fixture["path"] = valid_fixture["path"]
+                    fixture["sha256"] = valid_fixture["sha256"]
+                    fixture["sizeBytes"] = valid_fixture["sizeBytes"]
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            self.assertIn(
+                "path must not reuse a valid fixture artifact",
+                pending["readboard_image_ocr_corpus_smoke"],
+            )
+
+    def test_readboard_image_ocr_corpus_requires_negative_error_metadata(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_ocr_corpus_fixtures(root)
+            evidence = valid_readboard_image_ocr_corpus_evidence()
+            for fixture in evidence["fixtureManifest"]:
+                if fixture["expectedOutcome"] in {"invalid", "non-board", "truncated"}:
+                    fixture.pop("expectedError", None)
+                    fixture["boardSize"] = 19
+                    fixture["stoneCount"] = 1
+            write_json(root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertIn("readboard_image_ocr_corpus_smoke", pending)
+            detail = pending["readboard_image_ocr_corpus_smoke"]
+            self.assertIn("expectedError must be non-empty", detail)
+            self.assertIn("boardSize must be absent", detail)
+            self.assertIn("stoneCount must be absent", detail)
+
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2687,6 +2879,14 @@ def write_valid_readboard_image_import_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_image_ocr_corpus_evidence(root: Path) -> None:
+    create_readboard_ocr_corpus_fixtures(root)
+    write_json(
+        root / smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_EVIDENCE,
+        valid_readboard_image_ocr_corpus_evidence(),
+    )
+
+
 def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
@@ -2706,6 +2906,21 @@ def create_readboard_controlled_board_fixture(root: Path) -> None:
     target = root / "docs/qa/fixtures/readboard-controlled-board.png"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(source.read_bytes())
+
+
+def create_readboard_ocr_corpus_fixtures(root: Path) -> None:
+    source_root = Path(__file__).resolve().parents[1] / "tests/fixtures/readboard-images"
+    for filename in (
+        "controlled-19-three-stones.ppm",
+        "controlled-13-five-stones.ppm",
+        "non-board.ppm",
+        "invalid-image.bin",
+        "truncated-corrupt.ppm",
+    ):
+        source = source_root / filename
+        target = root / "tests/fixtures/readboard-images" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
 
 
 def canonical_legacy_actions() -> list[dict[str, object]]:
@@ -3348,6 +3563,185 @@ def valid_readboard_image_import_evidence() -> dict[str, object]:
                     "fullOcrParity": False,
                     "externalCaptureCovered": False,
                     "boundary": "Controlled fixture image import MVP only; no arbitrary OCR or external capture claim.",
+                },
+            },
+        ],
+    }
+
+
+def valid_readboard_image_ocr_corpus_evidence() -> dict[str, object]:
+    valid_19 = {
+        "path": "tests/fixtures/readboard-images/controlled-19-three-stones.ppm",
+        "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "sizeBytes": 480015,
+        "boardSize": 19,
+        "stoneCount": 3,
+    }
+    valid_13 = {
+        "path": "tests/fixtures/readboard-images/controlled-13-five-stones.ppm",
+        "sha256": "e46c17570ee7debe79601b611c5f96504d7a7057677b819fe0aa88d924cc51b6",
+        "sizeBytes": 480015,
+        "boardSize": 13,
+        "stoneCount": 5,
+    }
+    negative_fixtures = {
+        "invalid": {
+            "path": "tests/fixtures/readboard-images/invalid-image.bin",
+            "sha256": "fa93dc5eb1c95fcf655bdcf745203738398b12c6915e2ae7c5b996fa31602938",
+            "sizeBytes": 29,
+            "expectedError": "ImageDecode",
+        },
+        "non-board": {
+            "path": "tests/fixtures/readboard-images/non-board.ppm",
+            "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "sizeBytes": 97215,
+            "expectedError": "ImageLowConfidence",
+        },
+        "truncated": {
+            "path": "tests/fixtures/readboard-images/truncated-corrupt.ppm",
+            "sha256": "de4a4d71cf6a8fd6ce382cb16026ebf15f9e8f1b55efccb8748428f7b5295a01",
+            "sizeBytes": 19443,
+            "expectedError": "ImageDecode",
+        },
+    }
+
+    def valid_fixture(name: str, metadata: dict[str, object]) -> dict[str, object]:
+        return {
+            "name": name,
+            "expectedOutcome": "valid",
+            **metadata,
+        }
+
+    def negative_fixture(name: str, outcome: str) -> dict[str, object]:
+        return {
+            "name": name,
+            "expectedOutcome": outcome,
+            **negative_fixtures[outcome],
+        }
+
+    return {
+        "schema": smoke_user_flows.READBOARD_IMAGE_OCR_CORPUS_SMOKE_SCHEMA,
+        "name": "readboard_image_ocr_corpus_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "controlled_fixture_image_ocr_corpus",
+        "pathBase64EquivalenceVerified": True,
+        "invalidImageRejected": True,
+        "nonBoardImageRejected": True,
+        "truncatedImageRejected": True,
+        "boardSizeCoverageVerified": True,
+        "stoneCountCoverageVerified": True,
+        "hashInvariantsVerified": True,
+        "externalCaptureUnsupportedContractVerified": True,
+        "fullOcrParity": False,
+        "externalWindowCaptureCovered": False,
+        "realClientCaptureCovered": False,
+        "fullReadboardParity": False,
+        "fixtureManifest": [
+            valid_fixture("controlled-19-three-stones", valid_19),
+            valid_fixture("controlled-13-five-stones", valid_13),
+            negative_fixture("invalid-image", "invalid"),
+            negative_fixture("non-board", "non-board"),
+            negative_fixture("truncated-corrupt", "truncated"),
+        ],
+        "checks": [
+            {
+                "name": "fixture_manifest",
+                "status": "pass",
+                "details": {
+                    "fixtureCount": 5,
+                    "outcomes": ["valid", "invalid", "non-board", "truncated"],
+                },
+            },
+            {
+                "name": "path_base64_equivalence",
+                "status": "pass",
+                "details": {
+                    "pathBase64EquivalenceVerified": True,
+                    "sameSnapshot": True,
+                    "sameBoardSize": True,
+                    "sameStoneCount": True,
+                    "sameHash": True,
+                    "pathFixture": valid_19["path"],
+                    "base64Fixture": valid_19["path"],
+                },
+            },
+            {
+                "name": "invalid_image_rejected",
+                "status": "pass",
+                "details": {
+                    "invalidImageRejected": True,
+                    "reportedAsSuccess": False,
+                    "errorKind": "invalid_image",
+                    "message": "invalid image payload rejected",
+                },
+            },
+            {
+                "name": "non_board_image_rejected",
+                "status": "pass",
+                "details": {
+                    "nonBoardImageRejected": True,
+                    "reportedAsSuccess": False,
+                    "errorKind": "no_board_detected",
+                    "message": "controlled non-board image rejected because no board was detected",
+                },
+            },
+            {
+                "name": "truncated_image_rejected",
+                "status": "pass",
+                "details": {
+                    "truncatedImageRejected": True,
+                    "reportedAsSuccess": False,
+                    "errorKind": "truncated_image",
+                    "message": "truncated image payload rejected",
+                },
+            },
+            {
+                "name": "board_size_coverage",
+                "status": "pass",
+                "details": {
+                    "boardSizeCoverageVerified": True,
+                    "boardSizes": [13, 19],
+                },
+            },
+            {
+                "name": "stone_count_coverage",
+                "status": "pass",
+                "details": {
+                    "stoneCountCoverageVerified": True,
+                    "stoneCounts": [3, 5],
+                },
+            },
+            {
+                "name": "hash_invariants",
+                "status": "pass",
+                "details": {
+                    "hashInvariantsVerified": True,
+                    "pathSha256Stable": True,
+                    "base64Sha256Stable": True,
+                    "pathBase64Sha256Equal": True,
+                },
+            },
+            {
+                "name": "external_capture_unsupported_contract",
+                "status": "pass",
+                "details": {
+                    "externalCaptureUnsupportedContractVerified": True,
+                    "externalWindowCaptureCovered": False,
+                    "realClientCaptureCovered": False,
+                    "reportedAsSuccess": False,
+                    "message": "external window and real client capture remain unsupported in this scoped corpus",
+                },
+            },
+            {
+                "name": "scope_boundaries",
+                "status": "pass",
+                "details": {
+                    "fullOcrParity": False,
+                    "externalWindowCaptureCovered": False,
+                    "realClientCaptureCovered": False,
+                    "fullReadboardParity": False,
+                    "boundary": "Controlled image OCR corpus only; arbitrary OCR and external client/window capture remain pending.",
                 },
             },
         ],

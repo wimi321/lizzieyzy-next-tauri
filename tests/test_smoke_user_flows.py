@@ -54,6 +54,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shell_menu_action_smoke", pending_names)
             self.assertIn("native_menu_shortcut_smoke", pending_names)
             self.assertIn("tauri_window_runtime_smoke", pending_names)
+            self.assertIn("tauri_webview_dom_click_smoke", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
@@ -412,8 +413,77 @@ class SmokeUserFlowsTests(unittest.TestCase):
             failures = {result.name: result.detail for result in results if result.status == "FAIL"}
             pending = {result.name: result.detail for result in results if result.status == "PENDING"}
             self.assertNotIn("tauri_window_runtime_smoke", failures)
-            self.assertIn("tauri_window_runtime_smoke", pending)
-            self.assertIn(expected_detail, pending["tauri_window_runtime_smoke"])
+        self.assertIn("tauri_window_runtime_smoke", pending)
+        self.assertIn(expected_detail, pending["tauri_window_runtime_smoke"])
+
+    def test_valid_tauri_webview_dom_click_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_tauri_webview_dom_click_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("tauri_webview_dom_click_smoke", pass_names)
+            self.assertNotIn("tauri_webview_dom_click_smoke", pending_names)
+
+    def test_tauri_webview_dom_click_evidence_requires_required_check(self) -> None:
+        self.assert_invalid_tauri_webview_dom_click_evidence_pending(
+            lambda evidence: evidence.__setitem__(
+                "checks",
+                [check for check in evidence["checks"] if check["name"] != "webview_dom_observed"],
+            ),
+            "missing required checks: webview_dom_observed",
+        )
+
+    def test_tauri_webview_dom_click_evidence_rejects_browser_fallback(self) -> None:
+        self.assert_invalid_tauri_webview_dom_click_evidence_pending(
+            lambda evidence: evidence.__setitem__("browserFallbackUsed", True),
+            "browserFallbackUsed must be false",
+        )
+
+    def test_tauri_webview_dom_click_evidence_requires_at_least_four_clicks(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["clickedControls"] = evidence["clickedControls"][:3]
+            click_check = find_evidence_check(evidence, "webview_click_observed")["details"]
+            click_check["clickedControls"] = click_check["clickedControls"][:3]
+
+        self.assert_invalid_tauri_webview_dom_click_evidence_pending(
+            mutate,
+            "clickedControls must include at least four controls",
+        )
+
+    def test_tauri_webview_dom_click_evidence_rejects_overclaim_true(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullLayoutParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullShortcutParity"] = True
+
+        self.assert_invalid_tauri_webview_dom_click_evidence_pending(
+            mutate,
+            "fullLayoutParity must be false",
+        )
+
+    def assert_invalid_tauri_webview_dom_click_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_tauri_webview_dom_click_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("tauri_webview_dom_click_smoke", failures)
+            self.assertIn("tauri_webview_dom_click_smoke", pending)
+            self.assertIn(expected_detail, pending["tauri_webview_dom_click_smoke"])
 
     def test_valid_installed_macos_app_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2266,6 +2336,13 @@ def write_valid_tauri_window_runtime_evidence(root: Path) -> None:
     )
 
 
+def write_valid_tauri_webview_dom_click_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.TAURI_WEBVIEW_DOM_CLICK_SMOKE_EVIDENCE,
+        valid_tauri_webview_dom_click_evidence(),
+    )
+
+
 def write_valid_installed_macos_app_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE,
@@ -3299,6 +3376,63 @@ def valid_tauri_window_runtime_evidence() -> dict[str, object]:
             "moveCountVerified": True,
             "boardStateVerified": True,
         },
+    }
+
+
+def valid_tauri_webview_dom_click_evidence() -> dict[str, object]:
+    clicked_controls = [
+        {"label": "SGF tree node", "selector": ".sgf-tree-node", "clicked": True},
+        {"label": "Save Comment", "selector": "button:has-text('Save Comment')", "clicked": True},
+        {"label": "Annotation tab", "selector": ".sgf-annotation-editor", "clicked": True},
+        {"label": "Run review", "selector": "[data-testid='legacy-menu-analysis-run-review']", "clicked": True},
+    ]
+    visible_assertions = [
+        {"label": "LegacyShell", "selector": "[data-testid='legacy-shell']", "visible": True, "status": "pass"},
+        {"label": "SGF tree", "selector": ".sgf-tree-panel", "visible": True, "status": "pass"},
+        {"label": "Annotation editor", "selector": ".sgf-annotation-editor", "visible": True, "status": "pass"},
+        {"label": "Board surface", "selector": "[data-testid='go-board']", "visible": True, "status": "pass"},
+    ]
+    boundaries = {
+        "browserFallbackUsed": False,
+        "fullLayoutParity": False,
+        "fullShortcutParity": False,
+        "fullLegacyParity": False,
+        "releaseParity": False,
+        "ocrCaptureParity": False,
+    }
+    return {
+        "schema": smoke_user_flows.TAURI_WEBVIEW_DOM_CLICK_SMOKE_SCHEMA,
+        "name": "tauri_webview_dom_click_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "tauriRuntimeObserved": True,
+        "webviewDomObserved": True,
+        "webviewClickObserved": True,
+        "browserFallbackUsed": False,
+        "fullLayoutParity": False,
+        "fullShortcutParity": False,
+        "fullLegacyParity": False,
+        "releaseParity": False,
+        "ocrCaptureParity": False,
+        "clickedControls": clicked_controls,
+        "visibleAssertions": visible_assertions,
+        "checks": [
+            {"name": "tauri_runtime_started", "status": "pass", "details": {"tauriRuntimeObserved": True}},
+            {"name": "webview_dom_observed", "status": "pass", "details": {"webviewDomObserved": True}},
+            {
+                "name": "webview_click_observed",
+                "status": "pass",
+                "details": {"webviewClickObserved": True, "clickedControls": clicked_controls},
+            },
+            {
+                "name": "visible_targets_verified",
+                "status": "pass",
+                "details": {"visibleAssertions": visible_assertions},
+            },
+            {"name": "browser_fallback_excluded", "status": "pass", "details": {"browserFallbackUsed": False}},
+            {"name": "scope_boundaries_recorded", "status": "pass", "details": boundaries},
+        ],
+        "boundaries": boundaries,
     }
 
 

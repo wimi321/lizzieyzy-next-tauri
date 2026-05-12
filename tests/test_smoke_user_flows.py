@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import sys
 import textwrap
@@ -62,6 +63,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("bundled_katago_installed_app_smoke", pending_names)
             self.assertIn("installed_app_sgf_workflow", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
+            self.assertIn("packaged_native_dialog_sgf", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
             self.assertIn("legacy_config_corpus_migration_smoke", pending_names)
@@ -1618,6 +1620,117 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("native_desktop_sgf_workflow", failures)
             self.assertIn("native_desktop_sgf_workflow", pending)
             self.assertIn(expected_detail, pending["native_desktop_sgf_workflow"])
+
+    def test_valid_packaged_native_dialog_sgf_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_packaged_native_dialog_sgf_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("packaged_native_dialog_sgf", pass_names)
+            self.assertNotIn("packaged_native_dialog_sgf", pending_names)
+
+    def test_packaged_native_dialog_sgf_pending_evidence_is_pending_not_fail(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_json(root / smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE, pending_packaged_native_dialog_sgf_evidence())
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("packaged_native_dialog_sgf", failures)
+            self.assertIn("packaged_native_dialog_sgf", pending)
+            self.assertIn("not captured", pending["packaged_native_dialog_sgf"])
+
+    def test_packaged_native_dialog_sgf_rejects_static_devserver_and_overclaims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["sourceStaticOnly"] = True
+            evidence["devServerOnly"] = True
+            for key in smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_FALSE_FIELDS:
+                evidence[key] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            for key in smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_FALSE_FIELDS:
+                boundaries[key] = True
+
+        self.assert_invalid_packaged_native_dialog_sgf_pending(mutate, "static-only evidence is not accepted for PASS")
+
+    def test_packaged_native_dialog_sgf_requires_dialog_steps_and_screenshots(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["dialogStepRecords"] = []
+            evidence["screenshots"] = []
+
+        self.assert_invalid_packaged_native_dialog_sgf_pending(mutate, "dialogStepRecords must be a non-empty list")
+
+    def test_packaged_native_dialog_sgf_requires_sgf_hashes_and_invariants(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            hashes = evidence["sgfHashes"]
+            assert isinstance(hashes, dict)
+            hashes["before"] = "not-sha"
+            workflow = evidence["workflow"]
+            assert isinstance(workflow, dict)
+            workflow["reopenVerified"] = False
+
+        self.assert_invalid_packaged_native_dialog_sgf_pending(mutate, "sgfHashes.before must be a 64-character hex sha256")
+
+    def test_packaged_native_dialog_sgf_rejects_static_collection_app_path_and_bad_screenshots(self) -> None:
+        self.assert_invalid_packaged_native_dialog_sgf_pending(
+            lambda evidence: evidence.__setitem__("collectionMethod", "source_static_plus_stubbed_ui_flow"),
+            "collectionMethod must be packaged_macos_app_native_dialog_sgf_workflow",
+        )
+        self.assert_invalid_packaged_native_dialog_sgf_pending(
+            lambda evidence: evidence.__setitem__("appPath", "apps/desktop/src/App.tsx"),
+            "appPath must point to a packaged macOS .app executable",
+        )
+
+        def missing_screenshot(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["path"] = "docs/qa/screenshots/missing-packaged-native-dialog.png"
+
+        self.assert_invalid_packaged_native_dialog_sgf_pending(
+            missing_screenshot,
+            "screenshots[0].path must exist in evidence root",
+        )
+
+        def bad_screenshot_hash(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["sha256"] = "f" * 64
+
+        self.assert_invalid_packaged_native_dialog_sgf_pending(
+            bad_screenshot_hash,
+            "screenshots[0].sha256 must match the screenshot file",
+        )
+
+    def assert_invalid_packaged_native_dialog_sgf_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_packaged_native_dialog_sgf_evidence()
+            materialize_packaged_native_dialog_sgf_screenshots(root, evidence)
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("packaged_native_dialog_sgf", failures)
+            self.assertIn("packaged_native_dialog_sgf", pending)
+            self.assertIn(expected_detail, pending["packaged_native_dialog_sgf"])
 
     def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -6749,6 +6862,147 @@ def valid_native_desktop_sgf_workflow_evidence() -> dict[str, object]:
             "productionSigned": False,
             "notarized": False,
         },
+    }
+
+
+def packaged_native_dialog_boundaries() -> dict[str, bool]:
+    return {
+        "fullNativeDialogParity": False,
+        "fullLegacyParity": False,
+        "releaseParity": False,
+        "signedReleaseParity": False,
+        "windowsLinuxParity": False,
+        "fullAutomation": False,
+    }
+
+
+def pending_packaged_native_dialog_sgf_evidence() -> dict[str, object]:
+    boundaries = packaged_native_dialog_boundaries()
+    return {
+        "schema": smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_SCHEMA,
+        "name": "packaged_native_dialog_sgf",
+        "status": "pending",
+        "platform": "macos",
+        "collectionMethod": "packaged_macos_app_native_dialog_sgf_workflow",
+        "pendingReason": "not captured in this test fixture",
+        "packagedApp": False,
+        "devServerAbsent": False,
+        "nativeOpenDialogObserved": False,
+        "nativeSaveDialogObserved": False,
+        "sourceStaticOnly": False,
+        "browserOnly": False,
+        "devServerOnly": False,
+        **boundaries,
+        "boundaries": boundaries,
+    }
+
+
+def write_valid_packaged_native_dialog_sgf_evidence(root: Path) -> None:
+    evidence = valid_packaged_native_dialog_sgf_evidence()
+    materialize_packaged_native_dialog_sgf_screenshots(root, evidence)
+    write_json(root / smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE, evidence)
+
+
+def materialize_packaged_native_dialog_sgf_screenshots(root: Path, evidence: dict[str, object]) -> None:
+    screenshots = evidence["screenshots"]
+    assert isinstance(screenshots, list)
+    for index, screenshot in enumerate(screenshots):
+        assert isinstance(screenshot, dict)
+        path_value = screenshot["path"]
+        assert isinstance(path_value, str)
+        payload = (f"packaged native dialog screenshot {index}\n".encode("utf-8")) * 64
+        path = root / path_value
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        screenshot["sizeBytes"] = len(payload)
+        screenshot["sha256"] = hashlib.sha256(payload).hexdigest()
+
+
+def valid_packaged_native_dialog_sgf_evidence() -> dict[str, object]:
+    boundaries = packaged_native_dialog_boundaries()
+    screenshots = [
+        {
+            "label": "native-open-dialog",
+            "path": "docs/qa/screenshots/packaged-native-dialog-open.png",
+            "sizeBytes": 1234,
+            "sha256": "1" * 64,
+        },
+        {
+            "label": "native-save-dialog",
+            "path": "docs/qa/screenshots/packaged-native-dialog-save.png",
+            "sizeBytes": 2234,
+            "sha256": "2" * 64,
+        },
+        {
+            "label": "reopen-verified",
+            "path": "docs/qa/screenshots/packaged-native-dialog-reopen.png",
+            "sizeBytes": 3234,
+            "sha256": "3" * 64,
+        },
+    ]
+    dialog_steps = [
+        {
+            "kind": "native_open_dialog",
+            "method": "macOS native Open dialog in unsigned packaged .app",
+            "tooling": ["screencapture", "manual-assisted"],
+            "path": "<tmp>/packaged-native-dialog/input.sgf",
+            "screenshot": screenshots[0],
+        },
+        {
+            "kind": "native_save_dialog",
+            "method": "macOS native Save dialog in unsigned packaged .app",
+            "tooling": ["screencapture", "manual-assisted"],
+            "path": "<tmp>/packaged-native-dialog/saved.sgf",
+            "screenshot": screenshots[1],
+        },
+    ]
+    workflow = {
+        "openVerified": True,
+        "contentPreserved": True,
+        "saveVerified": True,
+        "readbackVerified": True,
+        "reopenVerified": True,
+        "finalInvariantVerified": True,
+    }
+    return {
+        "schema": smoke_user_flows.PACKAGED_NATIVE_DIALOG_SGF_SCHEMA,
+        "name": "packaged_native_dialog_sgf",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "packaged_macos_app_native_dialog_sgf_workflow",
+        "packagedApp": True,
+        "devServerAbsent": True,
+        "nativeOpenDialogObserved": True,
+        "nativeSaveDialogObserved": True,
+        "sourceStaticOnly": False,
+        "browserOnly": False,
+        "devServerOnly": False,
+        **boundaries,
+        "appPath": "target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+        "inputSgfPath": "<tmp>/packaged-native-dialog/input.sgf",
+        "savedSgfPath": "<tmp>/packaged-native-dialog/saved.sgf",
+        "reopenedSgfPath": "<tmp>/packaged-native-dialog/saved.sgf",
+        "sgfHashes": {
+            "before": "4" * 64,
+            "after": "5" * 64,
+            "readback": "5" * 64,
+        },
+        "dialogStepRecords": dialog_steps,
+        "screenshots": screenshots,
+        "workflow": workflow,
+        "checks": [
+            {"name": "packaged_app_started", "status": "pass", "details": {"packagedApp": True, "devServerAbsent": True}},
+            {"name": "native_open_dialog", "status": "pass", "details": dialog_steps[0]},
+            {"name": "sgf_opened", "status": "pass", "details": {"openVerified": True}},
+            {"name": "content_preserved", "status": "pass", "details": {"contentPreserved": True}},
+            {"name": "native_save_dialog", "status": "pass", "details": dialog_steps[1]},
+            {"name": "save_readback_verified", "status": "pass", "details": {"readbackVerified": True}},
+            {"name": "reopen_verified", "status": "pass", "details": {"reopenVerified": True}},
+            {"name": "final_invariant_verified", "status": "pass", "details": {"finalInvariantVerified": True}},
+            {"name": "screenshots_recorded", "status": "pass", "details": {"count": len(screenshots)}},
+            {"name": "scope_boundaries", "status": "pass", "details": {"boundaries": boundaries}},
+        ],
+        "boundaries": boundaries,
     }
 
 

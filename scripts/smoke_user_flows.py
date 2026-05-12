@@ -333,6 +333,28 @@ NATIVE_DESKTOP_SGF_WORKFLOW_REQUIRED_CHECKS = [
     "screenshots_recorded",
     "scope_boundaries",
 ]
+PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE = "docs/qa/packaged-native-dialog-sgf-macos.json"
+PACKAGED_NATIVE_DIALOG_SGF_SCHEMA = "lizzieyzy.packaged-native-dialog-sgf.v1"
+PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_CHECKS = [
+    "packaged_app_started",
+    "native_open_dialog",
+    "sgf_opened",
+    "content_preserved",
+    "native_save_dialog",
+    "save_readback_verified",
+    "reopen_verified",
+    "final_invariant_verified",
+    "screenshots_recorded",
+    "scope_boundaries",
+]
+PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_FALSE_FIELDS = [
+    "fullNativeDialogParity",
+    "fullLegacyParity",
+    "releaseParity",
+    "signedReleaseParity",
+    "windowsLinuxParity",
+    "fullAutomation",
+]
 KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
 KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
 KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -1334,6 +1356,7 @@ class UserFlowSmoke:
         self.check_bundled_katago_installed_app_smoke_evidence()
         self.check_installed_app_sgf_workflow_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
+        self.check_packaged_native_dialog_sgf_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
         self.check_legacy_config_corpus_migration_smoke_evidence()
@@ -1689,6 +1712,42 @@ class UserFlowSmoke:
         self.pass_(
             "native_desktop_sgf_workflow",
             "scoped native desktop SGF open/edit/save/reopen workflow evidence passes with native dialog, persistence, screenshot, and boundary checks",
+        )
+
+    def check_packaged_native_dialog_sgf_evidence(self) -> None:
+        evidence_path = self.path(PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "packaged_native_dialog_sgf",
+                f"TODO gate: record scoped packaged native dialog SGF evidence at {PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE)
+        if evidence is None:
+            return
+        if str(evidence.get("status", "")).lower() in {"pending", "unavailable"}:
+            failures = validate_packaged_native_dialog_sgf_pending_evidence(evidence)
+            if failures:
+                self.pending(
+                    "packaged_native_dialog_sgf",
+                    f"{PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE} is present but not valid scoped pending evidence: "
+                    + "; ".join(failures),
+                )
+                return
+            reason = evidence.get("pendingReason") or evidence.get("reason") or "packaged native dialog SGF proof has not been captured yet"
+            self.pending("packaged_native_dialog_sgf", str(reason))
+            return
+        failures = validate_packaged_native_dialog_sgf_evidence(evidence, root=self.root)
+        if failures:
+            self.pending(
+                "packaged_native_dialog_sgf",
+                f"{PACKAGED_NATIVE_DIALOG_SGF_EVIDENCE} is present but not valid scoped packaged native dialog SGF PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "packaged_native_dialog_sgf",
+            "scoped unsigned packaged macOS app native Open/Save dialog SGF workflow evidence passes with screenshots, hashes, invariants, and boundary checks",
         )
 
     def check_katago_live_smoke_evidence(self) -> None:
@@ -4468,6 +4527,216 @@ def validate_native_desktop_sgf_workflow_evidence(evidence: Any) -> list[str]:
     return failures
 
 
+def validate_packaged_native_dialog_sgf_evidence(evidence: Any, *, root: Path | None = None) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    evidence_root = root or ROOT
+    if evidence.get("schema") != PACKAGED_NATIVE_DIALOG_SGF_SCHEMA:
+        failures.append(f"schema must be {PACKAGED_NATIVE_DIALOG_SGF_SCHEMA}")
+    if evidence.get("name") != "packaged_native_dialog_sgf":
+        failures.append("name must be packaged_native_dialog_sgf")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("collectionMethod") != "packaged_macos_app_native_dialog_sgf_workflow":
+        failures.append("collectionMethod must be packaged_macos_app_native_dialog_sgf_workflow")
+    for key in ("packagedApp", "devServerAbsent", "nativeOpenDialogObserved", "nativeSaveDialogObserved"):
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    if evidence.get("sourceStaticOnly") is True:
+        failures.append("static-only evidence is not accepted for PASS")
+    if evidence.get("browserOnly") is True or evidence.get("devServerOnly") is True:
+        failures.append("browser/dev-server-only evidence is not accepted for PASS")
+    for key in PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+    else:
+        for key in PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_FALSE_FIELDS:
+            if boundaries.get(key) is not False:
+                failures.append(f"boundaries.{key} must be false")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    failures.extend(validate_packaged_native_dialog_steps(evidence))
+    failures.extend(validate_packaged_native_dialog_screenshots(evidence, evidence_root))
+    failures.extend(validate_packaged_native_dialog_paths_and_hashes(evidence))
+    failures.extend(validate_packaged_native_dialog_invariants(evidence, check_by_name))
+    return unique_ordered(failures)
+
+
+def validate_packaged_native_dialog_sgf_pending_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != PACKAGED_NATIVE_DIALOG_SGF_SCHEMA:
+        failures.append(f"schema must be {PACKAGED_NATIVE_DIALOG_SGF_SCHEMA}")
+    if evidence.get("name") != "packaged_native_dialog_sgf":
+        failures.append("name must be packaged_native_dialog_sgf")
+    if str(evidence.get("status", "")).lower() not in {"pending", "unavailable"}:
+        failures.append("status must be pending/unavailable")
+    for key in PACKAGED_NATIVE_DIALOG_SGF_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    reason = first_present(evidence, "pendingReason", "reason")
+    if not isinstance(reason, str) or not reason.strip():
+        failures.append("pendingReason/reason must be non-empty")
+    return failures
+
+
+def validate_packaged_native_dialog_steps(evidence: dict[str, Any]) -> list[str]:
+    steps = evidence.get("dialogStepRecords")
+    if not isinstance(steps, list) or not steps:
+        return ["dialogStepRecords must be a non-empty list"]
+    failures: list[str] = []
+    seen_open = False
+    seen_save = False
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            failures.append(f"dialogStepRecords[{index}] must be an object")
+            continue
+        kind = str(first_present(step, "kind", "dialog", "name", "type") or "").lower()
+        seen_open = seen_open or "open" in kind
+        seen_save = seen_save or "save" in kind
+        method = first_present(step, "method", "tooling", "interactionMethod")
+        if isinstance(method, list):
+            has_method = bool(method)
+            method_text = " ".join(str(item) for item in method)
+        else:
+            has_method = isinstance(method, str) and bool(method.strip())
+            method_text = method if isinstance(method, str) else ""
+        if not has_method:
+            failures.append(f"dialogStepRecords[{index}].method/tooling must be recorded")
+        if re.search(r"\b(source|static|stub|fake)\b", method_text, re.IGNORECASE):
+            failures.append(f"dialogStepRecords[{index}].method must describe real packaged native dialog interaction")
+        path = first_present(step, "path", "sgfPath", "openedPath", "savedPath", "sanitizedPath")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"dialogStepRecords[{index}].path must be non-empty")
+        elif not is_allowed_evidence_path(path):
+            failures.append(f"dialogStepRecords[{index}].path must be sanitized")
+    if not seen_open:
+        failures.append("dialogStepRecords must include native open dialog step")
+    if not seen_save:
+        failures.append("dialogStepRecords must include native save dialog step")
+    return failures
+
+
+def validate_packaged_native_dialog_screenshots(evidence: dict[str, Any], root: Path = ROOT) -> list[str]:
+    screenshots = evidence.get("screenshots")
+    if not isinstance(screenshots, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    labels: set[str] = set()
+    if len(screenshots) < 3:
+        failures.append("screenshots must include at least open/save/reopen records")
+    for index, screenshot in enumerate(screenshots):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        label = str(first_present(screenshot, "label", "name", "phase") or "").lower()
+        labels.add(label)
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be non-empty")
+        elif not is_allowed_evidence_path(path):
+            failures.append(f"screenshots[{index}].path must be sanitized")
+        sha256 = screenshot.get("sha256")
+        if not is_sha256_hex(sha256):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        size_value = first_present(screenshot, "sizeBytes", "bytes", "size")
+        if not positive_number(size_value):
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        if isinstance(path, str) and is_stable_artifact_path(path):
+            screenshot_file = root / path
+            if not screenshot_file.is_file():
+                failures.append(f"screenshots[{index}].path must exist in evidence root")
+            else:
+                actual_size = screenshot_file.stat().st_size
+                if isinstance(size_value, (int, float)) and int(size_value) != actual_size:
+                    failures.append(f"screenshots[{index}].sizeBytes must match the screenshot file")
+                if is_sha256_hex(sha256) and sha256_file(screenshot_file) != str(sha256).lower():
+                    failures.append(f"screenshots[{index}].sha256 must match the screenshot file")
+    for required in ("open", "save", "reopen"):
+        if not any(required in label for label in labels):
+            failures.append(f"screenshots must include {required} record")
+    return failures
+
+
+def validate_packaged_native_dialog_paths_and_hashes(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    for key in ("appPath", "inputSgfPath", "savedSgfPath", "reopenedSgfPath"):
+        value = evidence.get(key)
+        if not isinstance(value, str) or not value.strip():
+            failures.append(f"{key} must be non-empty")
+        elif not is_allowed_evidence_path(value):
+            failures.append(f"{key} must be sanitized")
+    app_path = evidence.get("appPath")
+    if isinstance(app_path, str) and ".app/Contents/MacOS/" not in app_path:
+        failures.append("appPath must point to a packaged macOS .app executable")
+    hashes = evidence.get("sgfHashes")
+    if not isinstance(hashes, dict):
+        failures.append("sgfHashes must be an object")
+    else:
+        before_hash = first_present(hashes, "before", "beforeSha256", "inputSha256")
+        after_hash = first_present(hashes, "after", "afterSha256", "savedSha256")
+        readback_hash = first_present(hashes, "readback", "readbackSha256")
+        for label, value in (("before", before_hash), ("after", after_hash), ("readback", readback_hash)):
+            if not is_sha256_hex(value):
+                failures.append(f"sgfHashes.{label} must be a 64-character hex sha256")
+        if is_sha256_hex(after_hash) and is_sha256_hex(readback_hash) and after_hash != readback_hash:
+            failures.append("sgfHashes.after must match readback")
+    return failures
+
+
+def validate_packaged_native_dialog_invariants(
+    evidence: dict[str, Any],
+    check_by_name: dict[str, Any],
+) -> list[str]:
+    failures: list[str] = []
+    workflow = evidence.get("workflow")
+    if not isinstance(workflow, dict):
+        failures.append("workflow must be an object")
+    else:
+        for key in ("openVerified", "contentPreserved", "saveVerified", "readbackVerified", "reopenVerified", "finalInvariantVerified"):
+            if workflow.get(key) is not True:
+                failures.append(f"workflow.{key} must be true")
+        if "editVerified" in workflow:
+            failures.append("workflow.editVerified must not be used for this no-edit packaged dialog proof")
+    for check_name, field in (
+        ("save_readback_verified", "readbackVerified"),
+        ("reopen_verified", "reopenVerified"),
+        ("final_invariant_verified", "finalInvariantVerified"),
+    ):
+        details = check_evidence(check_by_name.get(check_name))
+        if not isinstance(details, dict) or details.get(field) is not True:
+            failures.append(f"{check_name}.{field} must be true")
+    return failures
+
+
 def native_workflow_has_manual_assisted_step(evidence: dict[str, Any]) -> bool:
     if evidence.get("collectionMethod") == "manual_assisted_native_desktop_workflow":
         return True
@@ -6294,6 +6563,14 @@ def validate_packaging_checksums(check: Any) -> list[str]:
 
 def is_sha256_hex(value: Any) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(r"[0-9a-fA-F]{64}", value))
+
+
+def sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def validate_provider_runtime_started(check: Any) -> list[str]:

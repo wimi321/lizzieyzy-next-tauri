@@ -1,0 +1,359 @@
+{
+  "appPath": "target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+  "boundaries": {
+    "fullAutomation": false,
+    "fullLegacyParity": false,
+    "fullNativeDialogParity": false,
+    "releaseParity": false,
+    "signedReleaseParity": false,
+    "windowsLinuxParity": false
+  },
+  "browserOnly": false,
+  "checks": [
+    {
+      "details": {
+        "devServerAbsent": true,
+        "executable": "target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+        "packagedApp": true
+      },
+      "name": "packaged_app_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "kind": "native_open_dialog",
+        "method": "packaged macOS app native Open dialog via toolbar-click-then-keyboard-shortcut",
+        "path": "<tmp>/in.sgf",
+        "screenshot": {
+          "captureTool": "screencapture",
+          "label": "native-open-dialog",
+          "path": "docs/qa/screenshots/packaged-native-dialog-open.png",
+          "sha256": "0192611c4f957a8aaa9a0ecb6cc0d29cb6c852aeff4dfd9915fcfeefdbf2e03b",
+          "sizeBytes": 926432
+        },
+        "tooling": [
+          "cliclick",
+          "osascript",
+          "screencapture"
+        ]
+      },
+      "name": "native_open_dialog",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "openVerified": true,
+        "openedSgfPath": "<tmp>/in.sgf"
+      },
+      "name": "sgf_opened",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "contentPreserved": true,
+        "method": "open/save/readback workflow preserves source SGF content"
+      },
+      "name": "content_preserved",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "kind": "native_save_dialog",
+        "method": "packaged macOS app native Save dialog via toolbar-click-then-keyboard-shortcut",
+        "path": "<tmp>/ou t.sgf",
+        "screenshot": {
+          "captureTool": "screencapture",
+          "label": "native-save-dialog",
+          "path": "docs/qa/screenshots/packaged-native-dialog-save.png",
+          "sha256": "7b279b5405a2edf3eee6b208d5f196a8790e1dba9f9e5207097a37e55ae29079",
+          "sizeBytes": 866757
+        },
+        "tooling": [
+          "cliclick",
+          "osascript",
+          "screencapture"
+        ]
+      },
+      "name": "native_save_dialog",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "readbackVerified": true,
+        "savedSgfPath": "<tmp>/ou t.sgf"
+      },
+      "name": "save_readback_verified",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "reopenVerified": true,
+        "reopenedSgfPath": "<tmp>/ou t.sgf"
+      },
+      "name": "reopen_verified",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "finalInvariantVerified": true,
+        "invariants": {
+          "boardInvariant": {
+            "expectedStones": [
+              {
+                "color": "B",
+                "point": "dd"
+              },
+              {
+                "color": "W",
+                "point": "ee"
+              }
+            ],
+            "verifiedByContent": true
+          },
+          "contentHash": "633afc863f7ad2ffa8e92e1eb4f2678c1aea5345e8f0c5526ae24151bf033be0",
+          "contentInvariant": {
+            "boardSize9": true,
+            "sourceCommentPresent": true
+          },
+          "treeInvariant": {
+            "moveCountAtLeast": 2,
+            "moveTokens": [
+              ";B[dd]",
+              ";W[ee]"
+            ],
+            "rootPresent": true
+          },
+          "verified": true
+        }
+      },
+      "name": "final_invariant_verified",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "count": 9,
+        "screenshots": [
+          {
+            "captureTool": "screencapture",
+            "label": "app-started",
+            "path": "docs/qa/screenshots/packaged-native-dialog-app-started.png",
+            "sha256": "9bf96829ea2ab485fe55984ff2082bcdd6b33c7583494dcc23524d706e6e409e",
+            "sizeBytes": 851564
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "native-open-dialog",
+            "path": "docs/qa/screenshots/packaged-native-dialog-open.png",
+            "sha256": "0192611c4f957a8aaa9a0ecb6cc0d29cb6c852aeff4dfd9915fcfeefdbf2e03b",
+            "sizeBytes": 926432
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "sgf-opened",
+            "path": "docs/qa/screenshots/packaged-native-dialog-opened.png",
+            "sha256": "cb95d792c9e1583f3654659f4c83e990637fd10c12a24f18f385a5d9ce4365ea",
+            "sizeBytes": 839314
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "native-save-dialog",
+            "path": "docs/qa/screenshots/packaged-native-dialog-save.png",
+            "sha256": "7b279b5405a2edf3eee6b208d5f196a8790e1dba9f9e5207097a37e55ae29079",
+            "sizeBytes": 866757
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "native-save-dialog-named",
+            "path": "docs/qa/screenshots/packaged-native-dialog-save-named.png",
+            "sha256": "ee58c418b92c3b92f9e8470eeb99ea711a5e864d2f329a749a6b8a3a15d3eed6",
+            "sizeBytes": 874192
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "native-save-dialog-clicked",
+            "path": "docs/qa/screenshots/packaged-native-dialog-save-clicked.png",
+            "sha256": "8220bc68469c2cb5d28cfd48f70fcbfa5aab8760e50b9887b0b5144fa9a3134c",
+            "sizeBytes": 845689
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "save-readback",
+            "path": "docs/qa/screenshots/packaged-native-dialog-saved.png",
+            "sha256": "59a8688a1907591d2e65fa28fb4e4d5a2186bf9c4839caa485a8f72e546b8c4c",
+            "sizeBytes": 840843
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "reopen-dialog",
+            "path": "docs/qa/screenshots/packaged-native-dialog-reopen.png",
+            "sha256": "506e4f4fe73e0c0260a2a6d51c704cff6d7635867ee77de7397274eefe6c2b17",
+            "sizeBytes": 954238
+          },
+          {
+            "captureTool": "screencapture",
+            "label": "reopen-verified",
+            "path": "docs/qa/screenshots/packaged-native-dialog-reopened.png",
+            "sha256": "3f7fa804f3456495dd98b8d6f414248426ccea79dd8f19e07d7e9b275f6a15db",
+            "sizeBytes": 840052
+          }
+        ]
+      },
+      "name": "screenshots_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boundaries": {
+          "fullAutomation": false,
+          "fullLegacyParity": false,
+          "fullNativeDialogParity": false,
+          "releaseParity": false,
+          "signedReleaseParity": false,
+          "windowsLinuxParity": false
+        }
+      },
+      "name": "scope_boundaries",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "packaged_macos_app_native_dialog_sgf_workflow",
+  "devServerAbsent": true,
+  "devServerOnly": false,
+  "dialogStepRecords": [
+    {
+      "kind": "native_open_dialog",
+      "method": "packaged macOS app native Open dialog via toolbar-click-then-keyboard-shortcut",
+      "path": "<tmp>/in.sgf",
+      "screenshot": {
+        "captureTool": "screencapture",
+        "label": "native-open-dialog",
+        "path": "docs/qa/screenshots/packaged-native-dialog-open.png",
+        "sha256": "0192611c4f957a8aaa9a0ecb6cc0d29cb6c852aeff4dfd9915fcfeefdbf2e03b",
+        "sizeBytes": 926432
+      },
+      "tooling": [
+        "cliclick",
+        "osascript",
+        "screencapture"
+      ]
+    },
+    {
+      "kind": "native_save_dialog",
+      "method": "packaged macOS app native Save dialog via toolbar-click-then-keyboard-shortcut",
+      "path": "<tmp>/ou t.sgf",
+      "screenshot": {
+        "captureTool": "screencapture",
+        "label": "native-save-dialog",
+        "path": "docs/qa/screenshots/packaged-native-dialog-save.png",
+        "sha256": "7b279b5405a2edf3eee6b208d5f196a8790e1dba9f9e5207097a37e55ae29079",
+        "sizeBytes": 866757
+      },
+      "tooling": [
+        "cliclick",
+        "osascript",
+        "screencapture"
+      ]
+    }
+  ],
+  "fullAutomation": false,
+  "fullLegacyParity": false,
+  "fullNativeDialogParity": false,
+  "inputSgfPath": "<tmp>/in.sgf",
+  "name": "packaged_native_dialog_sgf",
+  "nativeOpenDialogObserved": true,
+  "nativeSaveDialogObserved": true,
+  "packagedApp": true,
+  "platform": "macos",
+  "releaseParity": false,
+  "reopenedSgfPath": "<tmp>/ou t.sgf",
+  "savedSgfPath": "<tmp>/ou t.sgf",
+  "schema": "lizzieyzy.packaged-native-dialog-sgf.v1",
+  "screenshots": [
+    {
+      "captureTool": "screencapture",
+      "label": "app-started",
+      "path": "docs/qa/screenshots/packaged-native-dialog-app-started.png",
+      "sha256": "9bf96829ea2ab485fe55984ff2082bcdd6b33c7583494dcc23524d706e6e409e",
+      "sizeBytes": 851564
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "native-open-dialog",
+      "path": "docs/qa/screenshots/packaged-native-dialog-open.png",
+      "sha256": "0192611c4f957a8aaa9a0ecb6cc0d29cb6c852aeff4dfd9915fcfeefdbf2e03b",
+      "sizeBytes": 926432
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "sgf-opened",
+      "path": "docs/qa/screenshots/packaged-native-dialog-opened.png",
+      "sha256": "cb95d792c9e1583f3654659f4c83e990637fd10c12a24f18f385a5d9ce4365ea",
+      "sizeBytes": 839314
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "native-save-dialog",
+      "path": "docs/qa/screenshots/packaged-native-dialog-save.png",
+      "sha256": "7b279b5405a2edf3eee6b208d5f196a8790e1dba9f9e5207097a37e55ae29079",
+      "sizeBytes": 866757
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "native-save-dialog-named",
+      "path": "docs/qa/screenshots/packaged-native-dialog-save-named.png",
+      "sha256": "ee58c418b92c3b92f9e8470eeb99ea711a5e864d2f329a749a6b8a3a15d3eed6",
+      "sizeBytes": 874192
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "native-save-dialog-clicked",
+      "path": "docs/qa/screenshots/packaged-native-dialog-save-clicked.png",
+      "sha256": "8220bc68469c2cb5d28cfd48f70fcbfa5aab8760e50b9887b0b5144fa9a3134c",
+      "sizeBytes": 845689
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "save-readback",
+      "path": "docs/qa/screenshots/packaged-native-dialog-saved.png",
+      "sha256": "59a8688a1907591d2e65fa28fb4e4d5a2186bf9c4839caa485a8f72e546b8c4c",
+      "sizeBytes": 840843
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "reopen-dialog",
+      "path": "docs/qa/screenshots/packaged-native-dialog-reopen.png",
+      "sha256": "506e4f4fe73e0c0260a2a6d51c704cff6d7635867ee77de7397274eefe6c2b17",
+      "sizeBytes": 954238
+    },
+    {
+      "captureTool": "screencapture",
+      "label": "reopen-verified",
+      "path": "docs/qa/screenshots/packaged-native-dialog-reopened.png",
+      "sha256": "3f7fa804f3456495dd98b8d6f414248426ccea79dd8f19e07d7e9b275f6a15db",
+      "sizeBytes": 840052
+    }
+  ],
+  "sgfHashes": {
+    "after": "633afc863f7ad2ffa8e92e1eb4f2678c1aea5345e8f0c5526ae24151bf033be0",
+    "before": "633afc863f7ad2ffa8e92e1eb4f2678c1aea5345e8f0c5526ae24151bf033be0",
+    "readback": "633afc863f7ad2ffa8e92e1eb4f2678c1aea5345e8f0c5526ae24151bf033be0"
+  },
+  "signedReleaseParity": false,
+  "sourceStaticOnly": false,
+  "status": "pass",
+  "termination": {
+    "attempted": true,
+    "exitCode": -15,
+    "method": "SIGTERM",
+    "terminated": true
+  },
+  "windowsLinuxParity": false,
+  "workflow": {
+    "contentPreserved": true,
+    "finalInvariantVerified": true,
+    "openVerified": true,
+    "readbackVerified": true,
+    "reopenVerified": true,
+    "saveVerified": true
+  }
+}

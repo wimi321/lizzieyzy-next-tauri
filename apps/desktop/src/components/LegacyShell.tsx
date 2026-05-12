@@ -95,8 +95,11 @@ export function LegacyShell({
 }: LegacyShellProps) {
   const fileInputId = "legacy-shell-import-sgf";
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const aboutTargetRef = useRef<HTMLDivElement | null>(null);
   const boardPaneRef = useRef<HTMLDivElement | null>(null);
   const analysisPaneRef = useRef<HTMLDivElement | null>(null);
+  const sgfSourceRef = useRef<HTMLTextAreaElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   const bottomDockRef = useRef<HTMLElement | null>(null);
   const statusbarRef = useRef<HTMLElement | null>(null);
   const focusResetRef = useRef<number | null>(null);
@@ -156,9 +159,21 @@ export function LegacyShell({
   }
 
   function resolveTargetElement(target: LegacyMenuTarget): HTMLElement | null {
+    if (target === "about") {
+      return aboutTargetRef.current;
+    }
+
     if (target === "candidates" || target === "ownership" || target === "policy") {
       activateBoardOverlay(target);
       return findAnalysisSection(target) ?? boardPaneRef.current;
+    }
+
+    if (target === "sgf-source") {
+      return sgfSourceRef.current;
+    }
+
+    if (target === "timeline") {
+      return timelineRef.current?.querySelector<HTMLElement>("[data-testid='legacy-move-slider']") ?? timelineRef.current;
     }
 
     if (target === "profiles" || target === "assets") {
@@ -245,6 +260,10 @@ export function LegacyShell({
       actionId === "file.importSgf" ||
       actionId === "game.loadSample" ||
       actionId === "game.parseSgf" ||
+      actionId === "game.firstMove" ||
+      actionId === "game.previousMove" ||
+      actionId === "game.nextMove" ||
+      actionId === "game.lastMove" ||
       actionId === "analysis.runReview"
     ) {
       return isBusy;
@@ -261,6 +280,28 @@ export function LegacyShell({
     }
 
     try {
+      switch (action.id) {
+        case "file.new":
+          markActionStatus(action, source, "blocked");
+          return;
+        case "game.firstMove":
+          onMoveChange(0);
+          runMenuTargetAction("timeline", action, source);
+          return;
+        case "game.previousMove":
+          onMoveChange(Math.max(0, currentMove - 1));
+          runMenuTargetAction("timeline", action, source);
+          return;
+        case "game.nextMove":
+          onMoveChange(Math.min(maxMove, currentMove + 1));
+          runMenuTargetAction("timeline", action, source);
+          return;
+        case "game.lastMove":
+          onMoveChange(maxMove);
+          runMenuTargetAction("timeline", action, source);
+          return;
+      }
+
       if (action.target) {
         runMenuTargetAction(action.target, action, source);
         return;
@@ -293,7 +334,7 @@ export function LegacyShell({
     } catch {
       markActionStatus(action, source, "failed");
     }
-  }, [canSave, isBusy, onLoadSample, onOpen, onParseSgf, onRunReview, onSave, onSaveAs]);
+  }, [canSave, currentMove, isBusy, maxMove, onLoadSample, onMoveChange, onOpen, onParseSgf, onRunReview, onSave, onSaveAs]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -349,7 +390,15 @@ export function LegacyShell({
       data-legacy-shortcut-input-editing-protected="true"
     >
       <header className="legacy-titlebar">
-        <div className="legacy-appmark">
+        <div
+          ref={aboutTargetRef}
+          className={`legacy-appmark${highlightedTarget === "about" ? " legacy-focus-highlight" : ""}`}
+          data-testid="legacy-about-target"
+          data-menu-target="about"
+          data-legacy-menu-target-id="legacy-menu-target-about"
+          id="legacy-menu-target-about"
+          tabIndex={-1}
+        >
           <h1>LizzieYzy Next</h1>
           <p>{architectureLabel}</p>
         </div>
@@ -427,9 +476,9 @@ export function LegacyShell({
         >
           <div className="legacy-board-stage">{board}</div>
           <div className="legacy-chart-strip">{chart}</div>
-          <div className="timeline-row legacy-timeline">
+          <div ref={timelineRef} className="timeline-row legacy-timeline" data-testid="legacy-timeline" data-menu-target="timeline">
             <span>Move {currentMove}</span>
-            <input className="move-slider" type="range" min={0} max={maxMove} value={Math.min(currentMove, maxMove)} onChange={(event) => onMoveChange(Number(event.target.value))} />
+            <input data-testid="legacy-move-slider" className="move-slider" type="range" min={0} max={maxMove} value={Math.min(currentMove, maxMove)} onChange={(event) => onMoveChange(Number(event.target.value))} />
             <span>{maxMove}</span>
           </div>
         </div>
@@ -442,7 +491,7 @@ export function LegacyShell({
             <strong title={documentTitle}>{documentName}{dirty ? " *" : ""}</strong>
             <span>{dirty ? "Unsaved changes" : "Saved"}</span>
           </div>
-          <textarea data-testid="sgf-source-textarea" data-legacy-shortcut-scope="editable" data-legacy-shortcut-protected="true" value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
+          <textarea ref={sgfSourceRef} data-testid="sgf-source-textarea" data-legacy-shortcut-scope="editable" data-legacy-shortcut-protected="true" value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
           <div className="button-row">
             <button type="button" data-testid="sgf-source-open" onClick={() => void dispatchLegacyAction("file.open", "toolbar")} disabled={isBusy}>Open</button>
             <button type="button" data-testid="sgf-source-save" onClick={() => void dispatchLegacyAction("file.save", "toolbar")} disabled={isBusy || !canSave}>Save</button>

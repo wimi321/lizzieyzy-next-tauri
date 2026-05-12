@@ -394,12 +394,24 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   }
 
   return (
-    <section className="provider-panel" aria-label="Provider import" data-testid="provider-panel">
-      <div className="provider-header">
+    <section
+      className="provider-panel"
+      aria-label="Provider import"
+      data-testid="provider-panel"
+      data-legacy-target="providers"
+      data-provider-kind={provider}
+      data-provider-preview-status={statuses.preview}
+      data-provider-fetch-status={statuses.fetch}
+      data-provider-import-status={statuses.import}
+      data-readboard-preview-kind={readboardPreviewKind}
+      data-readboard-preview-has-position={String(readboardSyncResult?.position != null)}
+      data-external-capture-supported="false"
+    >
+      <div className="provider-header" data-testid="provider-header" data-legacy-target="providers-status">
         <h2>Provider</h2>
-        <span title={headerStatus}>{headerStatus}</span>
+        <span data-testid="provider-header-status" title={headerStatus}>{headerStatus}</span>
       </div>
-      <div className="provider-grid">
+      <div className="provider-grid" data-testid="provider-source-target" data-legacy-target="providers-source">
         <label>
           <span>Source</span>
           <select data-testid="provider-source-select" value={provider} disabled={disabled} onChange={(event) => handleProviderChange(event.target.value as ProviderKind)}>
@@ -423,7 +435,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           }}
         />
       </label>
-      <p className="provider-status" title={statuses.preview}>{statuses.preview}</p>
+      <p className="provider-status" data-testid="provider-preview-status" title={statuses.preview}>{statuses.preview}</p>
       {descriptor ? (
         <dl className="provider-preview">
           <div>
@@ -440,10 +452,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           </div>
         </dl>
       ) : null}
-      <button data-testid="provider-fetch-import" onClick={() => void (provider === "yike" ? handleFetchYikeAndImport() : handleFetchFoxAndImport())} disabled={provider === "yike" ? !canFetchYike : !canFetchFox}>
+      <button data-testid="provider-fetch-import" data-legacy-target="providers-fetch" onClick={() => void (provider === "yike" ? handleFetchYikeAndImport() : handleFetchFoxAndImport())} disabled={provider === "yike" ? !canFetchYike : !canFetchFox}>
         Fetch &amp; import
       </button>
-      <p className="provider-status" title={statuses.fetch}>{statuses.fetch}</p>
+      <p className="provider-status" data-testid="provider-fetch-status" title={statuses.fetch}>{statuses.fetch}</p>
       <label className="provider-payload-label">
         <span>Payload / SGF</span>
           <textarea
@@ -460,13 +472,14 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           }}
         />
       </label>
-      <button data-testid="provider-import-payload" onClick={() => void handleImport()} disabled={!canImport}>Import pasted payload</button>
-      <p className="provider-status" title={statuses.import}>{statuses.import}</p>
+      <button data-testid="provider-import-payload" data-legacy-target="providers-import" onClick={() => void handleImport()} disabled={!canImport}>Import pasted payload</button>
+      <p className="provider-status" data-testid="provider-import-status" title={statuses.import}>{statuses.import}</p>
       <WarningList label="Provider warnings" warnings={providerWarnings} />
 
       <div
         className="provider-readboard"
         data-testid="controlled-board-image-import-mvp"
+        data-legacy-target="provider-readboard"
         data-preview-kind={readboardPreviewKind}
         data-preview-has-position={String(readboardSyncResult?.position != null)}
         data-preview-confirmed={String(readboardImportConfirmed)}
@@ -481,14 +494,20 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         data-full-readboard-parity="false"
         data-release-parity="false"
       >
-        <div className="provider-subheader">
+        <div className="provider-subheader" data-testid="readboard-preview-header" data-legacy-target="provider-readboard-status">
           <h3>Readboard preview and controlled image import</h3>
           <span title={statuses.readboardProbe}>{statuses.readboardProbe}</span>
         </div>
         <p className="provider-status">
           Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base64 and previews the extracted current position before import. It is not full OCR parity, arbitrary screenshot capture, or external client/window capture.
         </p>
-        <div className="provider-subheader">
+        <div
+          className="provider-subheader"
+          data-testid="readboard-external-capture-target"
+          data-legacy-target="provider-external-capture"
+          data-external-capture-supported="false"
+          data-readboard-capture-status={readboardCaptureResult ? normalizeCaptureStatus(readboardCaptureResult.status) : "ready"}
+        >
           <h4>Capture from screen/window</h4>
           <span data-testid="readboard-external-capture-status" title={readboardCaptureResult?.message ?? statuses.readboardSync}>
             {readboardCaptureResult ? normalizeCaptureStatus(readboardCaptureResult.status) : "ready"}
@@ -585,7 +604,12 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           </dl>
         ) : null}
         <WarningList label="Readboard probe warnings" warnings={readboardProbeResult?.warnings ?? []} />
-        <div className="provider-subheader">
+        <div
+          className="provider-subheader"
+          data-testid="readboard-image-import-target"
+          data-legacy-target="provider-readboard-image"
+          data-readboard-image-status={statuses.readboardSync}
+        >
           <h4>Choose image / image path route</h4>
           <span data-testid="readboard-image-import-status" title={statuses.readboardSync}>{statuses.readboardSync}</span>
         </div>
@@ -671,7 +695,14 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           </div>
         ) : null}
         {readboardSyncResult ? (
-          <dl className="provider-preview" data-testid="readboard-snapshot-preview-summary">
+          <dl
+            className="provider-preview"
+            data-testid="readboard-snapshot-preview-summary"
+            data-legacy-target="provider-readboard-preview"
+            data-preview-kind={readboardPreviewKind}
+            data-preview-has-position={String(readboardSyncResult.position != null)}
+            data-preview-stone-count={readboardSyncResult.position?.stones.length ?? 0}
+          >
             <div>
               <dt>Snapshot</dt>
               <dd title={readboardSnapshotId(readboardSyncResult)}>{readboardSnapshotId(readboardSyncResult)}</dd>
@@ -715,7 +746,13 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           </dl>
         ) : null}
         {readboardSyncResult ? (
-          <div className="migration-result" data-testid="readboard-import-confirmation">
+          <div
+            className="migration-result"
+            data-testid="readboard-import-confirmation"
+            data-legacy-target="provider-readboard-confirmation"
+            data-user-confirmed={String(readboardImportConfirmed)}
+            data-can-import-preview={String(canImportReadboardSnapshot)}
+          >
             <label className="toggle-row">
               <span>Confirm current-position import</span>
               <input
@@ -734,7 +771,15 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         <WarningList label="Readboard snapshot warnings" warnings={readboardSyncResult?.warnings ?? []} />
       </div>
 
-      <section className="legacy-import-helper" aria-label="Legacy import and capture helpers" data-testid="legacy-import-capture-helper-surface">
+      <section
+        className="legacy-import-helper"
+        aria-label="Legacy import and capture helpers"
+        data-testid="legacy-import-capture-helper-surface"
+        data-legacy-target="legacy-import-capture"
+        data-external-window-capture-supported="false"
+        data-external-client-capture-supported="false"
+        data-full-ocr-parity="false"
+      >
         <div className="provider-subheader">
           <h3>Legacy import/capture helpers</h3>
           <span title={statuses.legacyHelper}>{statuses.legacyHelper}</span>

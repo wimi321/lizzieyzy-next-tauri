@@ -469,6 +469,10 @@ button:disabled {
   margin-top: 12px;
 }
 
+.analysis-panel section {
+  min-width: 0;
+}
+
 .analysis-panel h2 {
   margin: 0 0 10px;
   font-size: 15px;
@@ -498,6 +502,7 @@ button:disabled {
 }
 
 button.candidate-button,
+div.candidate-button,
 button.problem-button {
   width: 100%;
   min-width: 0;
@@ -520,7 +525,8 @@ button.problem-button:focus-visible {
   outline: none;
 }
 
-button.candidate-button {
+button.candidate-button,
+div.candidate-button {
   display: grid;
   grid-template-columns: minmax(48px, 1fr) auto auto;
   gap: 5px 7px;
@@ -795,9 +801,11 @@ textarea {
 
 .provider-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   align-items: baseline;
+  min-width: 0;
 }
 
 .provider-header h2 {
@@ -847,8 +855,8 @@ textarea {
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .provider-payload {
@@ -994,13 +1002,15 @@ textarea {
 
 .provider-subheader {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   align-items: baseline;
   min-width: 0;
 }
 
-.provider-subheader h3 {
+.provider-subheader h3,
+.provider-subheader h4 {
   margin: 0;
   font-size: 13px;
 }
@@ -1299,12 +1309,14 @@ button.path-picker-button {
 
 .sgf-comment-header,
 .sgf-properties-header {
+  flex-wrap: wrap;
   align-items: center;
 }
 
 .sgf-node-actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 5px;
   align-items: center;
 }
@@ -1484,6 +1496,10 @@ button.sgf-tree-node.is-current-move {
   min-width: 0;
   padding-top: 8px;
   border-top: 1px solid #d2d8e0;
+}
+
+.sgf-tree-panel [data-legacy-target="sgf-annotation"] {
+  min-width: 0;
 }
 
 .sgf-comment-editor textarea {

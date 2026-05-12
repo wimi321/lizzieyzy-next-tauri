@@ -2,9 +2,12 @@ export type LegacyActionSource = "menu" | "toolbar" | "keyboard" | "native-menu"
 export type LegacyActionGroup = "File" | "Game" | "Analysis" | "View" | "Engine" | "Tools" | "Help";
 
 export type LegacyMenuTarget =
+  | "about"
   | "candidates"
   | "ownership"
   | "policy"
+  | "sgf-source"
+  | "timeline"
   | "profiles"
   | "assets"
   | "providers"
@@ -12,22 +15,29 @@ export type LegacyMenuTarget =
   | "backend-status";
 
 export type LegacyActionId =
+  | "file.new"
   | "file.open"
   | "file.save"
   | "file.saveAs"
   | "file.importSgf"
   | "game.loadSample"
   | "game.parseSgf"
+  | "game.firstMove"
+  | "game.previousMove"
+  | "game.nextMove"
+  | "game.lastMove"
   | "analysis.runReview"
   | "analysis.katagoPanel"
   | "view.candidates"
   | "view.ownership"
   | "view.policy"
+  | "view.sgfSource"
   | "engine.profiles"
   | "engine.assets"
   | "tools.providers"
   | "tools.preferences"
-  | "help.backendStatus";
+  | "help.backendStatus"
+  | "help.about";
 
 export type LegacyActionDefinition = {
   id: LegacyActionId;
@@ -40,22 +50,29 @@ export type LegacyActionDefinition = {
 };
 
 export const legacyActionMatrix: LegacyActionDefinition[] = [
+  { id: "file.new", group: "File", label: "New", menuPath: ["File", "New"], targetSelector: "[data-testid='legacy-shell']", shortcut: "Mod+N" },
   { id: "file.open", group: "File", label: "Open", menuPath: ["File", "Open"], targetSelector: "[data-testid='toolbar-open-sgf']", shortcut: "Mod+O" },
   { id: "file.save", group: "File", label: "Save", menuPath: ["File", "Save"], targetSelector: "[data-testid='toolbar-save-sgf']", shortcut: "Mod+S" },
   { id: "file.saveAs", group: "File", label: "Save As", menuPath: ["File", "Save As"], targetSelector: "[data-testid='toolbar-save-as-sgf']", shortcut: "Mod+Shift+S" },
   { id: "file.importSgf", group: "File", label: "Import SGF", menuPath: ["File", "Import SGF"], targetSelector: "[data-testid='toolbar-import-sgf']", shortcut: "Mod+I" },
   { id: "game.loadSample", group: "Game", label: "Load sample", menuPath: ["Game", "Load sample"], targetSelector: "[data-testid='toolbar-load-sample']", shortcut: "Mod+Shift+L" },
   { id: "game.parseSgf", group: "Game", label: "Parse SGF", menuPath: ["Game", "Parse SGF"], targetSelector: "[data-testid='toolbar-parse-sgf']", shortcut: "Mod+Enter" },
+  { id: "game.firstMove", group: "Game", label: "First move", menuPath: ["Game", "First move"], target: "timeline", targetSelector: "[data-testid='legacy-move-slider']", shortcut: "Mod+ArrowLeft" },
+  { id: "game.previousMove", group: "Game", label: "Previous move", menuPath: ["Game", "Previous move"], target: "timeline", targetSelector: "[data-testid='legacy-move-slider']", shortcut: "Mod+Shift+ArrowLeft" },
+  { id: "game.nextMove", group: "Game", label: "Next move", menuPath: ["Game", "Next move"], target: "timeline", targetSelector: "[data-testid='legacy-move-slider']", shortcut: "Mod+Shift+ArrowRight" },
+  { id: "game.lastMove", group: "Game", label: "Last move", menuPath: ["Game", "Last move"], target: "timeline", targetSelector: "[data-testid='legacy-move-slider']", shortcut: "Mod+ArrowRight" },
   { id: "analysis.runReview", group: "Analysis", label: "Run review", menuPath: ["Analysis", "Run review"], targetSelector: "[data-testid='toolbar-run-review']", shortcut: "Mod+R" },
   { id: "analysis.katagoPanel", group: "Analysis", label: "KataGo panel", menuPath: ["Analysis", "KataGo panel"], target: "profiles", targetSelector: "[data-testid='engine-setup-panel']", shortcut: "Mod+Shift+K" },
   { id: "view.candidates", group: "View", label: "Candidates", menuPath: ["View", "Candidates"], target: "candidates", targetSelector: "[data-testid='analysis-panel']", shortcut: "Mod+1" },
   { id: "view.ownership", group: "View", label: "Ownership", menuPath: ["View", "Ownership"], target: "ownership", targetSelector: "[data-testid='legacy-board-pane']", shortcut: "Mod+2" },
   { id: "view.policy", group: "View", label: "Policy", menuPath: ["View", "Policy"], target: "policy", targetSelector: "[data-testid='analysis-panel']", shortcut: "Mod+3" },
+  { id: "view.sgfSource", group: "View", label: "SGF source", menuPath: ["View", "SGF source"], target: "sgf-source", targetSelector: "[data-testid='sgf-source-textarea']", shortcut: "Mod+8" },
   { id: "engine.profiles", group: "Engine", label: "Profiles", menuPath: ["Engine", "Profiles"], target: "profiles", targetSelector: "[data-testid='engine-setup-panel']", shortcut: "Mod+4" },
   { id: "engine.assets", group: "Engine", label: "Assets", menuPath: ["Engine", "Assets"], target: "assets", targetSelector: "[data-testid='engine-check-assets']", shortcut: "Mod+5" },
   { id: "tools.providers", group: "Tools", label: "Providers", menuPath: ["Tools", "Providers"], target: "providers", targetSelector: "[data-testid='provider-panel']", shortcut: "Mod+6" },
   { id: "tools.preferences", group: "Tools", label: "Preferences", menuPath: ["Tools", "Preferences"], target: "preferences", targetSelector: "[data-testid='preferences-panel']", shortcut: "Mod+7" },
-  { id: "help.backendStatus", group: "Help", label: "Backend status", menuPath: ["Help", "Backend status"], target: "backend-status", targetSelector: "[data-testid='legacy-statusbar']", shortcut: "Mod+/" }
+  { id: "help.backendStatus", group: "Help", label: "Backend status", menuPath: ["Help", "Backend status"], target: "backend-status", targetSelector: "[data-testid='legacy-statusbar']", shortcut: "Mod+/" },
+  { id: "help.about", group: "Help", label: "About", menuPath: ["Help", "About"], target: "about", targetSelector: "[data-testid='legacy-about-target']", shortcut: "Mod+Shift+/" }
 ];
 
 const legacyActionById = new Map<LegacyActionId, LegacyActionDefinition>(
@@ -63,6 +80,9 @@ const legacyActionById = new Map<LegacyActionId, LegacyActionDefinition>(
 );
 
 const legacyActionAliases = new Map<string, LegacyActionId>([
+  ["new", "file.new"],
+  ["file.new", "file.new"],
+  ["file:new", "file.new"],
   ["open", "file.open"],
   ["file.open", "file.open"],
   ["file:open", "file.open"],
@@ -97,6 +117,34 @@ const legacyActionAliases = new Map<string, LegacyActionId>([
   ["game.parseSgf", "game.parseSgf"],
   ["game:parse-sgf", "game.parseSgf"],
   ["game:parse_sgf", "game.parseSgf"],
+  ["first-move", "game.firstMove"],
+  ["first_move", "game.firstMove"],
+  ["game.first-move", "game.firstMove"],
+  ["game.first_move", "game.firstMove"],
+  ["game.firstMove", "game.firstMove"],
+  ["game:first-move", "game.firstMove"],
+  ["game:first_move", "game.firstMove"],
+  ["previous-move", "game.previousMove"],
+  ["previous_move", "game.previousMove"],
+  ["game.previous-move", "game.previousMove"],
+  ["game.previous_move", "game.previousMove"],
+  ["game.previousMove", "game.previousMove"],
+  ["game:previous-move", "game.previousMove"],
+  ["game:previous_move", "game.previousMove"],
+  ["next-move", "game.nextMove"],
+  ["next_move", "game.nextMove"],
+  ["game.next-move", "game.nextMove"],
+  ["game.next_move", "game.nextMove"],
+  ["game.nextMove", "game.nextMove"],
+  ["game:next-move", "game.nextMove"],
+  ["game:next_move", "game.nextMove"],
+  ["last-move", "game.lastMove"],
+  ["last_move", "game.lastMove"],
+  ["game.last-move", "game.lastMove"],
+  ["game.last_move", "game.lastMove"],
+  ["game.lastMove", "game.lastMove"],
+  ["game:last-move", "game.lastMove"],
+  ["game:last_move", "game.lastMove"],
   ["run-review", "analysis.runReview"],
   ["run_review", "analysis.runReview"],
   ["analysis.run-review", "analysis.runReview"],
@@ -120,6 +168,13 @@ const legacyActionAliases = new Map<string, LegacyActionId>([
   ["policy", "view.policy"],
   ["view.policy", "view.policy"],
   ["view:policy", "view.policy"],
+  ["sgf-source", "view.sgfSource"],
+  ["sgf_source", "view.sgfSource"],
+  ["view.sgf-source", "view.sgfSource"],
+  ["view.sgf_source", "view.sgfSource"],
+  ["view.sgfSource", "view.sgfSource"],
+  ["view:sgf-source", "view.sgfSource"],
+  ["view:sgf_source", "view.sgfSource"],
   ["profiles", "engine.profiles"],
   ["engine.profiles", "engine.profiles"],
   ["engine:profiles", "engine.profiles"],
@@ -138,7 +193,10 @@ const legacyActionAliases = new Map<string, LegacyActionId>([
   ["help.backend_status", "help.backendStatus"],
   ["help.backendStatus", "help.backendStatus"],
   ["help:backend-status", "help.backendStatus"],
-  ["help:backend_status", "help.backendStatus"]
+  ["help:backend_status", "help.backendStatus"],
+  ["about", "help.about"],
+  ["help.about", "help.about"],
+  ["help:about", "help.about"]
 ]);
 
 export function legacyActionDefinition(id: LegacyActionId): LegacyActionDefinition {
@@ -184,12 +242,17 @@ export function legacyActionFromKeyboardEvent(event: KeyboardEvent): LegacyActio
   if (!usesModifier || event.altKey) return null;
   const key = event.key.toLowerCase();
 
+  if (key === "n" && !event.shiftKey) return "file.new";
   if (key === "o" && !event.shiftKey) return "file.open";
   if (key === "s" && !event.shiftKey) return "file.save";
   if (key === "s" && event.shiftKey) return "file.saveAs";
   if (key === "i" && !event.shiftKey) return "file.importSgf";
   if (key === "l" && event.shiftKey) return "game.loadSample";
   if (key === "enter" && !event.shiftKey) return "game.parseSgf";
+  if (key === "arrowleft" && !event.shiftKey) return "game.firstMove";
+  if (key === "arrowleft" && event.shiftKey) return "game.previousMove";
+  if (key === "arrowright" && event.shiftKey) return "game.nextMove";
+  if (key === "arrowright" && !event.shiftKey) return "game.lastMove";
   if (key === "r" && !event.shiftKey) return "analysis.runReview";
   if (key === "k" && event.shiftKey) return "analysis.katagoPanel";
   if (key === "1" && !event.shiftKey) return "view.candidates";
@@ -199,6 +262,8 @@ export function legacyActionFromKeyboardEvent(event: KeyboardEvent): LegacyActio
   if (key === "5" && !event.shiftKey) return "engine.assets";
   if (key === "6" && !event.shiftKey) return "tools.providers";
   if (key === "7" && !event.shiftKey) return "tools.preferences";
+  if (key === "8" && !event.shiftKey) return "view.sgfSource";
   if (key === "/" && !event.shiftKey) return "help.backendStatus";
+  if (key === "/" && event.shiftKey) return "help.about";
   return null;
 }

@@ -314,6 +314,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       className="engine-setup-panel"
       aria-label="KataGo engine setup"
       data-testid="engine-setup-panel"
+      data-legacy-target="engine-setup"
       data-profile-count={profiles.length}
       data-selected-profile-id={selectedProfileId}
       data-selected-profile-name={selectedProfile?.profile.name ?? profileName}
@@ -329,6 +330,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         className="engine-run-row"
         aria-label="Installed app engine/profile proof"
         data-testid="engine-runtime-proof"
+        data-legacy-target="engine-assets"
         data-profile-count={profiles.length}
         data-selected-profile-id={selectedProfileId}
         data-local-asset-check-status={localAssetCheckStatus}
@@ -353,10 +355,17 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
           Runtime assets: {runtimeAssetCheckStatus.replaceAll("-", " ")}
         </span>
       </div>
-      <div className="engine-run-row">
+      <div
+        className="engine-run-row"
+        data-testid="engine-profiles-target"
+        data-legacy-target="engine-profiles"
+        data-profile-count={profiles.length}
+        data-selected-profile-id={selectedProfileId}
+        data-profile-status={profileStatus}
+      >
         <label>
           <span>Profile</span>
-          <select value={selectedProfileId} onChange={(event) => void handleSelectProfile(event.target.value)}>
+          <select data-testid="engine-profile-select" value={selectedProfileId} onChange={(event) => void handleSelectProfile(event.target.value)}>
             {profiles.map((profile) => (
               <option key={profile.id} value={profile.id}>{profile.profile.name}</option>
             ))}
@@ -369,13 +378,26 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         <button type="button" onClick={() => void handleAddProfile()} disabled={!canSave}>Add profile</button>
         <button type="button" onClick={() => void handleDeleteProfile()} disabled={!canDeleteProfile}>Delete profile</button>
       </div>
-      <div className="engine-run-row" aria-label="Bundled runtime asset status">
+      <div
+        className="engine-run-row"
+        aria-label="Bundled runtime asset status"
+        data-testid="engine-assets-target"
+        data-legacy-target="engine-assets"
+        data-runtime-asset-check-status={runtimeAssetCheckStatus}
+        data-runtime-asset-candidate-count={runtimeAssetValidation?.layout.candidates.length ?? 0}
+        data-runtime-asset-missing-count={runtimeAssetValidation?.missing.length ?? 0}
+        data-runtime-asset-placeholder-count={runtimeAssetValidation?.placeholders.length ?? 0}
+      >
         <strong>Bundled/runtime assets</strong>
         <button type="button" data-testid="engine-runtime-assets-refresh" onClick={() => void handleCheckRuntimeAssets()} disabled={disabled} title="Refresh runtime assets">Refresh</button>
         <span className="message">{runtimeAssetStatus}</span>
       </div>
       {runtimeAssetValidation && (
-        <p className="message">
+        <p
+          className="message"
+          data-testid="engine-runtime-assets-detail"
+          data-runtime-asset-check-status={runtimeAssetCheckStatus}
+        >
           {runtimeAssetValidation.layout.resourceDir ? `Resource dir: ${runtimeAssetValidation.layout.resourceDir}. ` : "Resource dir unavailable. "}
           {runtimeAssetValidation.layout.candidates.length > 0
             ? runtimeAssetValidation.checks.map((check) => `${check.status.toUpperCase()} ${check.source} ${check.label}: ${check.path}`).join(" | ")
@@ -391,6 +413,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         className="engine-runtime-proof-details"
         aria-label="Installed app bundled KataGo launch proof"
         data-testid="engine-installed-app-launch-proof"
+        data-legacy-target="engine-assets"
         data-proof-status={installedProofStatus}
         data-runtime-source-kind={installedRuntimeSummary?.sourceKind ?? "unknown"}
         data-runtime-source={installedRuntimeSummary?.runtimeSource ?? ""}
@@ -432,7 +455,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       <p className="message">
         Large KataGo models are not bundled by this repository. Keep using the local asset configuration below unless an installed app package supplies runtime assets.
       </p>
-      <div className="engine-run-row" aria-label="Local asset configuration">
+      <div className="engine-run-row" aria-label="Local asset configuration" data-testid="engine-local-assets-target" data-legacy-target="engine-assets">
         <strong>Local asset configuration</strong>
       </div>
       <div className="engine-grid">
@@ -473,7 +496,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
           </div>
         </label>
       </div>
-      <div className="engine-run-row">
+      <div className="engine-run-row" data-testid="engine-actions-target" data-legacy-target="analysis-actions" data-can-run-katago={String(canRun)}>
         <label>
           <span>Max visits</span>
           <input type="number" min={1} step={1} value={maxVisits} onChange={(event) => setMaxVisits(event.target.value)} />
@@ -526,9 +549,9 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
           <span>{progressLabel}</span>
         </div>
       )}
-      <p className="message">{profileStatus}</p>
+      <p className="message" data-testid="engine-profile-status-message" data-engine-profile-status={profileStatus}>{profileStatus}</p>
       {assetChecks.length > 0 && (
-        <p className="message">
+        <p className="message" data-testid="engine-local-asset-check-details" data-local-asset-check-status={localAssetCheckStatus}>
           {assetChecks.map((check) => `${check.exists ? "OK" : "Missing"} ${check.label}${check.path ? `: ${check.path}` : ""}`).join(" | ")}
         </p>
       )}

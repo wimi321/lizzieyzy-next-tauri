@@ -164,19 +164,40 @@ export function SgfTreePanel({
   const status = getPanelStatus({ tree, isLoading, parseError });
 
   return (
-    <aside className="sgf-tree-panel" aria-label="SGF tree and comments" data-testid="sgf-tree-panel">
-      <header className="sgf-tree-header">
+    <aside
+      className="sgf-tree-panel"
+      aria-label="SGF tree and comments"
+      data-testid="sgf-tree-panel"
+      data-legacy-target="sgf-tree"
+      data-sgf-tree-status={status?.kind ?? "ready"}
+      data-sgf-node-count={rows.length}
+      data-selected-node-id={selectedNode?.id ?? ""}
+      data-selected-move-number={selectedNode?.move_number ?? ""}
+      data-current-move={currentMove}
+      data-comment-dirty={String(draftValue !== selectedComment)}
+      data-property-update-count={propertyUpdates.length}
+      data-move-edit-mode={moveEditMode}
+    >
+      <header className="sgf-tree-header" data-testid="sgf-tree-header" data-legacy-target="sgf-tree-status">
         <div>
           <h2>SGF Tree</h2>
-          <span>{status ? status.label : `${rows.length.toLocaleString()} nodes`}</span>
+          <span data-testid="sgf-tree-node-count">{status ? status.label : `${rows.length.toLocaleString()} nodes`}</span>
         </div>
-        {selectedNode ? <strong title={selectedNode.id}>{formatNodeMove(selectedNode, boardSize)}</strong> : <strong>No node</strong>}
+        {selectedNode
+          ? <strong data-testid="sgf-selected-node-status" title={selectedNode.id}>{formatNodeMove(selectedNode, boardSize)}</strong>
+          : <strong data-testid="sgf-selected-node-status">No node</strong>}
       </header>
 
-      {status ? <div className={`sgf-tree-state ${status.kind}`} role={status.kind === "sgf-tree-error" ? "alert" : "status"} data-testid="sgf-tree-state">
+      {status ? <div
+        className={`sgf-tree-state ${status.kind}`}
+        role={status.kind === "sgf-tree-error" ? "alert" : "status"}
+        data-testid="sgf-tree-state"
+        data-legacy-target="sgf-tree-status"
+        data-sgf-tree-state={status.kind}
+      >
         <strong>{status.title}</strong>
         <span>{status.message}</span>
-      </div> : <ol className="sgf-tree-list" data-testid="sgf-tree-list">
+      </div> : <ol className="sgf-tree-list" data-testid="sgf-tree-list" data-legacy-target="sgf-tree-list" data-sgf-node-count={rows.length}>
         {rows.map(({ node, depth, isOrphan }) => {
           const isSelected = node.id === selectedNodeId;
           const isCurrentMove = node.move_number === currentMove;
@@ -192,6 +213,8 @@ export function SgfTreePanel({
                   data-sgf-move-number={node.move_number ?? ""}
                   data-sgf-variation-index={node.variation_index}
                   data-sgf-mainline={node.is_mainline ? "true" : "false"}
+                  data-sgf-selected={String(isSelected)}
+                  data-sgf-current-move={String(isCurrentMove)}
                   onClick={() => onSelectNode(node.id)}
                 >
                 <span className="sgf-tree-rail" aria-hidden="true" />
@@ -208,13 +231,22 @@ export function SgfTreePanel({
         })}
       </ol>}
 
-      <section className="sgf-comment-editor" aria-label="Node comment">
-        <div className="sgf-comment-header">
+      <section
+        className="sgf-comment-editor"
+        aria-label="Node comment"
+        data-testid="sgf-comment-editor"
+        data-legacy-target="sgf-comment"
+        data-selected-node-id={selectedNode?.id ?? ""}
+        data-comment-dirty={String(draftValue !== selectedComment)}
+        data-comment-read-only={String(commentReadOnly)}
+        data-comment-saving={String(isCommentSaving)}
+      >
+        <div className="sgf-comment-header" data-testid="sgf-comment-header">
           <div>
             <h3>Comment</h3>
             <span>{selectedNode ? formatNodeMove(selectedNode, boardSize) : "Select a node"}</span>
           </div>
-          <div className="sgf-node-actions" aria-label="Selected node actions">
+          <div className="sgf-node-actions" aria-label="Selected node actions" data-testid="sgf-node-actions" data-legacy-target="sgf-editing">
             <button
                 type="button"
                 className="sgf-reorder-node-button"
@@ -242,6 +274,12 @@ export function SgfTreePanel({
         </div>
         <div
           aria-label="Move edit mode"
+          data-testid="sgf-move-editing-status"
+          data-legacy-target="sgf-editing"
+          data-move-edit-mode={moveEditMode}
+          data-can-edit-selected-move={String(canEditSelectedMove)}
+          data-can-pass-selected-move={String(canPassSelectedMove)}
+          data-move-editing={String(isMoveEditing)}
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -311,15 +349,32 @@ export function SgfTreePanel({
         </button>
       </section>
 
-      <SgfAnnotationPanel
-        selectedNode={selectedNode}
-        disabled={isLoading}
-        isSaving={isAnnotationSaving}
-        error={annotationError}
-        onSaveAnnotations={onSaveAnnotations}
-      />
+      <div
+        data-testid="sgf-annotation-target"
+        data-legacy-target="sgf-annotation"
+        data-selected-node-id={selectedNode?.id ?? ""}
+        data-annotation-saving={String(isAnnotationSaving)}
+        data-annotation-error={annotationError ?? ""}
+        data-annotation-disabled={String(isLoading)}
+      >
+        <SgfAnnotationPanel
+          selectedNode={selectedNode}
+          disabled={isLoading}
+          isSaving={isAnnotationSaving}
+          error={annotationError}
+          onSaveAnnotations={onSaveAnnotations}
+        />
+      </div>
 
-      <section className="sgf-properties-editor" aria-label="SGF node properties" data-testid="sgf-properties-editor">
+      <section
+        className="sgf-properties-editor"
+        aria-label="SGF node properties"
+        data-testid="sgf-properties-editor"
+        data-legacy-target="sgf-properties"
+        data-selected-node-id={selectedNode?.id ?? ""}
+        data-property-update-count={propertyUpdates.length}
+        data-property-saving={String(isPropertySaving)}
+      >
         <div className="sgf-properties-header">
           <div>
             <h3>Node details</h3>

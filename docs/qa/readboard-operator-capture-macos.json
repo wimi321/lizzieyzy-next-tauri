@@ -1,0 +1,342 @@
+{
+  "backendCommand": "readboard_external_capture",
+  "backendCommandInvoked": true,
+  "boardReplacedOnlyAfterConfirmation": true,
+  "boundaries": {
+    "externalClientParity": false,
+    "fullOcrParity": false,
+    "fullReadboardParity": false,
+    "realClientParity": false,
+    "releaseParity": false,
+    "sourceStaticOnly": false,
+    "targetClientDiscoveryCovered": false,
+    "windowsLinuxCaptureCovered": false
+  },
+  "captureArtifact": {
+    "path": "tests/fixtures/readboard-images/controlled-19-three-stones.ppm",
+    "sanitized": true,
+    "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "sizeBytes": 480015
+  },
+  "captureSource": {
+    "externalClientCaptureCovered": false,
+    "externalScreenRegionCovered": false,
+    "externalWindowRegionCovered": false,
+    "operatorInitiated": true,
+    "operatorSelectedFileProvided": true,
+    "requestedSource": "operator_selected_file",
+    "selectedScreenRegionCovered": false,
+    "selection": null,
+    "sourceKind": "operator_selected_file",
+    "targetClientDiscoveryCovered": false,
+    "userSelectionRequired": true
+  },
+  "captured": true,
+  "checks": [
+    {
+      "details": {
+        "externalClientCaptureCovered": false,
+        "externalScreenRegionCovered": false,
+        "externalWindowRegionCovered": false,
+        "operatorInitiated": true,
+        "operatorSelectedFileProvided": true,
+        "requestedSource": "operator_selected_file",
+        "selectedScreenRegionCovered": false,
+        "selection": null,
+        "sourceKind": "operator_selected_file",
+        "targetClientDiscoveryCovered": false,
+        "userSelectionRequired": true
+      },
+      "name": "capture_source_selected",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "path": "tests/fixtures/readboard-images/controlled-19-three-stones.ppm",
+        "sanitized": true,
+        "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "sizeBytes": 480015
+      },
+      "name": "capture_artifact_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardSize": 19,
+        "confidenceReported": false,
+        "decodeAttempted": true,
+        "decodeSucceeded": true,
+        "positionDecoded": true,
+        "stoneCount": 3,
+        "structuredResultProduced": true
+      },
+      "name": "decode_position",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "arbitraryOcrParity": false,
+        "boardReplacedBeforeConfirmation": false,
+        "boardReplacedOnlyAfterConfirmation": true,
+        "boardReplacementObserved": true,
+        "confirmationControl": {
+          "attributes": {
+            "class": "migration-result",
+            "data-testid": "readboard-import-confirmation"
+          },
+          "className": "migration-result",
+          "id": null,
+          "selector": "[data-testid=\"readboard-import-confirmation\"]",
+          "tagName": "div",
+          "testId": "readboard-import-confirmation",
+          "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+          "visible": true
+        },
+        "fullOcrParity": false,
+        "fullReadboardParity": false,
+        "previewConfirmationObserved": true,
+        "previewOnlyBeforeConfirmation": true,
+        "previewSummary": {
+          "attributes": {
+            "class": "provider-preview",
+            "data-testid": "readboard-snapshot-preview-summary"
+          },
+          "className": "provider-preview",
+          "id": null,
+          "selector": "[data-testid=\"readboard-snapshot-preview-summary\"]",
+          "tagName": "dl",
+          "testId": "readboard-snapshot-preview-summary",
+          "text": "Snapshotcontrolled-image-snapshotHashnot reportedBoard size19x19Move3Stones3Confidencenot reportedTo playWhiteSourcecontrolled image pathMetadatainput: controlled image pathWarn...",
+          "visible": true
+        },
+        "releaseParity": false,
+        "statusbar": {
+          "attributes": {
+            "class": "legacy-statusbar",
+            "data-menu-target": "backend-status",
+            "data-testid": "legacy-statusbar",
+            "id": "legacy-menu-target-backend-status",
+            "role": "status"
+          },
+          "className": "legacy-statusbar",
+          "id": "legacy-menu-target-backend-status",
+          "selector": "[data-testid=\"legacy-statusbar\"]",
+          "tagName": "footer",
+          "testId": "legacy-statusbar",
+          "text": "Imported Readboard snapshot provider payload from controlled-image-snapshot: 0 moves. 4 provider warning(s). No cached review yet.",
+          "visible": true
+        },
+        "targetClientParity": false,
+        "userConfirmed": true
+      },
+      "name": "preview_confirmation",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardReplaced": true,
+        "boardReplacedBeforeConfirmation": false,
+        "boardSize": 19,
+        "previewConfirmed": true,
+        "rawBackendBoardReplacement": "none",
+        "replacementConfirmed": true,
+        "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+        "snapshotId": "external-capture-preview",
+        "stoneCount": 3,
+        "structuredResultVerified": true,
+        "toPlay": "white",
+        "uiBoardReplacedAfterConfirmation": true
+      },
+      "name": "structured_import",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boundaries": {
+          "externalClientParity": false,
+          "fullOcrParity": false,
+          "fullReadboardParity": false,
+          "realClientParity": false,
+          "releaseParity": false,
+          "sourceStaticOnly": false,
+          "targetClientDiscoveryCovered": false,
+          "windowsLinuxCaptureCovered": false
+        }
+      },
+      "name": "scope_boundaries",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "tauri_runtime_operator_selected_capture",
+  "decodePosition": {
+    "boardSize": 19,
+    "confidenceReported": false,
+    "decodeAttempted": true,
+    "decodeSucceeded": true,
+    "positionDecoded": true,
+    "stoneCount": 3,
+    "structuredResultProduced": true
+  },
+  "externalClientParity": false,
+  "fullOcrParity": false,
+  "fullReadboardParity": false,
+  "name": "readboard_operator_capture",
+  "operatorInitiated": true,
+  "platform": "macos",
+  "previewConfirmation": {
+    "arbitraryOcrParity": false,
+    "boardReplacedBeforeConfirmation": false,
+    "boardReplacedOnlyAfterConfirmation": true,
+    "boardReplacementObserved": true,
+    "confirmationControl": {
+      "attributes": {
+        "class": "migration-result",
+        "data-testid": "readboard-import-confirmation"
+      },
+      "className": "migration-result",
+      "id": null,
+      "selector": "[data-testid=\"readboard-import-confirmation\"]",
+      "tagName": "div",
+      "testId": "readboard-import-confirmation",
+      "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+      "visible": true
+    },
+    "fullOcrParity": false,
+    "fullReadboardParity": false,
+    "previewConfirmationObserved": true,
+    "previewOnlyBeforeConfirmation": true,
+    "previewSummary": {
+      "attributes": {
+        "class": "provider-preview",
+        "data-testid": "readboard-snapshot-preview-summary"
+      },
+      "className": "provider-preview",
+      "id": null,
+      "selector": "[data-testid=\"readboard-snapshot-preview-summary\"]",
+      "tagName": "dl",
+      "testId": "readboard-snapshot-preview-summary",
+      "text": "Snapshotcontrolled-image-snapshotHashnot reportedBoard size19x19Move3Stones3Confidencenot reportedTo playWhiteSourcecontrolled image pathMetadatainput: controlled image pathWarn...",
+      "visible": true
+    },
+    "releaseParity": false,
+    "statusbar": {
+      "attributes": {
+        "class": "legacy-statusbar",
+        "data-menu-target": "backend-status",
+        "data-testid": "legacy-statusbar",
+        "id": "legacy-menu-target-backend-status",
+        "role": "status"
+      },
+      "className": "legacy-statusbar",
+      "id": "legacy-menu-target-backend-status",
+      "selector": "[data-testid=\"legacy-statusbar\"]",
+      "tagName": "footer",
+      "testId": "legacy-statusbar",
+      "text": "Imported Readboard snapshot provider payload from controlled-image-snapshot: 0 moves. 4 provider warning(s). No cached review yet.",
+      "visible": true
+    },
+    "targetClientParity": false,
+    "userConfirmed": true
+  },
+  "previewOnlyBeforeConfirmation": true,
+  "rawBackendResult": {
+    "boardReplacement": "none",
+    "captureSource": "operator_selected_file",
+    "decode": {
+      "attempted": true,
+      "blackStones": 2,
+      "boardSize": 19,
+      "status": "success",
+      "stoneCount": 3,
+      "whiteStones": 1
+    },
+    "errorMessage": null,
+    "hash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "message": null,
+    "metadata": {
+      "phase": "readboard_operator_capture",
+      "scope": "operator_selected_file_capture_mvp_not_full_ocr_readboard_or_target_client_parity",
+      "source": "runtime_smoke"
+    },
+    "operatorInitiated": true,
+    "position": {
+      "board_size": 19,
+      "captures_black": 0,
+      "captures_white": 0,
+      "errors": [],
+      "last_move": null,
+      "move_number": 3,
+      "stones": [
+        {
+          "color": "black",
+          "x": 3,
+          "y": 3
+        },
+        {
+          "color": "black",
+          "x": 10,
+          "y": 4
+        },
+        {
+          "color": "white",
+          "x": 15,
+          "y": 15
+        }
+      ],
+      "to_play": "white"
+    },
+    "recoverable": false,
+    "sanitizedPath": "operator-selected-file:controlled-19-three-stones.ppm",
+    "schema": "lizzieyzy.readboard-external-capture.v1",
+    "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "size": 480015,
+    "snapshot": {
+      "positionMoveNumber": 3,
+      "snapshotId": "external-capture-preview",
+      "toPlay": "White",
+      "warnings": [
+        "UnsupportedProvider: scoped controlled image import decoded a synthetic/controlled board image",
+        "UnsupportedProvider: this is not full OCR and does not support arbitrary client screenshots"
+      ]
+    },
+    "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+    "snapshotId": "external-capture-preview",
+    "source": "operator_selected_file",
+    "sourceMetadata": {
+      "phase": "readboard_operator_capture",
+      "scope": "operator_selected_file_capture_mvp_not_full_ocr_readboard_or_target_client_parity",
+      "source": "runtime_smoke"
+    },
+    "status": "captured",
+    "userSelectionRequired": true,
+    "warnings": [
+      "UnsupportedProvider: scoped controlled image import decoded a synthetic/controlled board image",
+      "UnsupportedProvider: this is not full OCR and does not support arbitrary client screenshots",
+      "Readboard external capture decoded an operator-selected image file only; no target-client discovery or automatic board replacement was performed."
+    ]
+  },
+  "realClientParity": false,
+  "releaseParity": false,
+  "runtimeObserved": true,
+  "schema": "lizzieyzy.readboard-operator-capture.v1",
+  "sourceStaticOnly": false,
+  "status": "pass",
+  "structuredImport": {
+    "boardReplaced": true,
+    "boardReplacedBeforeConfirmation": false,
+    "boardSize": 19,
+    "previewConfirmed": true,
+    "rawBackendBoardReplacement": "none",
+    "replacementConfirmed": true,
+    "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+    "snapshotId": "external-capture-preview",
+    "stoneCount": 3,
+    "structuredResultVerified": true,
+    "toPlay": "white",
+    "uiBoardReplacedAfterConfirmation": true
+  },
+  "targetClientDiscoveryCovered": false,
+  "userConfirmed": true,
+  "userSelectionRequired": true,
+  "windowsLinuxCaptureCovered": false
+}

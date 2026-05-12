@@ -71,6 +71,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_image_import_smoke", pending_names)
             self.assertIn("readboard_image_ocr_corpus_smoke", pending_names)
             self.assertIn("readboard_external_capture_mvp", pending_names)
+            self.assertIn("readboard_operator_capture", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
 
@@ -2528,6 +2529,53 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_external_capture_mvp", pending)
             self.assertIn(expected_detail, pending["readboard_external_capture_mvp"])
 
+    def test_valid_readboard_operator_capture_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            write_json(root / smoke_user_flows.READBOARD_OPERATOR_CAPTURE_EVIDENCE, valid_readboard_operator_capture_evidence())
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_operator_capture", pass_names)
+            self.assertNotIn("readboard_operator_capture", pending_names)
+
+    def test_readboard_operator_capture_requires_top_level_user_confirmed(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("userConfirmed", None)
+
+        self.assert_invalid_readboard_operator_capture_pending(mutate, "userConfirmed must be true")
+
+        def mutate_false(evidence: dict[str, object]) -> None:
+            evidence["userConfirmed"] = False
+
+        self.assert_invalid_readboard_operator_capture_pending(
+            mutate_false,
+            "userConfirmed must match previewConfirmation.userConfirmed",
+        )
+
+    def assert_invalid_readboard_operator_capture_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            evidence = valid_readboard_operator_capture_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.READBOARD_OPERATOR_CAPTURE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_operator_capture", failures)
+            self.assertIn("readboard_operator_capture", pending)
+            self.assertIn(expected_detail, pending["readboard_operator_capture"])
+
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4932,6 +4980,132 @@ def valid_readboard_external_capture_mvp_unavailable_evidence() -> dict[str, obj
             "status": "permission_denied",
             "message": "permission denied by operator",
         },
+        "boundaries": boundaries,
+    }
+
+
+def valid_readboard_operator_capture_evidence() -> dict[str, object]:
+    boundaries = {
+        "sourceStaticOnly": False,
+        "fullOcrParity": False,
+        "fullReadboardParity": False,
+        "targetClientDiscoveryCovered": False,
+        "externalClientParity": False,
+        "realClientParity": False,
+        "windowsLinuxCaptureCovered": False,
+        "releaseParity": False,
+    }
+    source = {
+        "operatorInitiated": True,
+        "userSelectionRequired": True,
+        "sourceKind": "operator_selected_file",
+        "requestedSource": "operator_selected_file",
+        "operatorSelectedFileProvided": True,
+        "selection": None,
+        "selectedScreenRegionCovered": False,
+        "externalScreenRegionCovered": False,
+        "externalWindowRegionCovered": False,
+        "targetClientDiscoveryCovered": False,
+        "externalClientCaptureCovered": False,
+    }
+    artifact = {
+        "path": "docs/qa/fixtures/readboard-controlled-board.png",
+        "sanitizedPath": "docs/qa/fixtures/readboard-controlled-board.png",
+        "sizeBytes": 522,
+        "sha256": "70cfecf5b5d5235e66a051c5208c2974fde34f0a28aaef5be33fcd8bc0f63d96",
+        "sanitized": True,
+    }
+    decode = {
+        "decodeAttempted": True,
+        "decodeSucceeded": True,
+        "positionDecoded": True,
+        "boardSize": 19,
+        "stoneCount": 3,
+        "structuredResultProduced": True,
+        "confidenceReported": False,
+    }
+    preview = {
+        "previewOnlyBeforeConfirmation": True,
+        "boardReplacedBeforeConfirmation": False,
+        "userConfirmed": True,
+        "boardReplacedOnlyAfterConfirmation": True,
+        "previewConfirmationObserved": True,
+        "boardReplacementObserved": True,
+        "fullOcrParity": False,
+        "fullReadboardParity": False,
+        "targetClientParity": False,
+        "arbitraryOcrParity": False,
+        "releaseParity": False,
+    }
+    structured = {
+        "structuredResultVerified": True,
+        "snapshotId": "external-capture-preview",
+        "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+        "boardSize": 19,
+        "stoneCount": 3,
+        "toPlay": "white",
+        "boardReplaced": True,
+        "replacementConfirmed": True,
+        "previewConfirmed": True,
+        "boardReplacedBeforeConfirmation": False,
+        "rawBackendBoardReplacement": "none",
+        "uiBoardReplacedAfterConfirmation": True,
+    }
+    return {
+        "schema": smoke_user_flows.READBOARD_OPERATOR_CAPTURE_SCHEMA,
+        "name": "readboard_operator_capture",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "tauri_runtime_operator_selected_capture",
+        "runtimeObserved": True,
+        "backendCommandInvoked": True,
+        "backendCommand": "readboard_external_capture",
+        "operatorInitiated": True,
+        "userSelectionRequired": True,
+        "captured": True,
+        "userConfirmed": True,
+        "previewOnlyBeforeConfirmation": True,
+        "boardReplacedOnlyAfterConfirmation": True,
+        **boundaries,
+        "captureSource": source,
+        "captureArtifact": artifact,
+        "decodePosition": decode,
+        "previewConfirmation": preview,
+        "structuredImport": structured,
+        "rawBackendResult": {
+            "status": "captured",
+            "source": "operator_selected_file",
+            "captureSource": "operator_selected_file",
+            "snapshotId": "external-capture-preview",
+            "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+            "boardReplacement": "none",
+            "position": {
+                "board_size": 19,
+                "move_number": 3,
+                "to_play": "white",
+                "stones": [
+                    {"color": "black", "x": 3, "y": 3},
+                    {"color": "black", "x": 10, "y": 4},
+                    {"color": "white", "x": 15, "y": 15},
+                ],
+            },
+            "decode": {
+                "attempted": True,
+                "status": "success",
+                "boardSize": 19,
+                "stoneCount": 3,
+                "blackStones": 2,
+                "whiteStones": 1,
+            },
+        },
+        "checks": [
+            {"name": "capture_source_selected", "status": "pass", "details": source},
+            {"name": "capture_artifact_recorded", "status": "pass", "details": artifact},
+            {"name": "decode_position", "status": "pass", "details": decode},
+            {"name": "preview_confirmation", "status": "pass", "details": preview},
+            {"name": "structured_import", "status": "pass", "details": structured},
+            {"name": "scope_boundaries", "status": "pass", "details": {"boundaries": boundaries}},
+        ],
         "boundaries": boundaries,
     }
 

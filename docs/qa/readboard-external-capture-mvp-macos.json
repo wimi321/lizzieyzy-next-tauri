@@ -21,6 +21,7 @@
     "externalClientCaptureCovered": false,
     "externalScreenRegionCovered": false,
     "externalWindowRegionCovered": false,
+    "localImageOnly": true,
     "localImageProvided": true,
     "operatorInitiated": false,
     "requestedSource": "local_image",
@@ -36,6 +37,7 @@
         "externalClientCaptureCovered": false,
         "externalScreenRegionCovered": false,
         "externalWindowRegionCovered": false,
+        "localImageOnly": true,
         "localImageProvided": true,
         "operatorInitiated": false,
         "requestedSource": "local_image",
@@ -144,7 +146,7 @@
     "message": null,
     "metadata": {
       "phase": "readboard_external_capture_mvp",
-      "scope": "operator_selected_local_image_capture_mvp_not_full_ocr_readboard_or_target_client_parity",
+      "scope": "local_image_capture_decode_mvp_not_full_ocr_readboard_or_target_client_parity",
       "source": "runtime_smoke"
     },
     "operatorInitiated": false,
@@ -193,14 +195,15 @@
     "source": "local_image",
     "sourceMetadata": {
       "phase": "readboard_external_capture_mvp",
-      "scope": "operator_selected_local_image_capture_mvp_not_full_ocr_readboard_or_target_client_parity",
+      "scope": "local_image_capture_decode_mvp_not_full_ocr_readboard_or_target_client_parity",
       "source": "runtime_smoke"
     },
     "status": "captured",
     "userSelectionRequired": false,
     "warnings": [
       "UnsupportedProvider: scoped controlled image import decoded a synthetic/controlled board image",
-      "UnsupportedProvider: this is not full OCR and does not support arbitrary client screenshots"
+      "UnsupportedProvider: this is not full OCR and does not support arbitrary client screenshots",
+      "Readboard external capture decoded an explicit local image file only; this is not arbitrary OCR or target-client capture parity."
     ]
   },
   "realClientParity": false,

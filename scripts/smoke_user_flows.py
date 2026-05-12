@@ -574,6 +574,36 @@ READBOARD_EXTERNAL_CAPTURE_MVP_RAW_STATUSES = {
     "unsupported_platform",
     "decode_error",
 }
+READBOARD_OPERATOR_CAPTURE_EVIDENCE = "docs/qa/readboard-operator-capture-macos.json"
+READBOARD_OPERATOR_CAPTURE_SCHEMA = "lizzieyzy.readboard-operator-capture.v1"
+READBOARD_OPERATOR_CAPTURE_REQUIRED_CHECKS = [
+    "capture_source_selected",
+    "capture_artifact_recorded",
+    "decode_position",
+    "preview_confirmation",
+    "structured_import",
+    "scope_boundaries",
+]
+READBOARD_OPERATOR_CAPTURE_REQUIRED_TRUE_FIELDS = [
+    "runtimeObserved",
+    "backendCommandInvoked",
+    "operatorInitiated",
+    "userSelectionRequired",
+    "captured",
+    "userConfirmed",
+    "previewOnlyBeforeConfirmation",
+    "boardReplacedOnlyAfterConfirmation",
+]
+READBOARD_OPERATOR_CAPTURE_REQUIRED_FALSE_FIELDS = [
+    "sourceStaticOnly",
+    "fullOcrParity",
+    "fullReadboardParity",
+    "targetClientDiscoveryCovered",
+    "externalClientParity",
+    "realClientParity",
+    "windowsLinuxCaptureCovered",
+    "releaseParity",
+]
 PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
 PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
 PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -1313,6 +1343,7 @@ class UserFlowSmoke:
         self.check_readboard_image_import_smoke_evidence()
         self.check_readboard_image_ocr_corpus_smoke_evidence()
         self.check_readboard_external_capture_mvp_evidence()
+        self.check_readboard_operator_capture_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
@@ -1919,6 +1950,42 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_external_capture_mvp",
             "scoped readboard local-image backend capture/decode evidence passes with sanitized artifact, decoded position, no operator selection, no UI confirmation/replacement, and parity limits",
+        )
+
+    def check_readboard_operator_capture_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_OPERATOR_CAPTURE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_operator_capture",
+                f"TODO gate: record scoped readboard operator-selected capture evidence at {READBOARD_OPERATOR_CAPTURE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_OPERATOR_CAPTURE_EVIDENCE)
+        if evidence is None:
+            return
+        if str(evidence.get("status", "")).lower() in {"pending", "unavailable"}:
+            failures = validate_readboard_operator_capture_pending_evidence(evidence)
+            if failures:
+                self.pending(
+                    "readboard_operator_capture",
+                    f"{READBOARD_OPERATOR_CAPTURE_EVIDENCE} is present but not valid scoped operator capture pending evidence: "
+                    + "; ".join(failures),
+                )
+                return
+            reason = evidence.get("pendingReason") or evidence.get("reason") or "operator-selected capture runtime evidence has not been captured yet"
+            self.pending("readboard_operator_capture", str(reason))
+            return
+        failures = validate_readboard_operator_capture_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "readboard_operator_capture",
+                f"{READBOARD_OPERATOR_CAPTURE_EVIDENCE} is present but not valid scoped operator-selected capture PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_operator_capture",
+            "scoped readboard operator-selected file capture evidence passes with runtime backend capture, preview confirmation, decoded position, no automatic backend replacement, UI replacement only after confirmation, and boundary checks",
         )
 
     def check_provider_live_smoke_evidence(self) -> None:
@@ -5729,6 +5796,9 @@ def validate_readboard_external_capture_mvp_evidence(evidence: Any, root: Path =
             failures.append(f"{key} must be false")
     if evidence.get("backendCommand") != "readboard_external_capture":
         failures.append("backendCommand must be readboard_external_capture")
+    preview = evidence.get("previewConfirmation")
+    if isinstance(preview, dict) and evidence.get("userConfirmed") != preview.get("userConfirmed"):
+        failures.append("userConfirmed must match previewConfirmation.userConfirmed")
     raw_result = evidence.get("rawBackendResult")
     failures.extend(validate_readboard_external_capture_raw_result(raw_result, require_captured=True))
     capture_source = evidence.get("captureSource")
@@ -5788,6 +5858,8 @@ def normalize_readboard_external_capture_source(value: Any) -> str:
     source = str(value or "").strip().lower().replace("-", "_")
     if source in {"local_image", "image_path", "controlled_image"}:
         return "local_image"
+    if source in {"operator_selected_file", "operator_selected_image", "selected_file", "file_picker"}:
+        return "operator_selected_file"
     if source in {"macos_interactive_screencapture", "interactive_screencapture", "screen"}:
         return "selected_screen_region"
     if source in {"window", "external_window_capture"}:
@@ -6900,6 +6972,279 @@ def validate_readboard_external_capture_scope_boundaries(check: Any, root_eviden
     failures: list[str] = []
     boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
     for key in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_FALSE_FIELDS:
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
+    return failures
+
+
+def validate_readboard_operator_capture_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_OPERATOR_CAPTURE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_OPERATOR_CAPTURE_SCHEMA}")
+    if evidence.get("name") != "readboard_operator_capture":
+        failures.append("name must be readboard_operator_capture")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    collection_method = str(evidence.get("collectionMethod", ""))
+    if collection_method != "tauri_runtime_operator_selected_capture":
+        failures.append("collectionMethod must be tauri_runtime_operator_selected_capture")
+    if "static" in collection_method or "committed" in collection_method or evidence.get("sourceStaticOnly") is True:
+        failures.append("static/committed evidence is not accepted for PASS")
+    for key in READBOARD_OPERATOR_CAPTURE_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in READBOARD_OPERATOR_CAPTURE_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    if evidence.get("backendCommand") != "readboard_external_capture":
+        failures.append("backendCommand must be readboard_external_capture")
+    preview = evidence.get("previewConfirmation")
+    if isinstance(preview, dict) and evidence.get("userConfirmed") != preview.get("userConfirmed"):
+        failures.append("userConfirmed must match previewConfirmation.userConfirmed")
+    raw_result = evidence.get("rawBackendResult")
+    failures.extend(validate_readboard_external_capture_raw_result(raw_result, require_captured=True))
+    if isinstance(raw_result, dict):
+        raw_status = str(raw_result.get("status", "")).lower()
+        if raw_status != "captured":
+            failures.append("rawBackendResult.status must be captured")
+        raw_source = normalize_readboard_external_capture_source(first_present(raw_result, "captureSource", "source"))
+        if raw_source == "local_image":
+            failures.append("rawBackendResult source must not be local_image for operator capture")
+        replacement = first_present(raw_result, "boardReplacement", "board_replacement")
+        if replacement not in {None, "none", "confirmed_after_preview", "imported_after_confirmation"}:
+            failures.append("rawBackendResult.boardReplacement must be absent/none or confirmed after preview")
+    capture_source = evidence.get("captureSource")
+    if not isinstance(capture_source, dict):
+        failures.append("captureSource must be an object")
+    else:
+        failures.extend(validate_readboard_operator_capture_source(capture_source, "captureSource"))
+    artifact = evidence.get("captureArtifact")
+    if not isinstance(artifact, dict):
+        failures.append("captureArtifact must be an object")
+    else:
+        failures.extend(validate_readboard_operator_capture_artifact(artifact, root, "captureArtifact"))
+    decode_position = evidence.get("decodePosition")
+    if not isinstance(decode_position, dict):
+        failures.append("decodePosition must be an object")
+    else:
+        failures.extend(validate_readboard_operator_capture_decode_position(decode_position, "decodePosition"))
+    if not isinstance(preview, dict):
+        failures.append("previewConfirmation must be an object")
+    else:
+        failures.extend(validate_readboard_operator_capture_preview_confirmation(preview))
+    structured = evidence.get("structuredImport")
+    if not isinstance(structured, dict):
+        failures.append("structuredImport must be an object")
+    else:
+        failures.extend(validate_readboard_operator_capture_structured_import(structured, "structuredImport"))
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in READBOARD_OPERATOR_CAPTURE_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in READBOARD_OPERATOR_CAPTURE_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_readboard_operator_capture_source_check(check_by_name.get("capture_source_selected")))
+    failures.extend(validate_readboard_operator_capture_artifact_check(check_by_name.get("capture_artifact_recorded"), root))
+    failures.extend(validate_readboard_operator_capture_decode_position_check(check_by_name.get("decode_position")))
+    failures.extend(validate_readboard_operator_capture_preview_confirmation_check(check_by_name.get("preview_confirmation")))
+    failures.extend(validate_readboard_operator_capture_structured_import_check(check_by_name.get("structured_import")))
+    failures.extend(validate_readboard_operator_capture_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
+    return unique_ordered(failures)
+
+
+def validate_readboard_operator_capture_pending_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_OPERATOR_CAPTURE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_OPERATOR_CAPTURE_SCHEMA}")
+    if evidence.get("name") != "readboard_operator_capture":
+        failures.append("name must be readboard_operator_capture")
+    if str(evidence.get("status", "")).lower() not in {"pending", "unavailable"}:
+        failures.append("status must be pending/unavailable")
+    for key in READBOARD_OPERATOR_CAPTURE_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    if evidence.get("captured") is True:
+        failures.append("captured must not be true for pending evidence")
+    raw = evidence.get("rawBackendResult")
+    if isinstance(raw, dict):
+        failures.extend(validate_readboard_external_capture_raw_result(raw, require_captured=False))
+        if str(raw.get("status", "")).lower() == "captured":
+            failures.append("pending rawBackendResult.status must not be captured")
+    reason = first_present(evidence, "pendingReason", "reason")
+    if not isinstance(reason, str) or not reason.strip():
+        failures.append("pendingReason/reason must be non-empty")
+    return failures
+
+
+def validate_readboard_operator_capture_source_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["capture_source_selected evidence must be an object"]
+    return validate_readboard_operator_capture_source(evidence, "capture_source_selected")
+
+
+def validate_readboard_operator_capture_source(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("operatorInitiated") is not True:
+        failures.append(f"{label}.operatorInitiated must be true")
+    if evidence.get("userSelectionRequired") is not True:
+        failures.append(f"{label}.userSelectionRequired must be true")
+    source_kind = normalize_readboard_external_capture_source(first_present(evidence, "sourceKind", "kind", "captureSource"))
+    if source_kind == "local_image":
+        failures.append(f"{label}.sourceKind must not be local_image")
+    if source_kind not in {"external_screen_region", "selected_screen_region", "external_window_region", "operator_selected_file"}:
+        failures.append(f"{label}.sourceKind must be selected external region or operator_selected_file")
+    if evidence.get("targetClientDiscoveryCovered") is not False:
+        failures.append(f"{label}.targetClientDiscoveryCovered must be false")
+    if evidence.get("externalClientCaptureCovered") is not False:
+        failures.append(f"{label}.externalClientCaptureCovered must be false")
+    if source_kind == "operator_selected_file":
+        if evidence.get("operatorSelectedFileProvided") is not True:
+            failures.append(f"{label}.operatorSelectedFileProvided must be true for operator_selected_file")
+        if evidence.get("selectedScreenRegionCovered") is not False:
+            failures.append(f"{label}.selectedScreenRegionCovered must be false for operator_selected_file")
+        if evidence.get("externalScreenRegionCovered") is not False:
+            failures.append(f"{label}.externalScreenRegionCovered must be false for operator_selected_file")
+        if evidence.get("externalWindowRegionCovered") is not False:
+            failures.append(f"{label}.externalWindowRegionCovered must be false for operator_selected_file")
+    else:
+        selection = evidence.get("selection")
+        if not isinstance(selection, dict):
+            failures.append(f"{label}.selection must be an object")
+        else:
+            for key in ("x", "y", "width", "height"):
+                if not positive_number(selection.get(key)):
+                    failures.append(f"{label}.selection.{key} must be positive")
+    return failures
+
+
+def validate_readboard_operator_capture_artifact_check(check: Any, root: Path) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["capture_artifact_recorded evidence must be an object"]
+    return validate_readboard_operator_capture_artifact(evidence, root, "capture_artifact_recorded")
+
+
+def validate_readboard_operator_capture_artifact(evidence: dict[str, Any], root: Path, label: str) -> list[str]:
+    failures = validate_readboard_external_capture_artifact({"details": evidence}, root)
+    path = first_present(evidence, "path", "capturePath", "imagePath", "sanitizedPath")
+    if not isinstance(path, str) or not path.strip():
+        failures.append(f"{label}.sanitizedPath/path must be non-empty")
+    elif not is_stable_artifact_path(path):
+        failures.append(f"{label}.sanitizedPath/path must be sanitized and repo-relative")
+    if not positive_number(first_present(evidence, "sizeBytes", "imageBytes", "bytes")):
+        failures.append(f"{label}.sizeBytes must be positive")
+    if not is_sha256_hex(first_present(evidence, "sha256", "imageSha256", "hash")):
+        failures.append(f"{label}.sha256 must be a 64-character hex sha256")
+    return failures
+
+
+def validate_readboard_operator_capture_decode_position_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["decode_position evidence must be an object"]
+    return validate_readboard_operator_capture_decode_position(evidence, "decode_position")
+
+
+def validate_readboard_operator_capture_decode_position(evidence: dict[str, Any], label: str) -> list[str]:
+    failures = validate_readboard_external_capture_decode_summary({"details": evidence})
+    if evidence.get("positionDecoded") is not True:
+        failures.append(f"{label}.positionDecoded must be true")
+    return failures
+
+
+def validate_readboard_operator_capture_preview_confirmation_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["preview_confirmation evidence must be an object"]
+    return validate_readboard_operator_capture_preview_confirmation(evidence)
+
+
+def validate_readboard_operator_capture_preview_confirmation(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("previewOnlyBeforeConfirmation") is not True:
+        failures.append("preview_confirmation.previewOnlyBeforeConfirmation must be true")
+    if evidence.get("boardReplacedBeforeConfirmation") is not False:
+        failures.append("preview_confirmation.boardReplacedBeforeConfirmation must be false")
+    if evidence.get("userConfirmed") is not True:
+        failures.append("preview_confirmation.userConfirmed must be true")
+    if evidence.get("boardReplacedOnlyAfterConfirmation") is not True:
+        failures.append("preview_confirmation.boardReplacedOnlyAfterConfirmation must be true")
+    return failures
+
+
+def validate_readboard_operator_capture_structured_import_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["structured_import evidence must be an object"]
+    return validate_readboard_operator_capture_structured_import(evidence, "structured_import")
+
+
+def validate_readboard_operator_capture_structured_import(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("structuredResultVerified") is not True:
+        failures.append(f"{label}.structuredResultVerified must be true")
+    snapshot_id = first_present(evidence, "snapshotId", "snapshot_id")
+    if not isinstance(snapshot_id, str) or not snapshot_id:
+        failures.append(f"{label}.snapshotId must be non-empty")
+    board_size = first_present(evidence, "boardSize", "board_size")
+    if board_size not in {9, 13, 19}:
+        failures.append(f"{label}.boardSize must be 9, 13, or 19")
+    stone_count = first_present(evidence, "stoneCount", "stone_count")
+    if not isinstance(stone_count, (int, float)) or stone_count < 0:
+        failures.append(f"{label}.stoneCount must be non-negative")
+    if str(first_present(evidence, "toPlay", "to_play")).lower() not in {"black", "white"}:
+        failures.append(f"{label}.toPlay must be black or white")
+    snapshot_hash = first_present(evidence, "snapshotHash", "snapshot_hash", "hash")
+    if not is_sha256_hex(snapshot_hash):
+        failures.append(f"{label}.snapshotHash must be a 64-character hex sha256")
+    if evidence.get("previewConfirmed") is not True:
+        failures.append(f"{label}.previewConfirmed must be true")
+    if evidence.get("boardReplaced") is not True:
+        failures.append(f"{label}.boardReplaced must be true")
+    if evidence.get("replacementConfirmed") is not True:
+        failures.append(f"{label}.replacementConfirmed must be true")
+    raw_replacement = first_present(evidence, "rawBackendBoardReplacement", "boardReplacement", "board_replacement")
+    if raw_replacement != "none":
+        failures.append(f"{label}.rawBackendBoardReplacement must be none")
+    if evidence.get("uiBoardReplacedAfterConfirmation") is not True:
+        failures.append(f"{label}.uiBoardReplacedAfterConfirmation must be true")
+    if evidence.get("boardReplacedBeforeConfirmation") is not False:
+        failures.append(f"{label}.boardReplacedBeforeConfirmation must be false")
+    return failures
+
+
+def validate_readboard_operator_capture_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
+    for key in READBOARD_OPERATOR_CAPTURE_REQUIRED_FALSE_FIELDS:
         if root_evidence.get(key) is not False:
             failures.append(f"{key} must be false")
         if boundaries.get(key) is not False:

@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { checkEngineAssets, installedAppRuntimeProof, loadEngineProfilesSettings, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
 import type { InstalledAppRuntimeProofDto, RuntimeAssetValidationDto } from "../api/backend";
 import type { AssetCheckDto, EngineProfileDto, EngineProfileRecordDto, InstalledAppBundledKataGoProofDto } from "../domain/types";
+
+const katagoSetupLinks = {
+  releases: "https://github.com/lightvector/KataGo/releases",
+  networks: "https://katagotraining.org/networks/",
+  configs: "https://github.com/lightvector/KataGo/tree/master/cpp/configs"
+} as const;
 
 type Props = {
   disabled?: boolean;
@@ -327,6 +334,15 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
     }
   }
 
+  async function handleOpenSetupLink(label: string, url: string) {
+    try {
+      await openExternalUrl(url);
+      setProfileStatus(`Opened ${label}.`);
+    } catch (error) {
+      setProfileStatus(`Open ${label} failed: ${errorMessage(error)}`);
+    }
+  }
+
   async function refreshInstalledRuntimeProof(shouldApply: () => boolean = () => true) {
     if (!shouldApply()) return;
     setInstalledRuntimeProofStatus("Checking installed app launch proof...");
@@ -513,6 +529,37 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       <p className="message">
         Large KataGo models are not bundled by this repository. Keep using the local asset configuration below unless an installed app package supplies runtime assets.
       </p>
+      <section
+        className="engine-run-row"
+        aria-label="KataGo setup assistant"
+        data-testid="engine-katago-setup-assistant"
+        data-release-parity="false"
+        data-large-model-bundled="false"
+      >
+        <strong>KataGo setup assistant</strong>
+        <span className="message">Official setup links for local engine, network, and config assets.</span>
+        <button
+          type="button"
+          data-testid="engine-open-katago-releases"
+          onClick={() => void handleOpenSetupLink("KataGo releases", katagoSetupLinks.releases)}
+        >
+          KataGo releases
+        </button>
+        <button
+          type="button"
+          data-testid="engine-open-katago-networks"
+          onClick={() => void handleOpenSetupLink("KataGo networks", katagoSetupLinks.networks)}
+        >
+          KataGo networks
+        </button>
+        <button
+          type="button"
+          data-testid="engine-open-katago-configs"
+          onClick={() => void handleOpenSetupLink("KataGo config examples", katagoSetupLinks.configs)}
+        >
+          KataGo config examples
+        </button>
+      </section>
       <div className="engine-run-row" aria-label="Local asset configuration" data-testid="engine-local-assets-target" data-legacy-target="engine-assets">
         <strong>Local asset configuration</strong>
       </div>
@@ -670,6 +717,22 @@ function validBundledProfile(profile: InstalledAppBundledKataGoProofDto["profile
   if (!profile.model_path || profile.model_path.trim().length === 0) return null;
   if (!profile.config_path || profile.config_path.trim().length === 0) return null;
   return profile;
+}
+
+async function openExternalUrl(url: string): Promise<void> {
+  try {
+    await openUrl(url);
+    return;
+  } catch (tauriError) {
+    if (typeof window === "undefined") {
+      throw tauriError;
+    }
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (opened === null) {
+      throw tauriError;
+    }
+    opened.opener = null;
+  }
 }
 
 type InstalledRuntimeSummary = {

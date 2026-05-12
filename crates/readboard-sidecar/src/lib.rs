@@ -878,7 +878,7 @@ fn controlled_image_snapshot(image_bytes: &[u8]) -> Result<ReadBoardSnapshot, Re
     let side = width.min(height);
     if side < 95 {
         return Err(ReadboardSidecarError::ImageLowConfidence(format!(
-            "image is too small for controlled 19x19 board sampling: {width}x{height}"
+            "image is too small for controlled board sampling: {width}x{height}"
         )));
     }
     let aspect_delta = width.abs_diff(height);
@@ -888,54 +888,104 @@ fn controlled_image_snapshot(image_bytes: &[u8]) -> Result<ReadBoardSnapshot, Re
         )));
     }
 
-    const BOARD_SIZE: usize = 19;
     let origin_x = (width - side) as f32 / 2.0;
     let origin_y = (height - side) as f32 / 2.0;
     let margin = (side as f32 * 0.055).max(4.0);
-    let spacing = (side as f32 - margin * 2.0) / (BOARD_SIZE as f32 - 1.0);
-    let sample_radius = (spacing * 0.22).clamp(2.0, 8.0);
     let background = average_rgb(
         &image,
         origin_x + side as f32 * 0.12,
         origin_y + side as f32 * 0.12,
-        sample_radius,
+        (side as f32 * 0.012).clamp(2.0, 8.0),
     );
     if !looks_like_controlled_board_background(background) {
         return Err(ReadboardSidecarError::ImageLowConfidence(format!(
             "controlled board background was not detected; sampled rgb={background:?}"
         )));
     }
-    let mut stones = Vec::with_capacity(BOARD_SIZE * BOARD_SIZE);
-    let mut occupied = 0usize;
 
-    for y in 0..BOARD_SIZE {
-        for x in 0..BOARD_SIZE {
+    let candidates = [19usize, 13usize]
+        .into_iter()
+        .filter_map(|board_size| {
+            controlled_image_snapshot_candidate(
+                &image,
+                board_size,
+                origin_x,
+                origin_y,
+                side as f32,
+                margin,
+                background,
+            )
+        })
+        .collect::<Vec<_>>();
+    let Some(best) = candidates
+        .into_iter()
+        .max_by_key(|candidate| (candidate.grid_confidence, candidate.occupied))
+    else {
+        return Err(ReadboardSidecarError::ImageLowConfidence(
+            "no controlled 13x13 or 19x19 board grid was detected".to_string(),
+        ));
+    };
+    Ok(best.snapshot)
+}
+
+struct ControlledImageCandidate {
+    snapshot: ReadBoardSnapshot,
+    occupied: usize,
+    grid_confidence: usize,
+}
+
+fn controlled_image_snapshot_candidate(
+    image: &image::RgbImage,
+    board_size: usize,
+    origin_x: f32,
+    origin_y: f32,
+    side: f32,
+    margin: f32,
+    background: [u8; 3],
+) -> Option<ControlledImageCandidate> {
+    let spacing = (side - margin * 2.0) / (board_size as f32 - 1.0);
+    let sample_radius = (spacing * 0.22).clamp(2.0, 8.0);
+    let grid_radius = (spacing * 0.045).clamp(1.0, 3.0);
+    let background_luma = rgb_luma(background);
+    let mut stones = Vec::with_capacity(board_size * board_size);
+    let mut occupied = 0usize;
+    let mut grid_confidence = 0usize;
+
+    for y in 0..board_size {
+        for x in 0..board_size {
             let sample_x = origin_x + margin + x as f32 * spacing;
             let sample_y = origin_y + margin + y as f32 * spacing;
-            let rgb = average_rgb(&image, sample_x, sample_y, sample_radius);
-            let stone = classify_controlled_stone(rgb);
+            let grid_rgb = average_rgb(image, sample_x, sample_y, grid_radius);
+            let stone_rgb = average_rgb(image, sample_x, sample_y, sample_radius);
+            let stone = classify_controlled_stone(stone_rgb);
             if stone.is_some() {
                 occupied += 1;
+            }
+            if stone.is_some() || rgb_luma(grid_rgb).saturating_add(35) < background_luma {
+                grid_confidence += 1;
             }
             stones.push(stone);
         }
     }
 
-    if occupied == 0 {
-        return Err(ReadboardSidecarError::ImageLowConfidence(
-            "no controlled black/white stones were detected".to_string(),
-        ));
+    let minimum_grid_confidence = board_size * board_size * 3 / 5;
+    if occupied == 0 || grid_confidence < minimum_grid_confidence {
+        return None;
     }
 
-    Ok(ReadBoardSnapshot {
-        board_size: BOARD_SIZE as u8,
-        stones,
-        last_move: None,
-        remote_move_number: Some(occupied as u32),
-        provider: ReadBoardProvider {
-            kind: ReadBoardProviderKind::Generic,
-            source: Some("controlled_image_import".to_string()),
+    Some(ControlledImageCandidate {
+        snapshot: ReadBoardSnapshot {
+            board_size: board_size as u8,
+            stones,
+            last_move: None,
+            remote_move_number: Some(occupied as u32),
+            provider: ReadBoardProvider {
+                kind: ReadBoardProviderKind::Generic,
+                source: Some("controlled_image_import".to_string()),
+            },
         },
+        occupied,
+        grid_confidence,
     })
 }
 
@@ -965,7 +1015,7 @@ fn average_rgb(image: &image::RgbImage, x: f32, y: f32, radius: f32) -> [u8; 3] 
 
 fn classify_controlled_stone(rgb: [u8; 3]) -> Option<Color> {
     let [r, g, b] = rgb;
-    let luma = (u16::from(r) * 54 + u16::from(g) * 183 + u16::from(b) * 19) / 256;
+    let luma = rgb_luma(rgb);
     let spread = r.max(g).max(b) - r.min(g).min(b);
     if luma < 80 {
         Some(Color::Black)
@@ -978,9 +1028,14 @@ fn classify_controlled_stone(rgb: [u8; 3]) -> Option<Color> {
 
 fn looks_like_controlled_board_background(rgb: [u8; 3]) -> bool {
     let [r, g, b] = rgb;
-    let luma = (u16::from(r) * 54 + u16::from(g) * 183 + u16::from(b) * 19) / 256;
+    let luma = rgb_luma(rgb);
     let spread = r.max(g).max(b) - r.min(g).min(b);
     (90..=215).contains(&luma) && spread > 35
+}
+
+fn rgb_luma(rgb: [u8; 3]) -> u16 {
+    let [r, g, b] = rgb;
+    (u16::from(r) * 54 + u16::from(g) * 183 + u16::from(b) * 19) / 256
 }
 
 fn snapshot_black_to_play(snapshot: &ReadBoardSnapshot) -> bool {
@@ -1007,6 +1062,10 @@ mod tests {
     use super::*;
     use go_core::{Point, ReadBoardLocalPosition, ReadBoardMarker};
     use image::{ImageEncoder, Rgb, RgbImage};
+    use serde::{Deserialize, Serialize};
+    use sha2::{Digest, Sha256};
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     use std::io::Cursor;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1248,6 +1307,87 @@ mod tests {
     }
 
     #[test]
+    fn sync_snapshot_image_fixtures_have_metadata_and_path_base64_equivalence() {
+        use base64::Engine;
+        let metadata = read_fixture_metadata();
+        let valid = metadata
+            .fixtures
+            .iter()
+            .filter(|fixture| fixture.kind == "valid_controlled_board")
+            .collect::<Vec<_>>();
+        assert!(valid.len() >= 2);
+
+        for fixture in valid {
+            assert_fixture_digest(fixture);
+            let path = fixture_path(&fixture.path);
+            let bytes = fs::read(&path).unwrap();
+            let path_outcome = sync_snapshot_image(&ReadboardSidecarSyncSnapshotRequest {
+                snapshot_id: Some(format!("path-{}", fixture.board_size.unwrap())),
+                image_path: Some(path.display().to_string()),
+                ..Default::default()
+            })
+            .unwrap();
+            let base64_outcome = sync_snapshot_image(&ReadboardSidecarSyncSnapshotRequest {
+                snapshot_id: Some(format!("base64-{}", fixture.board_size.unwrap())),
+                image_base64: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
+                ..Default::default()
+            })
+            .unwrap();
+
+            assert_eq!(path_outcome.position.board_size, fixture.board_size.unwrap());
+            assert_eq!(path_outcome.position.stones.len(), fixture.stone_count.unwrap());
+            assert_eq!(
+                base64_outcome.position.board_size,
+                path_outcome.position.board_size
+            );
+            assert_eq!(
+                base64_outcome.position.stones.len(),
+                path_outcome.position.stones.len()
+            );
+            assert_eq!(
+                fingerprint(&path_outcome.snapshot),
+                fingerprint(&base64_outcome.snapshot)
+            );
+            assert_eq!(
+                fingerprint(&path_outcome.position),
+                fingerprint(&base64_outcome.position)
+            );
+            assert!(path_outcome
+                .warnings
+                .iter()
+                .any(|warning| warning.message.contains("not full OCR")));
+        }
+    }
+
+    #[test]
+    fn sync_snapshot_image_fixture_failures_are_not_importable() {
+        let metadata = read_fixture_metadata();
+        for fixture in metadata
+            .fixtures
+            .iter()
+            .filter(|fixture| fixture.kind != "valid_controlled_board")
+        {
+            assert_fixture_digest(fixture);
+            let error = sync_snapshot_image(&ReadboardSidecarSyncSnapshotRequest {
+                snapshot_id: Some(format!("failure-{}", fixture.kind)),
+                image_path: Some(fixture_path(&fixture.path).display().to_string()),
+                ..Default::default()
+            })
+            .expect_err("invalid/non-board fixture must not decode to a default board");
+
+            match fixture.expected_error.as_deref() {
+                Some("ImageLowConfidence") => {
+                    assert!(matches!(error, ReadboardSidecarError::ImageLowConfidence(_)))
+                }
+                Some("ImageDecode") => {
+                    assert!(matches!(error, ReadboardSidecarError::ImageDecode(_)))
+                }
+                other => panic!("unsupported fixture expectedError: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn probe_reports_missing_candidates_with_structured_warnings() {
         let root = temp_root("probe-missing");
         fs::create_dir_all(&root).unwrap();
@@ -1359,6 +1499,47 @@ mod tests {
     fn temp_root(label: &str) -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         env::temp_dir().join(format!("readboard-sidecar-{label}-{nanos}"))
+    }
+
+    fn fixture_path(relative: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(relative)
+    }
+
+    fn read_fixture_metadata() -> ReadboardImageFixtureMetadata {
+        let path = fixture_path("tests/fixtures/readboard-images/metadata.json");
+        serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn assert_fixture_digest(fixture: &ReadboardImageFixture) {
+        let path = fixture_path(&fixture.path);
+        let bytes = fs::read(path).unwrap();
+        assert_eq!(bytes.len() as u64, fixture.bytes);
+        let digest = Sha256::digest(&bytes);
+        assert_eq!(format!("{digest:x}"), fixture.sha256);
+    }
+
+    fn fingerprint(value: &impl Serialize) -> u64 {
+        let json = serde_json::to_string(value).unwrap();
+        let mut hasher = DefaultHasher::new();
+        json.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ReadboardImageFixtureMetadata {
+        fixtures: Vec<ReadboardImageFixture>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ReadboardImageFixture {
+        path: String,
+        bytes: u64,
+        sha256: String,
+        kind: String,
+        board_size: Option<u8>,
+        stone_count: Option<usize>,
+        expected_error: Option<String>,
     }
 
     fn controlled_board_png() -> Vec<u8> {

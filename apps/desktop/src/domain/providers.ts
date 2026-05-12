@@ -89,6 +89,15 @@ export type ReadboardSidecarSyncSnapshotRequest = {
 
 export type ReadboardSidecarSyncSnapshotResult = {
   snapshot_id: string;
+  snapshotId?: string | null;
+  snapshot_hash?: string | null;
+  snapshotHash?: string | null;
+  hash?: string | null;
+  confidence?: number | string | null;
+  source?: string | null;
+  source_metadata?: Record<string, string> | null;
+  sourceMetadata?: Record<string, string> | null;
+  metadata?: Record<string, string> | null;
   position?: PositionDto | null;
   warnings: string[];
 };

@@ -46,6 +46,8 @@ type FoxFetchInput = {
   sourceId: string | null;
 };
 
+type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64";
+
 const providerFetchTimeoutMs = 15_000;
 const readboardTimeoutMs = 5_000;
 
@@ -71,6 +73,9 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardImageName, setReadboardImageName] = useState("");
   const [readboardProbeResult, setReadboardProbeResult] = useState<ReadboardSidecarProbeResult | null>(null);
   const [readboardSyncResult, setReadboardSyncResult] = useState<ReadboardSidecarSyncSnapshotResult | null>(null);
+  const [readboardPreviewKind, setReadboardPreviewKind] = useState<ReadboardPreviewKind>("none");
+  const [readboardPreviewError, setReadboardPreviewError] = useState("");
+  const [readboardImportConfirmed, setReadboardImportConfirmed] = useState(false);
   const [legacyHelperResult, setLegacyHelperResult] = useState<LegacyImportCaptureHelperResult | null>(null);
   const [providerWarnings, setProviderWarnings] = useState<string[]>([]);
   const canPreviewYike = !disabled && provider === "yike" && sourceUrl.trim().length > 0;
@@ -80,7 +85,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canProbeReadboard = !disabled;
   const canSyncReadboard = !disabled && readboardProtocolLine.trim().length > 0;
   const canPreviewReadboardImage = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
-  const canImportReadboardSnapshot = !disabled && readboardSyncResult?.position != null;
+  const canConfirmReadboardImport = !disabled && readboardSyncResult?.position != null;
+  const canImportReadboardSnapshot = canConfirmReadboardImport && readboardImportConfirmed;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
     ? statuses.fetch
     : statuses.import !== initialStatuses.import
@@ -173,6 +179,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   async function handleReadboardSync() {
     if (!canSyncReadboard) return;
     setOperationStatus("readboardSync", "Previewing protocol snapshot...");
+    resetReadboardPreviewState();
     try {
       const result = await syncReadboardSidecarSnapshot({
         endpoint: optionalTrimmed(readboardEndpoint),
@@ -181,16 +188,21 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         timeout_ms: readboardTimeoutMs
       });
       setReadboardSyncResult(result);
+      setReadboardPreviewKind("protocol");
+      setReadboardPreviewError("");
       setOperationStatus("readboardSync", readboardSyncStatus(result));
     } catch (error) {
       setReadboardSyncResult(null);
-      setOperationStatus("readboardSync", `Readboard preview failed: ${errorMessage(error)}`);
+      setReadboardPreviewKind("protocol");
+      setReadboardPreviewError(errorMessage(error));
+      setOperationStatus("readboardSync", `Readboard preview failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
     }
   }
 
   async function handleReadboardImagePreview() {
     if (!canPreviewReadboardImage) return;
     setOperationStatus("readboardSync", "Previewing controlled board image import...");
+    resetReadboardPreviewState();
     try {
       const hasPath = readboardImagePath.trim().length > 0;
       const result = await syncReadboardSidecarSnapshot({
@@ -206,9 +218,13 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         timeout_ms: readboardTimeoutMs
       });
       setReadboardSyncResult(result);
+      setReadboardPreviewKind(hasPath ? "image_path" : "image_base64");
+      setReadboardPreviewError("");
       setOperationStatus("readboardSync", readboardImagePreviewStatus(result));
     } catch (error) {
       setReadboardSyncResult(null);
+      setReadboardPreviewKind(readboardImagePath.trim().length > 0 ? "image_path" : "image_base64");
+      setReadboardPreviewError(errorMessage(error));
       setOperationStatus("readboardSync", `Controlled board image preview failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
     }
   }
@@ -217,6 +233,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     if (!file) return;
     setReadboardImageName(file.name);
     setReadboardImagePath("");
+    resetReadboardPreviewState();
     setOperationStatus("readboardSync", `Loaded ${file.name} for controlled board image preview. Use Preview image before importing.`);
     try {
       const dataUrl = await readFileAsDataUrl(file);
@@ -228,11 +245,12 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   }
 
   async function handleImportReadboardSnapshot() {
-    if (!readboardSyncResult?.position) return;
+    if (!readboardSyncResult?.position || !readboardImportConfirmed) return;
     setOperationStatus("readboardSync", "Importing readboard snapshot...");
     try {
       const result = buildReadboardSnapshotImportResult(readboardSyncResult, optionalTrimmed(readboardEndpoint));
       await onImport(result);
+      setReadboardImportConfirmed(false);
       setOperationStatus("readboardSync", readboardSnapshotImportStatus(result));
     } catch (error) {
       setOperationStatus("readboardSync", `Readboard snapshot import failed: ${errorMessage(error)}`);
@@ -276,6 +294,13 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
 
   function setOperationStatus(operation: keyof OperationStatus, status: string) {
     setStatuses((current) => ({ ...current, [operation]: status }));
+  }
+
+  function resetReadboardPreviewState() {
+    setReadboardSyncResult(null);
+    setReadboardPreviewError("");
+    setReadboardPreviewKind("none");
+    setReadboardImportConfirmed(false);
   }
 
   return (
@@ -406,6 +431,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
               onChange={(event) => {
                 setReadboardImagePath(event.target.value);
                 if (event.target.value.trim()) setReadboardImageBase64("");
+                resetReadboardPreviewState();
               }}
             />
           </label>
@@ -436,12 +462,13 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             onChange={(event) => {
               setReadboardImageBase64(event.target.value);
               if (event.target.value.trim()) setReadboardImagePath("");
+              resetReadboardPreviewState();
             }}
           />
         </label>
         <div className="provider-grid">
           <button data-testid="readboard-preview-image" onClick={() => void handleReadboardImagePreview()} disabled={!canPreviewReadboardImage}>Preview image</button>
-          <button data-testid="readboard-import-image-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import previewed position</button>
+          <button data-testid="readboard-import-image-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import confirmed preview</button>
         </div>
         <p className="provider-status" data-testid="readboard-image-boundary">
           Image import is scoped to controlled board images and imports only the previewed current position. Failed preview is recoverable and does not import or replace the board.
@@ -456,19 +483,33 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             spellCheck={false}
             aria-label="Readboard protocol preview line"
             placeholder="Paste readboard snapshot protocol line for position preview"
-            onChange={(event) => setReadboardProtocolLine(event.target.value)}
+            onChange={(event) => {
+              setReadboardProtocolLine(event.target.value);
+              resetReadboardPreviewState();
+            }}
           />
         </label>
         <div className="provider-grid">
             <button data-testid="readboard-preview-snapshot" onClick={() => void handleReadboardSync()} disabled={!canSyncReadboard}>Preview snapshot</button>
-            <button data-testid="readboard-import-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import snapshot</button>
+            <button data-testid="readboard-import-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import confirmed snapshot</button>
         </div>
         <p className="provider-status" title={statuses.readboardSync}>{statuses.readboardSync}</p>
+        {readboardPreviewError ? (
+          <div className="warning-list" role="alert" data-testid="readboard-preview-error">
+            <strong>Preview failed recoverably</strong>
+            <p>{readboardPreviewError}</p>
+            <small>No SGF was imported and the current board was not replaced.</small>
+          </div>
+        ) : null}
         {readboardSyncResult ? (
           <dl className="provider-preview" data-testid="readboard-snapshot-preview-summary">
             <div>
               <dt>Snapshot</dt>
-              <dd title={readboardSyncResult.snapshot_id}>{readboardSyncResult.snapshot_id}</dd>
+              <dd title={readboardSnapshotId(readboardSyncResult)}>{readboardSnapshotId(readboardSyncResult)}</dd>
+            </div>
+            <div>
+              <dt>Hash</dt>
+              <dd title={readboardSnapshotHash(readboardSyncResult) ?? ""}>{readboardSnapshotHash(readboardSyncResult) ?? "not reported"}</dd>
             </div>
             <div>
               <dt>Board size</dt>
@@ -483,14 +524,43 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
               <dd>{readboardSyncResult.position?.stones.length ?? 0}</dd>
             </div>
             <div>
+              <dt>Confidence</dt>
+              <dd>{readboardConfidence(readboardSyncResult)}</dd>
+            </div>
+            <div>
               <dt>To play</dt>
               <dd>{readboardSyncResult.position ? colorLabel(readboardSyncResult.position.to_play) : "unknown"}</dd>
+            </div>
+            <div>
+              <dt>Source</dt>
+              <dd title={readboardSourceMetadata(readboardSyncResult, readboardPreviewKind).join("; ")}>{readboardPreviewSourceLabel(readboardPreviewKind)}</dd>
+            </div>
+            <div>
+              <dt>Metadata</dt>
+              <dd title={readboardSourceMetadata(readboardSyncResult, readboardPreviewKind).join("; ")}>{readboardSourceMetadata(readboardSyncResult, readboardPreviewKind).slice(0, 3).join("; ")}</dd>
             </div>
             <div>
               <dt>Warnings</dt>
               <dd title={readboardSyncResult.warnings.join("; ")}>{warningCount(readboardSyncResult.warnings)}</dd>
             </div>
           </dl>
+        ) : null}
+        {readboardSyncResult ? (
+          <div className="migration-result" data-testid="readboard-import-confirmation">
+            <label className="toggle-row">
+              <span>Confirm current-position import</span>
+              <input
+                type="checkbox"
+                data-testid="readboard-confirm-import"
+                checked={readboardImportConfirmed}
+                disabled={!canConfirmReadboardImport}
+                onChange={(event) => setReadboardImportConfirmed(event.target.checked)}
+              />
+            </label>
+            <small>
+              Import replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or external capture/OCR parity.
+            </small>
+          </div>
         ) : null}
         <WarningList label="Readboard snapshot warnings" warnings={readboardSyncResult?.warnings ?? []} />
       </div>
@@ -536,6 +606,15 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             actionLabel="Check capture status"
             disabled={disabled}
             onAction={() => void handleLegacyHelperStatus("external_window_capture")}
+          />
+          <HelperCard
+            testId="legacy-helper-external-client-unsupported"
+            title="External client protocol capture"
+            status="recoverable unsupported"
+            detail="External client capture remains a visible unsupported boundary; use controlled import paths instead."
+            actionLabel="Check client status"
+            disabled={disabled}
+            onAction={() => void handleLegacyHelperStatus("external_client_capture")}
           />
         </div>
         <p className="provider-status" data-testid="legacy-helper-no-board-replacement">
@@ -682,18 +761,24 @@ function buildFetchImportRequest(result: ProviderFetchResult, fallbackSourceUrl:
 function buildReadboardSnapshotImportResult(result: ReadboardSidecarSyncSnapshotResult, endpoint: string | null): ProviderImportResult {
   if (!result.position) throw new Error("Preview a readboard snapshot with a position before importing.");
   const sgfBuild = buildReadboardSnapshotSgf(result.position);
+  const snapshotId = readboardSnapshotId(result);
+  const snapshotHash = readboardSnapshotHash(result);
+  const sourceMetadata = readboardResultMetadata(result);
   const metadata = normalizeMetadata({
     source_url: endpoint,
-    source_id: result.snapshot_id,
-    title: `Readboard snapshot ${result.snapshot_id}`,
+    source_id: snapshotId,
+    title: `Readboard snapshot ${snapshotId}`,
     provider_status: "snapshot_only",
     extra: {
       import_kind: "readboard_snapshot",
       history_scope: "current_position_only_not_complete_game_history",
-      snapshot_id: result.snapshot_id,
+      snapshot_id: snapshotId,
+      snapshot_hash: snapshotHash ?? "",
+      confidence: String(result.confidence ?? ""),
       board_size: String(result.position.board_size),
       move_number: String(result.position.move_number),
-      to_play: result.position.to_play
+      to_play: result.position.to_play,
+      ...sourceMetadata
     }
   });
   const warnings = [
@@ -708,7 +793,7 @@ function buildReadboardSnapshotImportResult(result: ReadboardSidecarSyncSnapshot
     sgf_text: sgfBuild.sgfText,
     summary: {
       provider: "readboard_snapshot",
-      source_id: result.snapshot_id,
+      source_id: snapshotId,
       board_size: result.position.board_size,
       move_count: 0
     },
@@ -811,12 +896,13 @@ function providerFetchStatus(result: ProviderFetchResult, label: string): string
 function readboardSyncStatus(result: ReadboardSidecarSyncSnapshotResult): string {
   const position = result.position ? `position ${result.position.board_size}x${result.position.board_size} move ${result.position.move_number}` : "no position";
   const warnings = result.warnings.length > 0 ? `, ${result.warnings.length} warning(s)` : "";
-  return `Snapshot preview ${result.snapshot_id}: ${position}${warnings}.`;
+  return `Snapshot preview ${readboardSnapshotId(result)}: ${position}${warnings}.`;
 }
 
 function readboardImagePreviewStatus(result: ReadboardSidecarSyncSnapshotResult): string {
-  if (!result.position) return `Controlled board image preview ${result.snapshot_id}: no position extracted; no import performed.`;
-  return `Controlled board image preview ${result.snapshot_id}: ${result.position.board_size}x${result.position.board_size}, ${result.position.stones.length} stones, ${colorLabel(result.position.to_play)} to play.`;
+  const snapshotId = readboardSnapshotId(result);
+  if (!result.position) return `Controlled board image preview ${snapshotId}: no position extracted; no import performed.`;
+  return `Controlled board image preview ${snapshotId}: ${result.position.board_size}x${result.position.board_size}, ${result.position.stones.length} stones, ${colorLabel(result.position.to_play)} to play. Confirm before import.`;
 }
 
 function readboardSnapshotImportStatus(result: ProviderImportResult): string {
@@ -837,6 +923,52 @@ function legacyHelperStatus(result: LegacyImportCaptureHelperResult): string {
 function positionStatus(result: ReadboardSidecarSyncSnapshotResult): string {
   if (!result.position) return "none";
   return `${result.position.board_size}x${result.position.board_size}, move ${result.position.move_number}, ${result.position.stones.length} stones`;
+}
+
+function readboardSnapshotId(result: ReadboardSidecarSyncSnapshotResult): string {
+  return result.snapshot_id || result.snapshotId || "unreported snapshot";
+}
+
+function readboardSnapshotHash(result: ReadboardSidecarSyncSnapshotResult): string | null {
+  return result.snapshot_hash ?? result.snapshotHash ?? result.hash ?? null;
+}
+
+function readboardConfidence(result: ReadboardSidecarSyncSnapshotResult): string {
+  const confidence = result.confidence;
+  if (confidence === null || confidence === undefined || confidence === "") return "not reported";
+  if (typeof confidence === "number") {
+    const value = confidence <= 1 ? confidence * 100 : confidence;
+    return `${value.toFixed(value >= 10 ? 1 : 2)}%`;
+  }
+  return confidence;
+}
+
+function readboardPreviewSourceLabel(kind: ReadboardPreviewKind): string {
+  if (kind === "image_path") return "controlled image path";
+  if (kind === "image_base64") return "controlled image base64";
+  if (kind === "protocol") return "protocol snapshot line";
+  return "not reported";
+}
+
+function readboardResultMetadata(result: ReadboardSidecarSyncSnapshotResult): Record<string, string> {
+  return stringifyMetadata(result.source_metadata ?? result.sourceMetadata ?? result.metadata ?? {});
+}
+
+function readboardSourceMetadata(result: ReadboardSidecarSyncSnapshotResult, kind: ReadboardPreviewKind): string[] {
+  const entries = Object.entries(readboardResultMetadata(result)).map(([key, value]) => `${key}: ${value}`);
+  if (result.source) entries.unshift(`source: ${result.source}`);
+  entries.unshift(`input: ${readboardPreviewSourceLabel(kind)}`);
+  return entries;
+}
+
+function stringifyMetadata(metadata: Record<string, string> | null | undefined): Record<string, string> {
+  if (!metadata) return {};
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === undefined || value === null) continue;
+    normalized[key] = String(value);
+  }
+  return normalized;
 }
 
 function warningCount(warnings: string[]): string {

@@ -93,6 +93,8 @@ export function App() {
   const [commentDraft, setCommentDraft] = useState("");
   const [isCommentSaving, setIsCommentSaving] = useState(false);
   const [isPropertySaving, setIsPropertySaving] = useState(false);
+  const [isAnnotationSaving, setIsAnnotationSaving] = useState(false);
+  const [annotationError, setAnnotationError] = useState<string | null>(null);
   const [isMoveAppending, setIsMoveAppending] = useState(false);
   const [isNodeDeleting, setIsNodeDeleting] = useState(false);
   const [isNodeReordering, setIsNodeReordering] = useState(false);
@@ -176,7 +178,7 @@ export function App() {
     () => selectedSgfNodeId ? sgfTree?.nodes.find((node) => node.id === selectedSgfNodeId) ?? null : null,
     [selectedSgfNodeId, sgfTree]
   );
-  const isBusy = isKataGoRunning || isCommentSaving || isPropertySaving || isMoveAppending || isNodeDeleting || isNodeReordering;
+  const isBusy = isKataGoRunning || isCommentSaving || isPropertySaving || isAnnotationSaving || isMoveAppending || isNodeDeleting || isNodeReordering;
   const canDeleteSgfNode = Boolean(selectedSgfNode && selectedSgfNode.id !== sgfTree?.root_id && selectedSgfNode.parent_id !== null && !isBusy);
   const canEditSelectedMove = Boolean(selectedSgfNode && selectedSgfNode.id !== sgfTree?.root_id && selectedSgfNode.color && selectedSgfNode.vertex !== null && selectedSgfNode.vertex !== undefined && !isBusy);
 
@@ -802,6 +804,71 @@ export function App() {
     }
   }
 
+  async function handleSaveAnnotations(nodeId: string, updates: SgfPropertyUpdate[]) {
+    if (updates.length === 0) return;
+    const existingNode = sgfTree?.nodes.find((node) => node.id === nodeId) ?? null;
+    const sgfTreeRequest = beginSgfTreeLoad();
+    const sourceVersion = sgfTextEditVersionRef.current;
+    const sourceText = sgfText;
+    setIsAnnotationSaving(true);
+    setAnnotationError(null);
+    try {
+      const result = await updateSgfNodeProperties(sourceText, nodeId, updates);
+      if (sgfTextEditVersionRef.current !== sourceVersion) {
+        const cancelled = "Save annotations cancelled because the SGF source changed while the save was running.";
+        setAnnotationError(cancelled);
+        setMessage(cancelled);
+        return;
+      }
+
+      sgfTextEditVersionRef.current += 1;
+      setSgfText(result.sgf_text);
+      setDirty(true);
+      clearReviewData();
+      resetAnalysisCacheState();
+
+      const [parsed, replayed, updatedTree] = await Promise.all([
+        parseSgfSummary(result.sgf_text),
+        replaySgfPositions(result.sgf_text),
+        parseSgfTree(result.sgf_text)
+      ]);
+      const selectedNode = applySgfTreeSelectedNode(updatedTree, result.node_id, sgfTreeRequest)
+        ?? selectSgfTreeNodeForMove(updatedTree, currentMove);
+      setGame(parsed);
+      setPositions(replayed);
+      setSgfTreeError(null);
+      setCommentDraft(selectedNode?.comment ?? "");
+
+      let replayWarning = "";
+      if (selectedNode) {
+        try {
+          const replayRequest = beginTreeNodeReplay();
+          const position = await replaySgfPositionAtNode(result.sgf_text, selectedNode.id);
+          if (treeNodeReplayRequestVersionRef.current === replayRequest) {
+            setTreeNodePositionOverride(position);
+            setCurrentMove(clampMoveNumberToPositions(replayed, position.move_number));
+          }
+        } catch (error) {
+          setTreeNodePositionOverride(null);
+          setCurrentMove(clampMoveNumberToPositions(replayed, selectedNode.move_number ?? replayed.at(-1)?.move_number ?? parsed.moves.length));
+          replayWarning = ` Position replay failed: ${errorMessage(error)}`;
+        }
+      } else {
+        clearTreeNodePositionOverride();
+        setCurrentMove(clampMoveNumberToPositions(replayed, replayed.at(-1)?.move_number ?? parsed.moves.length));
+      }
+
+      setMessage(`SGF annotations saved for ${selectedNode ? formatSgfNodeLabel(selectedNode) : existingNode ? formatSgfNodeLabel(existingNode) : "selected node"}.${replayWarning}`);
+    } catch (error) {
+      const message = `Save annotations failed: ${errorMessage(error)}`;
+      setAnnotationError(message);
+      setMessage(message);
+    } finally {
+      setIsAnnotationSaving(false);
+      finishSgfTreeLoad(sgfTreeRequest);
+    }
+  }
+
   async function handleAppendMove(vertex: MoveVertex) {
     const parentNodeId = selectedSgfNodeId;
     if (!parentNodeId) {
@@ -1169,6 +1236,7 @@ export function App() {
     const selectedNode = selectSgfTreeNodeForMove(tree, targetMove);
     setSelectedSgfNodeId(selectedNode?.id ?? tree?.root_id ?? null);
     setCommentDraft(selectedNode?.comment ?? "");
+    setAnnotationError(null);
   }
 
   function applySgfTreeSelectedNode(tree: SgfTreeDto | null, nodeId: string, requestVersion?: number | null): SgfTreeNodeDto | null {
@@ -1178,6 +1246,7 @@ export function App() {
     const selectedNode = tree?.nodes.find((node) => node.id === nodeId) ?? null;
     setSelectedSgfNodeId(selectedNode?.id ?? tree?.root_id ?? null);
     setCommentDraft(selectedNode?.comment ?? "");
+    setAnnotationError(null);
     return selectedNode;
   }
 
@@ -1186,6 +1255,7 @@ export function App() {
     if (!selectedNode) return;
     setSelectedSgfNodeId(selectedNode.id);
     setCommentDraft(selectedNode.comment ?? "");
+    setAnnotationError(null);
   }
 
   function beginTreeNodeReplay(): number {
@@ -1468,8 +1538,11 @@ export function App() {
             onSelectNode={(nodeId) => void handleSgfTreeNodeSelect(nodeId)}
             onSaveComment={(nodeId, comment) => void handleSaveComment(nodeId, comment)}
             onSaveProperties={(nodeId, updates) => void handleSaveProperties(nodeId, updates)}
+            onSaveAnnotations={(nodeId, updates) => void handleSaveAnnotations(nodeId, updates)}
             isCommentSaving={isCommentSaving}
             isPropertySaving={isPropertySaving}
+            isAnnotationSaving={isAnnotationSaving}
+            annotationError={annotationError}
             commentActionLabel="Save Comment"
             commentNote="Saving writes the selected node comment into the SGF source text. Branch positions can be displayed; analysis remains mainline/current cache unless re-run."
             moveEditMode={sgfMoveEditMode}

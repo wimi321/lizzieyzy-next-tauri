@@ -206,6 +206,63 @@ LEGACY_UI_GAP_CLOSURE_REQUIRED_CHECKS = [
 LEGACY_ACTION_LAYOUT_REQUIRED_GROUPS = ["File", "Game", "Analysis", "View", "Engine", "Tools", "Help"]
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
 INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
+WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE = "docs/qa/windows-unsigned-installed-app-smoke.json"
+LINUX_INSTALLED_APP_SMOKE_EVIDENCE = "docs/qa/linux-unsigned-installed-app-smoke.json"
+WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA = "lizzieyzy.windows-linux-installed-app-smoke.v1"
+WINDOWS_LINUX_INSTALLED_APP_SMOKE_REQUIRED_PLATFORMS = ["windows", "linux"]
+WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS = [
+    "signedReleaseParity",
+    "notarizedReleaseParity",
+    "updaterParity",
+    "officialReleasePublished",
+    "fullProductionRelease",
+    "fullReleaseParity",
+    "releaseParity",
+    "fullLegacyParity",
+    "windowsInstalledAppParity",
+    "linuxInstalledAppParity",
+    "windowsLinuxInstalledAppParity",
+    "productionSigned",
+    "signed",
+    "codeSigned",
+    "signingParity",
+    "signingCovered",
+    "notarized",
+    "notarizationParity",
+    "notarizationCovered",
+    "releasePublished",
+    "publishedRelease",
+    "officialRelease",
+    "updaterReady",
+    "updaterCovered",
+    "fullParity",
+]
+WINDOWS_LINUX_INSTALLED_APP_FAKE_COMMAND_BODIES = {
+    "echo",
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+    "sh",
+    "bash",
+    "zsh",
+    "python",
+    "python3",
+    "python.exe",
+    "node",
+    "node.exe",
+    "npm",
+    "npm.cmd",
+    "npx",
+    "npx.cmd",
+    "pnpm",
+    "pnpm.cmd",
+    "yarn",
+    "yarn.cmd",
+    "cargo",
+}
 INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE = "docs/qa/installed-app-runtime-workflow-macos.json"
 INSTALLED_APP_RUNTIME_WORKFLOW_SCHEMA = "lizzieyzy.installed-app-runtime-workflow.v1"
 INSTALLED_APP_RUNTIME_PROOF_SCHEMA = "lizzieyzy.installed-app-runtime-proof.v1"
@@ -1655,6 +1712,62 @@ class UserFlowSmoke:
         self.pass_(
             "installed_macos_app_smoke",
             "scoped installed macOS .app launch smoke evidence passes with app bundle, window, screenshot, dev-server, and release-boundary checks",
+        )
+
+    def check_windows_linux_installed_app_smoke_evidence(self) -> None:
+        evidence_by_platform = {
+            "windows": WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE,
+            "linux": LINUX_INSTALLED_APP_SMOKE_EVIDENCE,
+        }
+        missing = [rel for rel in evidence_by_platform.values() if not self.path(rel).is_file()]
+        if missing:
+            self.pending(
+                "windows_linux_installed_app_smoke",
+                "TODO gate: run unsigned installed-app smoke on Windows and Linux and record "
+                + ", ".join(missing),
+            )
+            return
+
+        failures: list[str] = []
+        pending_reasons: list[str] = []
+        observed_platforms: set[str] = set()
+        for expected_platform, rel in evidence_by_platform.items():
+            evidence = self.load_json(rel)
+            if evidence is None:
+                return
+            platform = str(evidence.get("platform", "")).lower()
+            if platform:
+                observed_platforms.add(platform)
+            status = str(evidence.get("status", "")).lower()
+            if status in {"pending", "unavailable", "fail", "failed"}:
+                pending_failures = validate_windows_linux_installed_app_pending_evidence(evidence, expected_platform)
+                if pending_failures:
+                    failures.extend(f"{rel}: {failure}" for failure in pending_failures)
+                reason = first_present(evidence, "pendingReason", "reason", "error")
+                pending_reasons.append(f"{expected_platform}: {reason if isinstance(reason, str) and reason.strip() else status}")
+                continue
+            platform_failures = validate_windows_linux_installed_app_smoke_evidence(evidence, expected_platform)
+            failures.extend(f"{rel}: {failure}" for failure in platform_failures)
+
+        missing_platforms = [platform for platform in WINDOWS_LINUX_INSTALLED_APP_SMOKE_REQUIRED_PLATFORMS if platform not in observed_platforms]
+        if missing_platforms:
+            failures.append("missing platform evidence: " + ", ".join(missing_platforms))
+        if failures:
+            self.pending(
+                "windows_linux_installed_app_smoke",
+                "Windows/Linux unsigned installed-app smoke evidence is present but not valid scoped PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        if pending_reasons:
+            self.pending(
+                "windows_linux_installed_app_smoke",
+                "Windows/Linux unsigned installed-app smoke is not fully available yet: " + "; ".join(pending_reasons),
+            )
+            return
+        self.pass_(
+            "windows_linux_installed_app_smoke",
+            "scoped unsigned Windows and Linux installed-app smoke evidence passes with artifact metadata, process/window observation, dev-server exclusion, termination, and release-boundary checks",
         )
 
     def check_installed_app_runtime_workflow_evidence(self) -> None:
@@ -3776,6 +3889,206 @@ def validate_installed_macos_app_termination(evidence: dict[str, Any]) -> list[s
     if first_present(evidence, "terminated", "terminateSuccess", "exitSuccess", "exited") is True:
         return []
     return ["exit/terminate success must be recorded"]
+
+
+def validate_windows_linux_installed_app_smoke_evidence(evidence: Any, expected_platform: str | None = None) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA:
+        failures.append(f"schema must be {WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA}")
+    if str(evidence.get("name", "")) != "windows_linux_installed_app_smoke":
+        failures.append("name must be windows_linux_installed_app_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"windows", "linux"}:
+        failures.append("platform must be windows/linux")
+    if expected_platform is not None and platform != expected_platform:
+        failures.append(f"platform must be {expected_platform}")
+    if platform in {"macos", "darwin"}:
+        failures.append("macOS installed app evidence cannot satisfy Windows/Linux gate")
+    failures.extend(validate_windows_linux_installed_app_artifact(evidence.get("artifact")))
+    failures.extend(validate_windows_linux_installed_app_launch(evidence))
+    failures.extend(validate_windows_linux_installed_app_dev_server(evidence))
+    failures.extend(validate_windows_linux_installed_app_boundaries(evidence))
+    return failures
+
+
+def validate_windows_linux_installed_app_pending_evidence(evidence: Any, expected_platform: str | None = None) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA:
+        failures.append(f"schema must be {WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA}")
+    if str(evidence.get("name", "")) != "windows_linux_installed_app_smoke":
+        failures.append("name must be windows_linux_installed_app_smoke")
+    if str(evidence.get("status", "")).lower() not in {"pending", "unavailable", "fail", "failed"}:
+        failures.append("status must be pending/unavailable/fail")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"windows", "linux"}:
+        failures.append("platform must be windows/linux")
+    if expected_platform is not None and platform != expected_platform:
+        failures.append(f"platform must be {expected_platform}")
+    reason = first_present(evidence, "pendingReason", "reason", "error")
+    if not isinstance(reason, str) or not reason.strip():
+        failures.append("pending/unavailable evidence must include pendingReason/reason/error")
+    failures.extend(validate_windows_linux_installed_app_boundaries(evidence))
+    return failures
+
+
+def validate_windows_linux_installed_app_artifact(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["artifact must be an object"]
+    failures: list[str] = []
+    path = value.get("path")
+    if not isinstance(path, str) or not path.strip():
+        failures.append("artifact.path must be a stable repo-relative path")
+    elif not is_stable_artifact_path(path):
+        failures.append("artifact.path must not be a local absolute path")
+    name = value.get("name")
+    if not isinstance(name, str) or not name.strip():
+        failures.append("artifact.name must be non-empty")
+    elif not windows_linux_installed_app_binary_name_is_app(name):
+        failures.append("artifact.name must identify the LizzieYzy installed app binary")
+    if isinstance(path, str) and path.strip() and isinstance(name, str) and name.strip() and Path(path).name != name:
+        failures.append("artifact.path filename must match artifact.name")
+    sha256 = first_present(value, "sha256", "hash")
+    if not is_sha256_hex(sha256):
+        failures.append("artifact.sha256 must be a 64-character hex sha256")
+    size = first_present(value, "sizeBytes", "size_bytes", "bytes")
+    if not positive_number(size):
+        failures.append("artifact.sizeBytes must be positive")
+    return failures
+
+
+def validate_windows_linux_installed_app_launch(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    command = evidence.get("launchCommand")
+    command_parts = windows_linux_installed_app_command_parts(command)
+    if isinstance(command, list):
+        if not command or any(not isinstance(part, str) or not part.strip() for part in command):
+            failures.append("launchCommand must be a non-empty command list or string")
+    elif not isinstance(command, str) or not command.strip():
+        failures.append("launchCommand must be a non-empty command list or string")
+    artifact = evidence.get("artifact")
+    if isinstance(artifact, dict):
+        path = artifact.get("path")
+        name = artifact.get("name")
+        if command_parts and isinstance(path, str) and isinstance(name, str):
+            normalized_parts = [part.replace("\\", "/") for part in command_parts]
+            if path not in normalized_parts and name not in [Path(part).name for part in normalized_parts]:
+                failures.append("launchCommand must reference artifact.path or artifact.name")
+            if not windows_linux_installed_app_command_invokes_artifact(normalized_parts, path, name):
+                failures.append("launchCommand command must be the artifact path/name or xvfb-run -a wrapper around it")
+            if windows_linux_installed_app_command_body_is_fake(normalized_parts):
+                failures.append("launchCommand must launch the installed app binary, not a shell/interpreter/package manager")
+    if evidence.get("staticOnly") is True:
+        failures.append("staticOnly must be false")
+    if evidence.get("artifactOnly") is True:
+        failures.append("artifactOnly must be false")
+    if evidence.get("browserOnly") is True:
+        failures.append("browserOnly must be false")
+    if evidence.get("processObserved") is not True:
+        failures.append("processObserved must be true")
+    if evidence.get("windowObserved") is not True:
+        failures.append("windowObserved must be true")
+    failures.extend(validate_windows_linux_installed_app_window_observation(evidence.get("windowObservation")))
+    if evidence.get("exitOrTerminateSuccess") is not True:
+        failures.append("exitOrTerminateSuccess must be true")
+    display_mode = evidence.get("displayMode")
+    if not isinstance(display_mode, str) or not display_mode.strip():
+        failures.append("displayMode must be non-empty")
+    elif display_mode.strip().lower() in {"headless", "none", "process-only", "artifact-only"}:
+        failures.append("displayMode must include window-capable desktop/xvfb observation")
+    return failures
+
+
+def validate_windows_linux_installed_app_window_observation(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["windowObservation must be an object"]
+    failures: list[str] = []
+    if value.get("observed") is not True:
+        failures.append("windowObservation.observed must be true")
+    method = str(value.get("method", "")).strip().lower()
+    if not method:
+        failures.append("windowObservation.method must be non-empty")
+    elif method in {"unavailable", "not_attempted", "process_only", "artifact_only", "headless"}:
+        failures.append("windowObservation.method must be a real window observation method")
+    return failures
+
+
+def windows_linux_installed_app_command_parts(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [part for part in value if isinstance(part, str)]
+    if isinstance(value, str):
+        return value.split()
+    return []
+
+
+def windows_linux_installed_app_binary_name_is_app(name: str) -> bool:
+    normalized = name.lower()
+    if normalized.endswith(".exe"):
+        normalized = normalized[:-4]
+    normalized = normalized.replace("_", "-")
+    return "lizzie" in normalized and ("yzy" in normalized or "next" in normalized)
+
+
+def windows_linux_installed_app_command_invokes_artifact(parts: list[str], path: str, name: str) -> bool:
+    if not parts:
+        return False
+    artifact_names = {name, Path(path).name}
+    first_name = Path(parts[0]).name
+    if parts[0] == path or first_name in artifact_names:
+        return True
+    if first_name == "xvfb-run":
+        return any(part == path or Path(part).name in artifact_names for part in parts[1:])
+    return False
+
+
+def windows_linux_installed_app_command_body_is_fake(parts: list[str]) -> bool:
+    if not parts:
+        return True
+    first = Path(parts[0]).name.lower()
+    if first == "xvfb-run":
+        body = next((part for part in parts[1:] if part != "-a" and not part.startswith("--")), "")
+        return Path(body).name.lower() in WINDOWS_LINUX_INSTALLED_APP_FAKE_COMMAND_BODIES
+    return first in WINDOWS_LINUX_INSTALLED_APP_FAKE_COMMAND_BODIES
+
+
+def validate_windows_linux_installed_app_dev_server(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("devServerAbsent") is not True:
+        failures.append("devServerAbsent must be true")
+    preflight = evidence.get("devServerPreflight")
+    if isinstance(preflight, dict):
+        if preflight.get("reachableBeforeLaunch") is True:
+            failures.append("devServerPreflight.reachableBeforeLaunch must be false")
+        if preflight.get("runnerStartedDevServer") is True:
+            failures.append("devServerPreflight.runnerStartedDevServer must be false")
+        if preflight.get("runnerStartedViteDevServer") is True:
+            failures.append("devServerPreflight.runnerStartedViteDevServer must be false")
+    if evidence.get("runnerStartedDevServer") is True:
+        failures.append("runnerStartedDevServer must be false")
+    if evidence.get("runnerStartedViteDevServer") is True:
+        failures.append("runnerStartedViteDevServer must be false")
+    boundaries = evidence.get("boundaries")
+    if isinstance(boundaries, dict) and boundaries.get("viteDevServerStarted") is True:
+        failures.append("boundaries.viteDevServerStarted must be false")
+    return failures
+
+
+def validate_windows_linux_installed_app_boundaries(evidence: dict[str, Any]) -> list[str]:
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        return ["boundaries must be an object"]
+    failures: list[str] = []
+    for key in WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS:
+        if evidence.get(key) is True:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
 
 
 def validate_installed_app_runtime_workflow_evidence(evidence: Any) -> list[str]:

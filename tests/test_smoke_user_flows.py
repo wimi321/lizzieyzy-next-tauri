@@ -28,6 +28,16 @@ def write_json(path: Path, content: object) -> None:
     path.write_text(json.dumps(content, indent=2), encoding="utf-8")
 
 
+def mutate_boundary_claim(evidence: dict[str, object], field: str) -> None:
+    boundaries = evidence["boundaries"]
+    assert isinstance(boundaries, dict)
+    boundaries[field] = True
+
+
+def mutate_window_observation(evidence: dict[str, object], value: dict[str, object]) -> None:
+    evidence["windowObservation"] = value
+
+
 class SmokeUserFlowsTests(unittest.TestCase):
     def test_complete_local_smoke_inputs_pass_with_pending_external_gates(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1015,6 +1025,141 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("installed_macos_app_smoke", pending)
             self.assertIn("launched must be true", pending["installed_macos_app_smoke"])
             self.assertIn("windowObserved must be true", pending["installed_macos_app_smoke"])
+
+    def test_valid_windows_linux_installed_app_evidence_passes_direct_validator(self) -> None:
+        self.assertEqual([], smoke_user_flows.validate_windows_linux_installed_app_smoke_evidence(valid_windows_linux_installed_app_evidence("windows"), "windows"))
+        self.assertEqual([], smoke_user_flows.validate_windows_linux_installed_app_smoke_evidence(valid_windows_linux_installed_app_evidence("linux"), "linux"))
+
+    def test_windows_linux_installed_app_artifact_only_is_pending(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: (evidence.__setitem__("artifactOnly", True), evidence.__setitem__("processObserved", False), evidence.__setitem__("windowObserved", False)),
+            "artifactOnly must be false",
+        )
+
+    def test_windows_linux_installed_app_bad_platform_is_pending(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: evidence.__setitem__("platform", "macos"),
+            "platform must be windows",
+        )
+
+    def test_windows_linux_installed_app_overclaim_is_pending(self) -> None:
+        for field in smoke_user_flows.WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS:
+            with self.subTest(field=field):
+                self.assert_invalid_windows_linux_installed_app_evidence(
+                    lambda evidence, field=field: evidence.__setitem__(field, True),
+                    f"{field} must be false",
+                )
+                self.assert_invalid_windows_linux_installed_app_evidence(
+                    lambda evidence, field=field: mutate_boundary_claim(evidence, field),
+                    f"boundaries.{field} must be false",
+                )
+
+    def test_windows_linux_installed_app_requires_hash_size_path(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            artifact = evidence["artifact"]
+            assert isinstance(artifact, dict)
+            artifact["path"] = ""
+            artifact["sha256"] = ""
+            artifact["sizeBytes"] = 0
+
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "artifact.path must be a stable repo-relative path",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "artifact.sha256 must be a 64-character hex sha256",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "artifact.sizeBytes must be positive",
+        )
+
+    def test_windows_linux_installed_app_rejects_dev_server_dependency(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["devServerAbsent"] = False
+            preflight = evidence["devServerPreflight"]
+            assert isinstance(preflight, dict)
+            preflight["reachableBeforeLaunch"] = True
+
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "devServerAbsent must be true",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "devServerPreflight.reachableBeforeLaunch must be false",
+        )
+
+    def test_windows_linux_installed_app_rejects_process_only_pass(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: evidence.__setitem__("processObserved", False),
+            "processObserved must be true",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: evidence.__setitem__("windowObserved", False),
+            "windowObserved must be true",
+        )
+
+    def test_windows_linux_installed_app_rejects_missing_or_false_window_observation(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: evidence.pop("windowObservation"),
+            "windowObservation must be an object",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: mutate_window_observation(evidence, {"observed": False, "method": "wmctrl"}),
+            "windowObservation.observed must be true",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: mutate_window_observation(evidence, {"observed": True, "method": "process_only"}),
+            "windowObservation.method must be a real window observation method",
+        )
+
+    def test_windows_linux_installed_app_rejects_headless_pass(self) -> None:
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: evidence.__setitem__("displayMode", "headless"),
+            "displayMode must include window-capable desktop/xvfb observation",
+        )
+
+    def test_windows_linux_installed_app_rejects_fake_launch_command(self) -> None:
+        for command in (["echo", "target/release/windows/LizzieYzy.exe"], ["cmd", "/c", "target/release/windows/LizzieYzy.exe"], ["powershell", "-Command", "target/release/windows/LizzieYzy.exe"], ["python3", "target/release/windows/LizzieYzy.exe"], ["node", "target/release/windows/LizzieYzy.exe"], ["npm", "run", "tauri"]):
+            with self.subTest(command=command):
+                self.assert_invalid_windows_linux_installed_app_evidence(
+                    lambda evidence, command=command: evidence.__setitem__("launchCommand", command),
+                    "launchCommand must launch the installed app binary",
+                )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            lambda evidence: evidence.__setitem__("launchCommand", ["xvfb-run", "-a", "echo", "target/release/windows/LizzieYzy.exe"]),
+            "launchCommand must launch the installed app binary",
+        )
+
+    def test_windows_linux_installed_app_rejects_non_app_binary_and_path_mismatch(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            artifact = evidence["artifact"]
+            assert isinstance(artifact, dict)
+            artifact["name"] = "python3"
+            artifact["path"] = "target/release/windows/LizzieYzy.exe"
+
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "artifact.name must identify the LizzieYzy installed app binary",
+        )
+        self.assert_invalid_windows_linux_installed_app_evidence(
+            mutate,
+            "artifact.path filename must match artifact.name",
+        )
+
+    def test_windows_linux_installed_app_unavailable_evidence_passes_pending_validator(self) -> None:
+        self.assertEqual(
+            [],
+            smoke_user_flows.validate_windows_linux_installed_app_pending_evidence(unavailable_windows_linux_installed_app_evidence("linux"), "linux"),
+        )
+
+    def assert_invalid_windows_linux_installed_app_evidence(self, mutate_evidence, expected_detail: str) -> None:
+        evidence = valid_windows_linux_installed_app_evidence("windows")
+        mutate_evidence(evidence)
+        failures = smoke_user_flows.validate_windows_linux_installed_app_smoke_evidence(evidence, "windows")
+        self.assertIn(expected_detail, "; ".join(failures))
 
     def test_valid_installed_app_runtime_workflow_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -3914,6 +4059,11 @@ def write_valid_installed_macos_app_evidence(root: Path) -> None:
     )
 
 
+def write_valid_windows_linux_installed_app_evidence(root: Path, platform: str) -> None:
+    evidence_path = smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE if platform == "windows" else smoke_user_flows.LINUX_INSTALLED_APP_SMOKE_EVIDENCE
+    write_json(root / evidence_path, valid_windows_linux_installed_app_evidence(platform))
+
+
 def write_valid_installed_app_runtime_workflow_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE,
@@ -6351,6 +6501,56 @@ def valid_installed_macos_app_evidence() -> dict[str, object]:
             "success": True,
         },
     }
+
+
+def valid_windows_linux_installed_app_evidence(platform: str) -> dict[str, object]:
+    binary_name = "LizzieYzy.exe" if platform == "windows" else "lizzieyzy"
+    artifact_path = f"target/release/{platform}/{binary_name}"
+    return {
+        "schema": smoke_user_flows.WINDOWS_LINUX_INSTALLED_APP_SMOKE_SCHEMA,
+        "name": "windows_linux_installed_app_smoke",
+        "status": "pass",
+        "platform": platform,
+        "artifact": {
+            "path": artifact_path,
+            "name": binary_name,
+            "sha256": "1" * 64,
+            "sizeBytes": 123456,
+        },
+        "launchCommand": ["xvfb-run", "-a", artifact_path] if platform == "linux" else [artifact_path],
+        "processObserved": True,
+        "windowObserved": True,
+        "windowObservation": {"observed": True, "method": "wmctrl" if platform == "linux" else "powershell"},
+        "devServerAbsent": True,
+        "devServerPreflight": {
+            "checkedPorts": [1420, 5173, 3000],
+            "reachablePorts": [],
+            "reachableBeforeLaunch": False,
+            "runnerStartedDevServer": False,
+            "runnerStartedViteDevServer": False,
+        },
+        "runnerStartedDevServer": False,
+        "runnerStartedViteDevServer": False,
+        "exitOrTerminateSuccess": True,
+        "displayMode": "xvfb" if platform == "linux" else "desktop",
+        "staticOnly": False,
+        "artifactOnly": False,
+        "browserOnly": False,
+        "boundaries": {
+            **{key: False for key in smoke_user_flows.WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS},
+            "viteDevServerStarted": False,
+        },
+    }
+
+
+def unavailable_windows_linux_installed_app_evidence(platform: str) -> dict[str, object]:
+    evidence = valid_windows_linux_installed_app_evidence(platform)
+    evidence["status"] = "unavailable"
+    evidence["pendingReason"] = "launch failed on runner"
+    evidence["processObserved"] = False
+    evidence["windowObserved"] = False
+    evidence["exitOrTerminateSuccess"] = False
+    return evidence
 
 
 def valid_installed_app_backend_runtime_proof() -> dict[str, object]:

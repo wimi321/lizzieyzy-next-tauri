@@ -59,6 +59,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shortcut_layout_evidence", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("installed_app_runtime_workflow", pending_names)
+            self.assertIn("installed_app_sgf_workflow", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("katago_review_workflow_ux_smoke", pending_names)
@@ -1052,6 +1053,151 @@ class SmokeUserFlowsTests(unittest.TestCase):
             "browserFallbackUsed must be false",
         )
 
+    def test_valid_installed_app_sgf_workflow_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_installed_app_sgf_workflow_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("installed_app_sgf_workflow", pass_names)
+            self.assertNotIn("installed_app_sgf_workflow", pending_names)
+
+    def test_installed_app_sgf_workflow_requires_runtime_report(self) -> None:
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            lambda evidence: evidence.pop("sourceRuntimeReport"),
+            "sourceRuntimeReport must be an object",
+        )
+
+    def test_installed_app_sgf_workflow_rejects_wrong_runtime_phase(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            report["phase"] = "edit-save"
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "sourceRuntimeReport.phase must be installed-app-sgf-workflow",
+        )
+
+    def test_installed_app_sgf_workflow_rejects_tauri_dev_two_launch_trace(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            report["firstLaunch"] = {"phase": "edit-save", "stopped": True}
+            report["logPath"] = "/tmp/tauri-dev.log"
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "sourceRuntimeReport must not include firstLaunch tauri-dev two-launch evidence",
+        )
+
+    def test_installed_app_sgf_workflow_requires_backend_runtime_proof_check(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            checks = report["checks"]
+            assert isinstance(checks, list)
+            checks[:] = [
+                check
+                for check in checks
+                if isinstance(check, dict) and check.get("name") != "backend_runtime_proof_observed"
+            ]
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "sourceRuntimeReport missing backend_runtime_proof_observed check",
+        )
+
+    def test_installed_app_sgf_workflow_requires_screenshot_hash(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["sha256"] = "not-a-hash"
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "screenshots[0].sha256 must be a 64-character hex sha256",
+        )
+
+    def test_installed_app_sgf_workflow_requires_installed_app_phase(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            report["phase"] = "edit-save"
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "sourceRuntimeReport.phase must be installed-app-sgf-workflow",
+        )
+
+    def test_installed_app_sgf_workflow_rejects_tauri_dev_traces(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            report["logPath"] = "<tmp>/tauri-dev-a.log"
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "sourceRuntimeReport must not include logPath dev-server evidence",
+        )
+
+    def test_installed_app_sgf_workflow_rejects_tauri_dev_backend_source(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            report = evidence["sourceRuntimeReport"]
+            assert isinstance(report, dict)
+            checks = report["checks"]
+            assert isinstance(checks, list)
+            backend = next(check for check in checks if isinstance(check, dict) and check.get("name") == "backend_runtime_proof_observed")
+            details = backend["details"]
+            assert isinstance(details, dict)
+            raw = details["raw"]
+            assert isinstance(raw, dict)
+            runtime = raw["runtime"]
+            assert isinstance(runtime, dict)
+            runtime["source"] = "tauri-dev"
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "sourceRuntimeReport.backend_runtime_proof_observed backendRuntimeProof.runtime.source must be packaged-macos-app",
+        )
+
+    def test_installed_app_sgf_workflow_rejects_overclaims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullSgfWorkflowParity"] = True
+            evidence["releaseParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullSgfWorkflowParity"] = True
+            boundaries["releaseParity"] = True
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "fullSgfWorkflowParity must be false",
+        )
+
+    def test_installed_app_sgf_workflow_rejects_missing_reopen_invariant(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            checks[:] = [
+                check
+                for check in checks
+                if isinstance(check, dict) and check.get("name") != "final_invariant_verified"
+            ]
+
+        self.assert_invalid_installed_app_sgf_workflow_pending(
+            mutate,
+            "missing required checks: final_invariant_verified",
+        )
+
     def assert_invalid_installed_macos_app_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1083,6 +1229,22 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("installed_app_runtime_workflow", failures)
             self.assertIn("installed_app_runtime_workflow", pending)
             self.assertIn(expected_detail, pending["installed_app_runtime_workflow"])
+
+    def assert_invalid_installed_app_sgf_workflow_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_installed_app_sgf_workflow_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.INSTALLED_APP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("installed_app_sgf_workflow", failures)
+            self.assertIn("installed_app_sgf_workflow", pending)
+            self.assertIn(expected_detail, pending["installed_app_sgf_workflow"])
 
     def test_valid_native_desktop_sgf_workflow_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -3115,6 +3277,13 @@ def write_valid_installed_app_runtime_workflow_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE,
         valid_installed_app_runtime_workflow_evidence(),
+    )
+
+
+def write_valid_installed_app_sgf_workflow_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.INSTALLED_APP_SGF_WORKFLOW_EVIDENCE,
+        valid_installed_app_sgf_workflow_evidence(),
     )
 
 
@@ -5190,6 +5359,168 @@ def valid_installed_app_runtime_workflow_evidence() -> dict[str, object]:
             {"name": "quit_or_terminate_observed", "status": "pass", "details": termination},
             {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
         ],
+    }
+
+
+def valid_installed_app_sgf_workflow_evidence() -> dict[str, object]:
+    app_bundle = {
+        "exists": True,
+        "path": "target/release/bundle/macos/LizzieYzy Next.app",
+        "sizeBytes": 123456,
+        "sha256": "8" * 64,
+        "mainExecutable": "lizzieyzy-next-desktop",
+    }
+    screenshot = {
+        "label": "installed-app-sgf-workflow-window",
+        "path": "docs/qa/screenshots/installed-app-sgf-workflow-window.png",
+        "sizeBytes": 23456,
+        "sha256": "9" * 64,
+        "source": "installed_app_sgf_workflow",
+    }
+    boundaries = {
+        "fullSgfWorkflowParity": False,
+        "nativeDialogParity": False,
+        "releaseParity": False,
+        "fullLegacyParity": False,
+        "windowsCovered": False,
+        "linuxCovered": False,
+        "providerParity": False,
+        "readboardParity": False,
+        "ocrParity": False,
+    }
+    source_report = valid_installed_app_sgf_source_runtime_report()
+    checks = [
+        {"name": "installed_app_launched", "status": "pass", "details": {"installedAppLaunched": True}},
+        {
+            "name": "runtime_report_observed",
+            "status": "pass",
+            "details": {
+                "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+                "status": "pass",
+                "tauriRuntimeObserved": True,
+            },
+        },
+        {"name": "sgf_loaded", "status": "pass", "details": {"bytes": 211, "path": "<tmp>/runtime-smoke.sgf"}},
+        {
+            "name": "sgf_reparsed",
+            "status": "pass",
+            "details": {"reparseVerified": True, "readbackStatus": "matched_saved_text"},
+        },
+        {"name": "tree_navigation", "status": "pass", "details": {"moveNumber": 2}},
+        {"name": "comment_edit", "status": "pass", "details": {"comment": "runtime smoke branch persisted"}},
+        {"name": "property_edit", "status": "pass", "details": {"expectedProperties": {"N": "runtime-smoke-branch"}}},
+        {"name": "annotation_edit", "status": "pass", "details": valid_runtime_check_evidence("annotation_edit")},
+        {"name": "append_move", "status": "pass", "details": {"nodeId": "move-2", "vertex": "0,0"}},
+        {"name": "edit_move", "status": "pass", "details": valid_runtime_check_evidence("edit_move")},
+        {"name": "variation_reorder", "status": "pass", "details": valid_runtime_check_evidence("variation_reorder")},
+        {"name": "delete_node", "status": "pass", "details": valid_runtime_check_evidence("delete_node")},
+        {"name": "save_readback_roundtrip", "status": "pass", "details": valid_installed_app_sgf_save_details()},
+        {
+            "name": "reopen_verified",
+            "status": "pass",
+            "details": {"reopenVerified": True, "afterReopen": valid_installed_app_sgf_after_reopen()},
+        },
+        {
+            "name": "final_invariant_verified",
+            "status": "pass",
+            "details": {"verified": True, "invariant": "saved_or_reopened_replay_has_no_errors"},
+        },
+        {"name": "screenshot_hash_recorded", "status": "pass", "details": screenshot},
+        {"name": "scope_boundaries_recorded", "status": "pass", "details": {"boundaries": boundaries}},
+    ]
+    return {
+        "schema": smoke_user_flows.INSTALLED_APP_SGF_WORKFLOW_SCHEMA,
+        "name": "installed_app_sgf_workflow",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "installed_app_smoke_plus_real_tauri_runtime_sgf_report",
+        "runtimePhase": "installed-app-sgf-workflow",
+        "installedAppLaunched": True,
+        "tauriRuntimeObserved": True,
+        "sgfWorkflowAutomated": True,
+        "screenshotHashRecorded": True,
+        "sourceStaticOnly": False,
+        "devServerOnly": False,
+        "browserFallbackUsed": False,
+        **boundaries,
+        "appBundlePath": "target/release/bundle/macos/LizzieYzy Next.app",
+        "appBundle": app_bundle,
+        "runtimeProcess": {"observed": True, "processName": "LizzieYzy Next", "pid": 1234},
+        "packagedAppLaunch": {
+            "executable": "<repo>/target/release/bundle/macos/LizzieYzy Next.app/Contents/MacOS/lizzieyzy-next-desktop",
+            "pid": 1234,
+            "phase": "installed-app-sgf-workflow",
+        },
+        "sourceRuntimeReport": source_report,
+        "screenshots": [screenshot],
+        "checks": checks,
+        "boundaries": boundaries,
+    }
+
+
+def valid_installed_app_sgf_source_runtime_report() -> dict[str, object]:
+    checks = [
+        {"name": "runtime_started", "status": "pass", "details": {"tauriInternals": True, "platform": "MacIntel"}},
+        {
+            "name": "browser_fallback_excluded",
+            "status": "pass",
+            "details": {"tauriRuntimeObserved": True, "browserFallbackUsed": False},
+        },
+        {
+            "name": "backend_runtime_proof_observed",
+            "status": "pass",
+            "details": {"raw": valid_installed_app_backend_runtime_proof()},
+        },
+        {"name": "sgf_loaded", "status": "pass", "details": {"bytes": 211, "path": "<tmp>/runtime-smoke.sgf"}},
+        {"name": "branch_navigation", "status": "pass", "details": {"moveNumber": 2, "stones": 2}},
+        {"name": "comment_edit", "status": "pass", "details": {"comment": "runtime smoke branch persisted"}},
+        {"name": "property_edit", "status": "pass", "details": {"expectedProperties": {"N": "runtime-smoke-branch"}}},
+        {"name": "annotation_edit", "status": "pass", "details": valid_runtime_check_evidence("annotation_edit")},
+        {"name": "append_move", "status": "pass", "details": {"nodeId": "move-2", "vertex": "0,0"}},
+        {"name": "edit_move", "status": "pass", "details": valid_runtime_check_evidence("edit_move")},
+        {"name": "variation_reorder", "status": "pass", "details": valid_runtime_check_evidence("variation_reorder")},
+        {"name": "delete_node", "status": "pass", "details": valid_runtime_check_evidence("delete_node")},
+        {"name": "save_readback_roundtrip", "status": "pass", "details": valid_installed_app_sgf_save_details()},
+        {"name": "board_state_verified", "status": "pass", "details": valid_runtime_check_evidence("board_state_verified")},
+        {
+            "name": "reopen_state_verified",
+            "status": "pass",
+            "details": {"verified": True, **valid_installed_app_sgf_after_reopen()},
+        },
+        {"name": "save_reopen_roundtrip", "status": "pass", "details": {"verified": True, "afterReopen": valid_installed_app_sgf_after_reopen()}},
+        {"name": "scope_boundaries_recorded", "status": "pass", "details": {"fullLegacyParity": False}},
+    ]
+    return {
+        "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+        "status": "pass",
+        "platform": "macos",
+        "phase": "installed-app-sgf-workflow",
+        "browserFallbackUsed": False,
+        "checks": checks,
+    }
+
+
+def valid_installed_app_sgf_save_details() -> dict[str, object]:
+    return {
+        "savedPath": "<tmp>/runtime-smoke.sgf",
+        "saveVerified": True,
+        "readbackVerified": True,
+        "readbackMatchesSaved": True,
+        "readbackStatus": "matched_saved_text",
+        "reopen": {"path": "<tmp>/runtime-smoke.sgf", "status": "pass", "matchesSaved": True},
+        "afterReopen": valid_installed_app_sgf_after_reopen(),
+    }
+
+
+def valid_installed_app_sgf_after_reopen() -> dict[str, object]:
+    return {
+        "treeOrderVerified": True,
+        "commentsVerified": True,
+        "propertiesVerified": True,
+        "annotationsVerified": True,
+        "moveCountVerified": True,
+        "boardStateVerified": True,
+        "deletedTargetAbsent": True,
     }
 
 

@@ -239,6 +239,38 @@ INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_ACTIONS = [
     "execute_runtime_action",
     "terminate_installed_app",
 ]
+INSTALLED_APP_SGF_WORKFLOW_EVIDENCE = "docs/qa/installed-app-sgf-workflow-macos.json"
+INSTALLED_APP_SGF_WORKFLOW_SCHEMA = "lizzieyzy.installed-app-sgf-workflow.v1"
+INSTALLED_APP_SGF_WORKFLOW_REQUIRED_CHECKS = [
+    "installed_app_launched",
+    "runtime_report_observed",
+    "sgf_loaded",
+    "sgf_reparsed",
+    "tree_navigation",
+    "comment_edit",
+    "property_edit",
+    "annotation_edit",
+    "append_move",
+    "edit_move",
+    "variation_reorder",
+    "delete_node",
+    "save_readback_roundtrip",
+    "reopen_verified",
+    "final_invariant_verified",
+    "screenshot_hash_recorded",
+    "scope_boundaries_recorded",
+]
+INSTALLED_APP_SGF_WORKFLOW_REQUIRED_FALSE_FIELDS = [
+    "fullSgfWorkflowParity",
+    "nativeDialogParity",
+    "releaseParity",
+    "fullLegacyParity",
+    "windowsCovered",
+    "linuxCovered",
+    "providerParity",
+    "readboardParity",
+    "ocrParity",
+]
 NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE = "docs/qa/native-desktop-sgf-workflow-macos.json"
 NATIVE_DESKTOP_SGF_WORKFLOW_SCHEMA = "lizzieyzy.native-desktop-sgf-workflow.v1"
 NATIVE_DESKTOP_SGF_WORKFLOW_COLLECTION_METHODS = {
@@ -1169,6 +1201,7 @@ class UserFlowSmoke:
         self.check_legacy_shortcut_layout_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_installed_app_runtime_workflow_evidence()
+        self.check_installed_app_sgf_workflow_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
@@ -1445,6 +1478,30 @@ class UserFlowSmoke:
         self.pass_(
             "installed_app_runtime_workflow",
             "scoped installed app runtime workflow evidence passes with runtime actions, process/window/screenshot proof, dev-server exclusion, and release-boundary checks",
+        )
+
+    def check_installed_app_sgf_workflow_evidence(self) -> None:
+        evidence_path = self.path(INSTALLED_APP_SGF_WORKFLOW_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "installed_app_sgf_workflow",
+                f"TODO gate: record scoped installed app SGF workflow automation evidence at {INSTALLED_APP_SGF_WORKFLOW_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(INSTALLED_APP_SGF_WORKFLOW_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_installed_app_sgf_workflow_evidence(evidence)
+        if failures:
+            self.pending(
+                "installed_app_sgf_workflow",
+                f"{INSTALLED_APP_SGF_WORKFLOW_EVIDENCE} is present but not valid scoped installed app SGF workflow automation PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "installed_app_sgf_workflow",
+            "scoped installed app SGF workflow automation evidence passes with installed-app launch, runtime SGF operations, save/reopen invariants, screenshots, and boundary checks",
         )
 
     def check_native_desktop_sgf_workflow_evidence(self) -> None:
@@ -3425,6 +3482,275 @@ def validate_installed_app_runtime_workflow_check_details(check_by_name: dict[st
             for key in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_FALSE_FIELDS:
                 if boundary_detail.get(key) is not False:
                     failures.append(f"scope_boundaries_recorded.boundaries.{key} must be false")
+    return failures
+
+
+def validate_installed_app_sgf_workflow_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != INSTALLED_APP_SGF_WORKFLOW_SCHEMA:
+        failures.append(f"schema must be {INSTALLED_APP_SGF_WORKFLOW_SCHEMA}")
+    if str(evidence.get("name", "installed_app_sgf_workflow")) != "installed_app_sgf_workflow":
+        failures.append("name must be installed_app_sgf_workflow")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    collection_method = str(evidence.get("collectionMethod", "")).lower()
+    if "installed" not in collection_method or "runtime" not in collection_method:
+        failures.append("collectionMethod must combine installed app and runtime report evidence")
+    if "static" in collection_method:
+        failures.append("collectionMethod must not be static-only")
+    if "dev-server-only" in collection_method or evidence.get("devServerOnly") is True:
+        failures.append("devServerOnly must be false")
+    for key in ("installedAppLaunched", "tauriRuntimeObserved", "sgfWorkflowAutomated", "screenshotHashRecorded"):
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    if evidence.get("sourceStaticOnly") is not False:
+        failures.append("sourceStaticOnly must be false")
+    if evidence.get("browserFallbackUsed") is not False:
+        failures.append("browserFallbackUsed must be false")
+    failures.extend(validate_installed_app_sgf_workflow_boundaries(evidence))
+    failures.extend(validate_installed_macos_app_bundle(evidence.get("appBundle"), evidence))
+    failures.extend(validate_installed_app_sgf_screenshots(evidence.get("screenshots")))
+    failures.extend(validate_installed_app_sgf_runtime_report(evidence.get("sourceRuntimeReport")))
+    checks = installed_app_sgf_check_by_name(evidence)
+    missing = [name for name in INSTALLED_APP_SGF_WORKFLOW_REQUIRED_CHECKS if name not in checks]
+    not_pass = [
+        name
+        for name in INSTALLED_APP_SGF_WORKFLOW_REQUIRED_CHECKS
+        if name in checks and str(checks[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_installed_app_sgf_workflow_check_details(checks))
+    return failures
+
+
+def validate_installed_app_sgf_workflow_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        return ["boundaries must be an object"]
+    for key in INSTALLED_APP_SGF_WORKFLOW_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_installed_app_sgf_screenshots(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not value:
+        failures.append("screenshots must include at least one installed app SGF workflow screenshot")
+    for index, screenshot in enumerate(value):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        if not is_sha256_hex(screenshot.get("sha256")):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        if not positive_number(first_present(screenshot, "sizeBytes", "bytes")):
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be stable repo-relative")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+        if screenshot.get("source") != "installed_app_sgf_workflow":
+            failures.append(f"screenshots[{index}].source must be installed_app_sgf_workflow")
+    return failures
+
+
+def validate_installed_app_sgf_runtime_report(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["sourceRuntimeReport must be an object"]
+    failures: list[str] = []
+    if value.get("schema") != TAURI_RUNTIME_UI_SMOKE_SCHEMA:
+        failures.append(f"sourceRuntimeReport.schema must be {TAURI_RUNTIME_UI_SMOKE_SCHEMA}")
+    if str(value.get("status", "")).lower() != "pass":
+        failures.append("sourceRuntimeReport.status must be pass")
+    platform = str(value.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("sourceRuntimeReport.platform must be macos/darwin")
+    checks = value.get("checks")
+    if not isinstance(checks, list):
+        failures.append("sourceRuntimeReport.checks must be a list")
+        checks = []
+    check_by_name = installed_app_sgf_runtime_check_by_name(value)
+    required_source_checks = [
+        "runtime_started",
+        "browser_fallback_excluded",
+        "backend_runtime_proof_observed",
+        "sgf_loaded",
+        "branch_navigation",
+        "comment_edit",
+        "property_edit",
+        "annotation_edit",
+        "append_move",
+        "edit_move",
+        "variation_reorder",
+        "delete_node",
+        "save_readback_roundtrip",
+        "board_state_verified",
+        "reopen_state_verified",
+        "save_reopen_roundtrip",
+        "scope_boundaries_recorded",
+    ]
+    missing = [name for name in required_source_checks if name not in check_by_name]
+    not_pass = [
+        name
+        for name in required_source_checks
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("sourceRuntimeReport missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("sourceRuntimeReport required checks not pass: " + ", ".join(not_pass))
+    semantic_failures: list[str] = []
+    semantic_failures.extend(validate_variation_reorder_evidence(check_by_name.get("variation_reorder")))
+    semantic_failures.extend(validate_annotation_edit_evidence(check_by_name.get("annotation_edit")))
+    semantic_failures.extend(validate_edit_move_evidence(check_by_name.get("edit_move")))
+    semantic_failures.extend(validate_delete_node_evidence(check_by_name.get("delete_node")))
+    semantic_failures.extend(validate_board_state_evidence(check_by_name.get("board_state_verified")))
+    failures.extend("sourceRuntimeReport " + failure for failure in semantic_failures)
+    if value.get("phase") != "installed-app-sgf-workflow":
+        failures.append("sourceRuntimeReport.phase must be installed-app-sgf-workflow")
+    trace_failures = installed_app_sgf_forbidden_runtime_traces(value)
+    failures.extend(f"sourceRuntimeReport {failure}" for failure in trace_failures)
+    runtime = check_evidence(check_by_name.get("runtime_started"))
+    if runtime is None:
+        failures.append("sourceRuntimeReport.runtime_started evidence must be an object")
+    elif runtime.get("tauriInternals") is not True:
+        failures.append("sourceRuntimeReport.runtime_started.tauriInternals must be true")
+    if value.get("browserFallbackUsed") is True:
+        failures.append("sourceRuntimeReport.browserFallbackUsed must be false")
+    backend = check_evidence(check_by_name.get("backend_runtime_proof_observed"))
+    if backend is None:
+        failures.append("sourceRuntimeReport missing backend_runtime_proof_observed check")
+    else:
+        proof = None
+        if backend.get("schema") == INSTALLED_APP_RUNTIME_PROOF_SCHEMA:
+            proof = backend
+        elif isinstance(backend.get("raw"), dict):
+            proof = backend["raw"]
+        elif isinstance(backend.get("backendRuntimeProof"), dict):
+            proof = backend["backendRuntimeProof"]
+        if not isinstance(proof, dict):
+            failures.append("sourceRuntimeReport.backend_runtime_proof_observed must include raw backend proof")
+        else:
+            failures.extend(
+                "sourceRuntimeReport.backend_runtime_proof_observed " + failure
+                for failure in validate_installed_app_backend_runtime_proof(proof)
+            )
+            runtime = proof.get("runtime")
+            runtime_source = first_present(runtime, "source", "runtimeSource") if isinstance(runtime, dict) else None
+            if runtime_source != "packaged-macos-app":
+                failures.append(
+                    "sourceRuntimeReport.backend_runtime_proof_observed backendRuntimeProof.runtime.source must be packaged-macos-app"
+                )
+    return failures
+
+
+def installed_app_sgf_forbidden_runtime_traces(value: Any, path: str = "") -> list[str]:
+    failures: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            if key in {"firstLaunch", "first_launch"}:
+                failures.append("must not include firstLaunch tauri-dev two-launch evidence")
+            if key in {"logPath", "log_path"}:
+                failures.append("must not include logPath dev-server evidence")
+            failures.extend(installed_app_sgf_forbidden_runtime_traces(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            failures.extend(installed_app_sgf_forbidden_runtime_traces(child, f"{path}[{index}]"))
+    elif isinstance(value, str):
+        text = value.lower()
+        if "tauri-dev" in text or "127.0.0.1:1420" in text or "localhost:1420" in text:
+            failures.append("must not include tauri-dev/dev-server traces")
+    return unique_ordered(failures)
+
+
+def installed_app_sgf_check_by_name(evidence: dict[str, Any]) -> dict[str, Any]:
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    return {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+
+
+def installed_app_sgf_runtime_check_by_name(report: dict[str, Any]) -> dict[str, Any]:
+    checks = report.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    return {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+
+
+def validate_installed_app_sgf_workflow_check_details(checks: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    load = check_evidence(checks.get("sgf_loaded"))
+    if load is None or not positive_number(first_present(load, "bytes", "sizeBytes")):
+        failures.append("sgf_loaded must include positive byte count")
+    tree = check_evidence(checks.get("tree_navigation"))
+    if tree is None or not positive_number(tree.get("moveNumber")):
+        failures.append("tree_navigation must include moveNumber")
+    for name in ("comment_edit", "property_edit", "annotation_edit", "append_move", "edit_move", "variation_reorder", "delete_node"):
+        detail = check_evidence(checks.get(name))
+        if detail is None:
+            failures.append(f"{name} evidence must be an object")
+    save = check_evidence(checks.get("save_readback_roundtrip"))
+    if save is None:
+        failures.append("save_readback_roundtrip evidence must be an object")
+    else:
+        for key in ("saveVerified", "readbackVerified"):
+            if save.get(key) is not True:
+                failures.append(f"save_readback_roundtrip.{key} must be true")
+        reopen = save.get("reopen")
+        if not isinstance(reopen, dict) or first_present(reopen, "matchesSaved", "secondLaunch") is not True:
+            failures.append("save_readback_roundtrip.reopen must confirm saved content after second launch")
+        after_reopen = save.get("afterReopen")
+        if not isinstance(after_reopen, dict):
+            failures.append("save_readback_roundtrip.afterReopen must be an object")
+        else:
+            for key in ("boardStateVerified", "commentsVerified", "propertiesVerified", "annotationsVerified", "treeOrderVerified", "deletedTargetAbsent"):
+                if after_reopen.get(key) is not True:
+                    failures.append(f"save_readback_roundtrip.afterReopen.{key} must be true")
+    reparse = check_evidence(checks.get("sgf_reparsed"))
+    if reparse is None or reparse.get("reparseVerified") is not True:
+        failures.append("sgf_reparsed.reparseVerified must be true")
+    reopen_verified = check_evidence(checks.get("reopen_verified"))
+    if reopen_verified is None or reopen_verified.get("reopenVerified") is not True:
+        failures.append("reopen_verified.reopenVerified must be true")
+    invariant = check_evidence(checks.get("final_invariant_verified"))
+    if invariant is None:
+        failures.append("final_invariant_verified evidence must be an object")
+    else:
+        if first_present(invariant, "verified", "invariantVerified", "replayErrorsAbsent") is not True:
+            failures.append("final_invariant_verified must confirm invariant passed")
+        if not isinstance(first_present(invariant, "invariant", "boardInvariant"), str):
+            failures.append("final_invariant_verified must include invariant text")
+    screenshot = check_evidence(checks.get("screenshot_hash_recorded"))
+    if screenshot is None:
+        failures.append("screenshot_hash_recorded evidence must be an object")
+    else:
+        if not is_sha256_hex(screenshot.get("sha256")):
+            failures.append("screenshot_hash_recorded.sha256 must be a 64-character hex sha256")
+        if not positive_number(first_present(screenshot, "sizeBytes", "bytes")):
+            failures.append("screenshot_hash_recorded.sizeBytes must be positive")
     return failures
 
 

@@ -1,0 +1,136 @@
+{
+  "schema": "lizzieyzy.katago-review-workflow-ux-smoke.v1",
+  "name": "scoped_katago_review_workflow_ux_resilience",
+  "status": "pass",
+  "platform": "macos",
+  "collectionMethod": "source_static_plus_stubbed_ui_flow",
+  "progressVerified": true,
+  "cancelVerified": true,
+  "restartAfterCancelVerified": true,
+  "cacheRestoreVerified": true,
+  "engineFailureVerified": true,
+  "staleAnalysisPrevented": true,
+  "sourceFactsValidated": true,
+  "liveKataGoObserved": false,
+  "fullLegacyAnalysisParity": false,
+  "fullLegacyParity": false,
+  "releasePublished": false,
+  "productionSigned": false,
+  "notarized": false,
+  "providerParityCovered": false,
+  "readboardParityCovered": false,
+  "ocrExternalCaptureCovered": false,
+  "windowsLinuxCovered": false,
+  "checks": [
+    {
+      "name": "progress_verified",
+      "status": "pass",
+      "details": {
+        "progressVerified": true,
+        "jobIdVisible": true,
+        "currentVisible": true,
+        "totalVisible": true,
+        "sessionVisible": true,
+        "stubbedProgress": "source-visible job id/session plus current/total progress fields"
+      }
+    },
+    {
+      "name": "cancel_verified",
+      "status": "pass",
+      "details": {
+        "cancelVerified": true,
+        "cancelButtonVisible": true,
+        "cancelCommandStubbed": "katago_cancel_analysis"
+      }
+    },
+    {
+      "name": "restart_after_cancel_verified",
+      "status": "pass",
+      "details": {
+        "restartAfterCancelVerified": true,
+        "restartAllowedAfterCancel": true,
+        "activeJobCleared": true
+      }
+    },
+    {
+      "name": "cache_restore_verified",
+      "status": "pass",
+      "details": {
+        "cacheRestoreVerified": true,
+        "cacheHitRestoredFrames": true,
+        "source": "source-static cache hit restore path plus stubbed UI flow"
+      }
+    },
+    {
+      "name": "engine_failure_verified",
+      "status": "pass",
+      "details": {
+        "engineFailureVerified": true,
+        "failureMessageVisible": true,
+        "message": "Full-game KataGo analysis failed: stubbed missing model"
+      }
+    },
+    {
+      "name": "stale_analysis_prevented",
+      "status": "pass",
+      "details": {
+        "staleAnalysisPrevented": true,
+        "jobIdGuard": true,
+        "generationGuard": false,
+        "hashGuard": true
+      }
+    },
+    {
+      "name": "source_facts_validated",
+      "status": "pass",
+      "details": {
+        "sourceFactsValidated": true,
+        "frontendSources": [
+          "apps/desktop/src/App.tsx",
+          "apps/desktop/src/components/EngineSetupPanel.tsx",
+          "apps/desktop/src/api/backend.ts"
+        ],
+        "requiredFacts": [
+          "visible progress current/total/job id/session",
+          "cancel and restart path",
+          "cache hit restore source",
+          "engine failure message",
+          "stale analysis guard"
+        ]
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "liveKataGoObserved": false,
+        "fullLegacyAnalysisParity": false,
+        "fullLegacyParity": false,
+        "releasePublished": false,
+        "productionSigned": false,
+        "notarized": false,
+        "providerParityCovered": false,
+        "readboardParityCovered": false,
+        "ocrExternalCaptureCovered": false,
+        "windowsLinuxCovered": false,
+        "boundary": "Scoped UX resilience proof only; no live KataGo run or full legacy analysis parity is claimed."
+      }
+    }
+  ],
+  "boundaries": {
+    "liveKataGoObserved": false,
+    "fullLegacyAnalysisParity": false,
+    "fullLegacyParity": false,
+    "releasePublished": false,
+    "productionSigned": false,
+    "notarized": false,
+    "providerParityCovered": false,
+    "readboardParityCovered": false,
+    "ocrExternalCaptureCovered": false,
+    "windowsLinuxCovered": false
+  },
+  "sourceEvidence": {
+    "referencedEvidence": [],
+    "existingLiveEvidenceUsedForNewLiveBehavior": false
+  }
+}

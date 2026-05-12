@@ -57,6 +57,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
+            self.assertIn("katago_review_workflow_ux_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
@@ -926,6 +927,117 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("katago_live_smoke", failures)
             self.assertIn("katago_live_smoke", pending)
             self.assertIn("scripts/smoke_tauri_katago_live.py", pending["katago_live_smoke"])
+
+    def test_valid_katago_review_workflow_ux_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_katago_review_workflow_ux_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("katago_review_workflow_ux_smoke", pass_names)
+            self.assertNotIn("katago_review_workflow_ux_smoke", pending_names)
+
+    def test_katago_review_workflow_ux_rejects_names_only_checks(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_review_workflow_ux_evidence()
+            evidence["checks"] = [
+                {"name": name, "status": "pass"}
+                for name in smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_CHECKS
+            ]
+            write_json(root / smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_review_workflow_ux_smoke", failures)
+            self.assertIn("katago_review_workflow_ux_smoke", pending)
+            self.assertIn("progress_verified.progressVerified must be true", pending["katago_review_workflow_ux_smoke"])
+
+    def test_katago_review_workflow_ux_rejects_full_legacy_overclaim(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_review_workflow_ux_evidence()
+            evidence["fullLegacyAnalysisParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullLegacyAnalysisParity"] = True
+            write_json(root / smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_review_workflow_ux_smoke", failures)
+            self.assertIn("katago_review_workflow_ux_smoke", pending)
+            self.assertIn("fullLegacyAnalysisParity must be false", pending["katago_review_workflow_ux_smoke"])
+
+    def test_katago_review_workflow_ux_rejects_live_claim_without_runtime_metadata(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_review_workflow_ux_evidence()
+            evidence["liveKataGoObserved"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["liveKataGoObserved"] = True
+            write_json(root / smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_review_workflow_ux_smoke", failures)
+            self.assertIn("katago_review_workflow_ux_smoke", pending)
+            self.assertIn("liveKataGoObserved true requires runtimeMetadata", pending["katago_review_workflow_ux_smoke"])
+
+    def test_katago_review_workflow_ux_rejects_existing_live_evidence_reuse(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_katago_review_workflow_ux_evidence()
+            source_evidence = evidence["sourceEvidence"]
+            assert isinstance(source_evidence, dict)
+            source_evidence["existingLiveEvidenceUsedForNewLiveBehavior"] = True
+            write_json(root / smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("katago_review_workflow_ux_smoke", failures)
+            self.assertIn("katago_review_workflow_ux_smoke", pending)
+            self.assertIn(
+                "existing live evidence must not be used for new live behavior claims",
+                pending["katago_review_workflow_ux_smoke"],
+            )
+
+    def test_katago_review_workflow_ux_source_fact_drift_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_katago_review_workflow_ux_evidence(root)
+            app_path = root / smoke_user_flows.APP_SOURCE
+            app_path.write_text(
+                app_path.read_text(encoding="utf-8").replace("activeJobIdRef.current === jobId", "activeJobIdRef.current === staleJobId"),
+                encoding="utf-8",
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("katago_review_workflow_ux_smoke", failures)
+            self.assertIn("KataGo review workflow UX source facts are broken", failures["katago_review_workflow_ux_smoke"])
+            self.assertIn("activeJobIdRef.current === jobId", failures["katago_review_workflow_ux_smoke"])
 
     def test_valid_readboard_tauri_runtime_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2045,6 +2157,13 @@ def write_valid_katago_tauri_runtime_evidence(root: Path) -> None:
     )
 
 
+def write_valid_katago_review_workflow_ux_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_EVIDENCE,
+        valid_katago_review_workflow_ux_evidence(),
+    )
+
+
 def write_valid_readboard_tauri_runtime_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.READBOARD_TAURI_RUNTIME_SMOKE_EVIDENCE,
@@ -2207,6 +2326,113 @@ def valid_katago_tauri_runtime_evidence() -> dict[str, object]:
                 "details": {"jobId": "job-1", "cancelRequested": True, "cancelConfirmed": True},
             },
         ],
+    }
+
+
+def valid_katago_review_workflow_ux_evidence() -> dict[str, object]:
+    false_boundaries = {
+        key: False
+        for key in smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_REQUIRED_FALSE_FIELDS
+    }
+    return {
+        "schema": smoke_user_flows.KATAGO_REVIEW_WORKFLOW_UX_SMOKE_SCHEMA,
+        "name": "scoped_katago_review_workflow_ux_resilience",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "source_static_plus_stubbed_ui_flow",
+        "progressVerified": True,
+        "cancelVerified": True,
+        "restartAfterCancelVerified": True,
+        "cacheRestoreVerified": True,
+        "engineFailureVerified": True,
+        "staleAnalysisPrevented": True,
+        "sourceFactsValidated": True,
+        **false_boundaries,
+        "checks": [
+            {
+                "name": "progress_verified",
+                "status": "pass",
+                "details": {
+                    "progressVerified": True,
+                    "jobIdVisible": True,
+                    "currentVisible": True,
+                    "totalVisible": True,
+                    "sessionVisible": True,
+                    "stubbedProgress": "job katago-job-1, move 2, 1/3 positions",
+                },
+            },
+            {
+                "name": "cancel_verified",
+                "status": "pass",
+                "details": {
+                    "cancelVerified": True,
+                    "cancelButtonVisible": True,
+                    "cancelCommandStubbed": "katago_cancel_analysis",
+                },
+            },
+            {
+                "name": "restart_after_cancel_verified",
+                "status": "pass",
+                "details": {
+                    "restartAfterCancelVerified": True,
+                    "restartAllowedAfterCancel": True,
+                    "activeJobCleared": True,
+                },
+            },
+            {
+                "name": "cache_restore_verified",
+                "status": "pass",
+                "details": {
+                    "cacheRestoreVerified": True,
+                    "cacheHitRestoredFrames": True,
+                    "source": "stubbed_cache_hit_restore",
+                },
+            },
+            {
+                "name": "engine_failure_verified",
+                "status": "pass",
+                "details": {
+                    "engineFailureVerified": True,
+                    "failureMessageVisible": True,
+                    "message": "Full-game KataGo analysis failed: stubbed missing model",
+                },
+            },
+            {
+                "name": "stale_analysis_prevented",
+                "status": "pass",
+                "details": {
+                    "staleAnalysisPrevented": True,
+                    "jobIdGuard": True,
+                    "generationGuard": False,
+                    "hashGuard": True,
+                },
+            },
+            {
+                "name": "source_facts_validated",
+                "status": "pass",
+                "details": {
+                    "sourceFactsValidated": True,
+                    "frontendSources": [
+                        smoke_user_flows.APP_SOURCE,
+                        smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE,
+                        smoke_user_flows.BACKEND_SOURCE,
+                    ],
+                },
+            },
+            {
+                "name": "scope_boundaries",
+                "status": "pass",
+                "details": {
+                    **false_boundaries,
+                    "boundary": "No live KataGo runtime, full legacy analysis parity, provider/readboard/OCR, release, or Windows/Linux claims.",
+                },
+            },
+        ],
+        "boundaries": false_boundaries,
+        "sourceEvidence": {
+            "referencedEvidence": [],
+            "existingLiveEvidenceUsedForNewLiveBehavior": False,
+        },
     }
 
 
@@ -3213,6 +3439,24 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
           {save_body}
         }}
 
+        export async function startKataGoGameAnalysis(profile: EngineProfileDto, sgfText: string, maxVisits: number): Promise<string> {{
+          return await invoke<string>("katago_start_analyze_game", {{ profile, sgfText, maxVisits }});
+        }}
+
+        export async function cancelKataGoAnalysis(jobId: string): Promise<void> {{
+          await invoke<void>("katago_cancel_analysis", {{ jobId }});
+        }}
+
+        export async function listenToKataGoAnalysisEvents(handlers: KataGoAnalysisEventHandlers): Promise<() => void> {{
+          const unlisteners = await Promise.all([
+            listen("katago://analysis-progress", (event) => handlers.onProgress?.(event.payload)),
+            listen("katago://analysis-complete", (event) => handlers.onComplete?.(event.payload)),
+            listen("katago://analysis-error", (event) => handlers.onError?.(event.payload)),
+            listen("katago://analysis-cancelled", (event) => handlers.onCancelled?.(event.payload))
+          ]);
+          return () => unlisteners.forEach((unlisten) => unlisten());
+        }}
+
         export async function editSgfMove(sgfText: string, nodeId: string, point: MoveVertex | "pass") {{
           return await invoke("edit_sgf_move", {{ sgfText, nodeId, point }});
         }}
@@ -3336,6 +3580,11 @@ def create_app_fixture(
           const isAnnotationSaving = false;
           const ProviderPanel = "ProviderPanel";
           const sgfTextEditVersionRef = {{ current: 0 }};
+          const activeJobIdRef = {{ current: null }};
+          const pendingAnalysisProgressRef = {{ current: new Map() }};
+          const pendingAnalysisTerminalEventsRef = {{ current: new Map() }};
+          const activeJobId = activeJobIdRef.current;
+          const analysisProgress = null;
           async function handleProviderImport(result) {{
             return result;
           }}
@@ -3374,6 +3623,71 @@ def create_app_fixture(
               throw error;
             }}
           }}
+          async function handleAnalyzeKataGoGame(profile, maxVisits) {{
+            pendingAnalysisProgressRef.current.clear();
+            pendingAnalysisTerminalEventsRef.current.clear();
+            setAnalysisProgress(null);
+            await listenToKataGoAnalysisEvents({{
+              onProgress: (payload) => {{
+                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                setAnalysisProgress({{
+                  jobId: payload.job_id,
+                  completed: payload.completed,
+                  expected: payload.expected,
+                  turn: payload.turn
+                }});
+              }},
+              onComplete: (payload) => {{
+                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                void finishCompletedAnalysis(payload.job_id, payload.frames, {{}}, []);
+              }},
+              onError: (payload) => {{
+                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                finishStoppedAnalysis(payload.job_id);
+                setMessage(`Full-game KataGo analysis failed: ${{payload.message}}`);
+              }},
+              onCancelled: (payload) => {{
+                if (!isCurrentAnalysisJob(payload.job_id)) return;
+                finishStoppedAnalysis(payload.job_id);
+                setMessage(payload.message || "Full-game KataGo analysis cancelled.");
+              }}
+            }});
+            const jobId = await startKataGoGameAnalysis(profile, sgfText, maxVisits);
+            activeJobIdRef.current = jobId;
+            setActiveJobId(jobId);
+            setMessage(`Full-game KataGo analysis started (${{jobId}}).`);
+          }}
+          async function handleCancelKataGoAnalysis() {{
+            const jobId = activeJobIdRef.current;
+            if (!jobId) return;
+            await cancelKataGoAnalysis(jobId);
+            setMessage("Full-game KataGo analysis cancelled.");
+          }}
+          function isCurrentAnalysisJob(jobId) {{
+            const currentHash = computeGameCacheKey(sgfText, currentFilePath);
+            return Boolean(currentHash) && activeJobIdRef.current === jobId;
+          }}
+          async function finishCompletedAnalysis(jobId, result, parsed, replayed) {{
+            finishStoppedAnalysis(jobId);
+            await saveAnalysisCacheForGame(sgfText, currentFilePath, parsed, result, replayed, "katago");
+          }}
+          function finishStoppedAnalysis(jobId) {{
+            if (activeJobIdRef.current !== null && activeJobIdRef.current !== jobId) return;
+            activeJobIdRef.current = null;
+            setActiveJobId(null);
+            setAnalysisProgress(null);
+          }}
+          async function checkAnalysisCacheForGame(text, filePath, parsed, replayed, baseMessage) {{
+            const cacheKey = await computeGameCacheKey(text, filePath);
+            const lookup = await loadPreferredAnalysisCache(cacheKey.gameKey);
+            if (lookup.status === "hit") {{
+              setMessage(`${{baseMessage}} Restored ${{lookup.frames.length}} cached KataGo review frames.`);
+            }}
+            return {{ parsed, replayed }};
+          }}
+          async function loadPreferredAnalysisCache(gameKey) {{
+            return await loadAnalysisCache(gameKey, null, "katago");
+          }}
           async function handleSaveSgfDocument(saveAs = false) {{
             try {{
               {save_body}
@@ -3382,7 +3696,7 @@ def create_app_fixture(
             }}
           }}
           {edit_handler_body}
-          return {{ ProviderPanel, handleProviderImport, handleSaveSgfDocument, handleSaveAnnotations, annotationError, isAnnotationSaving, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
+          return {{ ProviderPanel, handleProviderImport, handleSaveSgfDocument, handleSaveAnnotations, annotationError, isAnnotationSaving, handleAnalyzeKataGoGame, handleCancelKataGoAnalysis, activeJobId, analysisProgress, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
         }}
         """,
     )
@@ -3657,13 +3971,19 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
         body = """
         import { checkEngineAssets, validateRuntimeAssetLayout } from "../api/backend";
 
-        export function EngineSetupPanel() {
+        export function EngineSetupPanel({ analysisProgress = null, activeJobId = null, onCancelAnalysis = null }) {
           const [runtimeAssetValidation, setRuntimeAssetValidation] = useState(null);
           const [runtimeAssetStatus, setRuntimeAssetStatus] = useState("Checking bundled/runtime assets...");
           const enginePath = "";
           const modelPath = "";
           const configPath = "";
           const placeholderCount = runtimeAssetValidation?.placeholders.length ?? 0;
+          const progressLabel = analysisProgress
+            ? `${analysisProgress.completed}/${analysisProgress.expected} positions, move ${analysisProgress.turn}`
+            : "No active analysis";
+          const progressPercent = analysisProgress?.expected
+            ? Math.round((analysisProgress.completed / analysisProgress.expected) * 100)
+            : 0;
 
           async function handleCheckRuntimeAssets() {
             const validation = await validateRuntimeAssetLayout();
@@ -3702,6 +4022,13 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
                 <input value={configPath} />
                 <button onClick={handleCheckLocalAssets}>Check assets</button>
               </div>
+              <div className="analysis-progress" aria-label="KataGo analysis progress">
+                <span>{progressLabel}</span>
+                <progress value={progressPercent} max={100} />
+                <span>{activeJobId}</span>
+              </div>
+              <button>Analyze game</button>
+              {activeJobId ? <button onClick={() => onCancelAnalysis?.()}>Cancel</button> : null}
             </section>
           );
         }
@@ -3710,11 +4037,24 @@ def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = Tr
         body = """
         import { checkEngineAssets } from "../api/backend";
 
-        export function EngineSetupPanel() {
+        export function EngineSetupPanel({ analysisProgress = null, activeJobId = null, onCancelAnalysis = null }) {
           const enginePath = "";
           const modelPath = "";
           const configPath = "";
-          return <section>{enginePath}{modelPath}{configPath}{checkEngineAssets}</section>;
+          const progressLabel = analysisProgress
+            ? `${analysisProgress.completed}/${analysisProgress.expected} positions, move ${analysisProgress.turn}`
+            : "No active analysis";
+          const progressPercent = analysisProgress?.expected
+            ? Math.round((analysisProgress.completed / analysisProgress.expected) * 100)
+            : 0;
+          return (
+            <section>
+              {enginePath}{modelPath}{configPath}{checkEngineAssets}
+              <div className="analysis-progress">{progressLabel}{progressPercent}{activeJobId}</div>
+              <button>Analyze game</button>
+              {activeJobId ? <button onClick={() => onCancelAnalysis?.()}>Cancel</button> : null}
+            </section>
+          );
         }
         """
     write(root / smoke_user_flows.ENGINE_SETUP_PANEL_SOURCE, body)

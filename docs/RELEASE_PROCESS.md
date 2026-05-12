@@ -119,9 +119,9 @@ The expected dry-run artifact contract is `lizzieyzy-next-desktop-<version>-<pla
 
 ## Windows/Linux Installed-App Smoke Evidence
 
-`docs/qa/windows-unsigned-installed-app-smoke.json` and `docs/qa/linux-unsigned-installed-app-smoke.json` are the scoped future handoff paths for unsigned Windows/Linux installed-app launch smoke. No PASS evidence is committed yet; CI runner output must be downloaded and attached in a follow-up commit.
+`docs/qa/windows-unsigned-installed-app-smoke.json` and `docs/qa/linux-unsigned-installed-app-smoke.json` record scoped unsigned Windows/Linux installed-app launch smoke from `wimi321/lizzieyzy-next-tauri` GitHub run `25764095000` artifacts `release-dry-run-Windows` and `release-dry-run-Linux`. The central smoke gate passes for these per-platform records.
 
-A valid scoped PASS must record, for both Windows and Linux:
+A valid scoped PASS record, as used for the current Windows/Linux evidence, must record for each platform:
 
 - artifact path, SHA-256 hash, and size,
 - exact launch command,
@@ -132,7 +132,7 @@ A valid scoped PASS must record, for both Windows and Linux:
 - display mode such as physical display, VM display, Xvfb, or headless runner mode,
 - false boundaries for production signing, notarization, updater readiness, official release publication, full release parity, and full legacy parity.
 
-This evidence is unsigned installed-app smoke only. It does not replace Authenticode signing, macOS notarization, updater signing, official release publication, clean-machine manual release testing, provider/readboard/OCR parity, or full legacy parity.
+This evidence is unsigned release-dry-run installed-app smoke only. It does not replace Authenticode signing, macOS notarization, updater signing, official release publication, full production release validation, clean-machine manual release testing, provider/readboard/OCR parity, or full legacy parity.
 
 ## Signing and Notarization Policy
 

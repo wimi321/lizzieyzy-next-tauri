@@ -1482,6 +1482,7 @@ fn readboard_external_capture_with_runner(
             "readboard_external_capture requires a non-empty source or captureSource",
         ));
     }
+    validate_timeout_ms(request.timeout_ms, "readboard_external_capture")?;
     let metadata = request.metadata.unwrap_or_default();
     match capture_source.as_str() {
         "local_image" | "image_path" => {

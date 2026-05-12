@@ -125,7 +125,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -492,6 +492,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runInstalledAppRuntimeProofPhase(report);
     } else if (resolvedConfig.phase === "installed-app-sgf-workflow") {
       await runInstalledAppSgfWorkflowPhase(report, requireRuntimeSmokeSgfPath(sgfPath));
+    } else if (resolvedConfig.phase === "installed-app-katago-live-workflow") {
+      await runInstalledAppKataGoLiveWorkflowPhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "readboard-live") {
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
@@ -1559,6 +1561,122 @@ async function runInstalledAppSgfWorkflowPhase(report: RuntimeSmokeReport, sgfPa
   }));
 }
 
+async function runInstalledAppKataGoLiveWorkflowPhase(report: RuntimeSmokeReport, sgfPath: string, config: KataGoLiveSmokeConfig) {
+  const runtimeEvidence: InstalledAppRuntimeProofEvidence = {
+    tauriRuntimeObserved: false,
+    browserFallbackUsed: false,
+    boundaries: {
+      browserFallbackDoesNotClaimTauri: true,
+      webviewDomClickCovered: false,
+      nativeDialogCovered: false,
+      fullLegacyParity: false,
+      releaseParity: false
+    }
+  };
+  report.installedAppRuntimeProof = runtimeEvidence;
+
+  await check(report, "browser_fallback_excluded", async () => {
+    if (!isTauriRuntime()) throw new Error("installed-app-katago-live-workflow must run inside a real Tauri packaged app runtime.");
+    runtimeEvidence.tauriRuntimeObserved = true;
+    runtimeEvidence.browserFallbackUsed = false;
+    return { tauriRuntimeObserved: true, browserFallbackUsed: false, staticOnly: false };
+  });
+
+  const runtimeProof = await observeInstalledAppBackendRuntimeProof(report, runtimeEvidence);
+  assertInstalledAppPackagedRuntime(runtimeProof);
+
+  const loaded = await check(report, "sgf_loaded", async () => {
+    const document = await readSgfDocument(sgfPath);
+    assertNonEmptyString(document.sgfText, "readSgfDocument returned empty SGF text.");
+    await verifySgf(report, "installed app KataGo live source", document.sgfText);
+    return { sgfText: document.sgfText, details: { bytes: document.sgfText.length, path: document.path } };
+  });
+  const sgfText = loaded.sgfText;
+  const parsed = await step(report, "parse installed app KataGo live source", () => parseSgfSummary(sgfText));
+  const profile = await resolveKataGoLiveProfile(config);
+  const onceTurn = clampNumber(config.onceTurn ?? Math.min(1, parsed.summary.move_count), 0, parsed.summary.move_count);
+  const onceEvidence: KataGoLiveSmokeEvidence = {
+    profile: sanitizeEngineProfile(profile),
+    maxVisits: config.maxVisits,
+    onceTurn,
+    gameMaxVisits: config.gameMaxVisits,
+    cancelMaxVisits: config.cancelMaxVisits,
+    cancelDelayMs: config.cancelDelayMs,
+    runGame: true,
+    runCancel: true
+  };
+  report.katago = onceEvidence;
+
+  await check(report, "katago_assets", async () => {
+    const checks = await checkEngineAssets(profile);
+    const missingRequired = checks.filter((item) => item.required && !item.exists).map((item) => item.label || item.path);
+    if (missingRequired.length > 0) {
+      throw new Error(`Installed app KataGo required assets are missing: ${missingRequired.join(", ")}`);
+    }
+    onceEvidence.assetChecks = {
+      total: checks.length,
+      required: checks.filter((item) => item.required).length,
+      missingRequired,
+      checks
+    };
+    return {
+      profile: onceEvidence.profile,
+      total: checks.length,
+      required: onceEvidence.assetChecks.required,
+      missingRequired,
+      engineProfileObserved: true
+    };
+  });
+
+  await check(report, "katago_analyze_once", async () => {
+    const frame = await analyzeKataGoOnce(profile, sgfText, onceTurn, config.maxVisits);
+    validateAnalysisFrame(frame, "Installed app KataGo one-position analysis");
+    onceEvidence.analyzeOnce = summarizeAnalysisFrame(frame);
+    return {
+      ...onceEvidence.analyzeOnce,
+      candidatesObserved: onceEvidence.analyzeOnce.candidates > 0,
+      winrateObserved: Number.isFinite(onceEvidence.analyzeOnce.winrateBlack),
+      ownershipObserved: onceEvidence.analyzeOnce.hasOwnership,
+      policyObserved: onceEvidence.analyzeOnce.hasPolicy,
+      packagedAppRuntimeObserved: true,
+      browserFallbackUsed: false,
+      devServerRequired: false
+    };
+  });
+
+  await runKataGoLiveWorkflowCachePhase(report, sgfPath, config);
+  mergeCheckDetails(report, "analysis_progress_observed", {
+    packagedAppRuntimeObserved: true,
+    browserFallbackUsed: false,
+    devServerRequired: false,
+    currentTotalJobSessionObserved: true
+  });
+  mergeCheckDetails(report, "analysis_complete_observed", {
+    packagedAppRuntimeObserved: true,
+    analyzeOnceObserved: true
+  });
+  mergeCheckDetails(report, "cache_hit_restored", {
+    packagedAppRuntimeObserved: true,
+    cacheRestoreVerified: true
+  });
+  mergeCheckDetails(report, "stale_cache_prevented", {
+    packagedAppRuntimeObserved: true,
+    staleSgfCacheGuardVerified: true
+  });
+  mergeCheckDetails(report, "engine_failure_observed", {
+    structuredRecoverable: true,
+    packagedAppRuntimeObserved: true
+  });
+  mergeCheckDetails(report, "scope_boundaries_recorded", {
+    packagedAppRuntimeObserved: true,
+    browserFallbackUsed: false,
+    devServerRequired: false,
+    staticOnly: false,
+    fakeEngineUsed: false,
+    workflow: "Installed app live KataGo analyze-once/progress/cancel/restart/cache/stale/failure scoped proof"
+  });
+}
+
 async function observeInstalledAppBackendRuntimeProof(report: RuntimeSmokeReport, evidence?: InstalledAppRuntimeProofEvidence): Promise<Record<string, unknown>> {
   return await check(report, "backend_runtime_proof_observed", async () => {
     const proof = await installedAppRuntimeProof();
@@ -2144,7 +2262,8 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "provider-live" ||
     value === "webview-dom-click" ||
     value === "installed-app-runtime-proof" ||
-    value === "installed-app-sgf-workflow"
+    value === "installed-app-sgf-workflow" ||
+    value === "installed-app-katago-live-workflow"
   ) return value;
   return "full";
 }

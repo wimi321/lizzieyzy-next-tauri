@@ -38,6 +38,12 @@ export function AnalysisPanel({
     data-review-source={reviewSource}
     data-review-phase={reviewPhase}
     data-cache-restore-verified={String(cacheRestoreVerified)}
+    data-current-move={currentMove}
+    data-candidate-count={frame?.candidates.length ?? 0}
+    data-winrate-black={frame?.winrate_black ?? ""}
+    data-ownership-observed={String(hasOwnership)}
+    data-policy-observed={String(hasPolicy)}
+    data-visits={frame?.visits ?? 0}
   >
     <section>
       <h2>Position</h2>

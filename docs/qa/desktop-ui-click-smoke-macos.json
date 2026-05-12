@@ -1,0 +1,317 @@
+{
+  "boundaries": {
+    "nativeFileDialogCovered": false,
+    "tauriBackendCommandProof": false,
+    "tauriNativeDialogProof": false,
+    "tauriWebviewDomObserved": false
+  },
+  "browserDomObserved": true,
+  "browserVsTauriDistinction": {
+    "browserRenderedDomObserved": true,
+    "nativeFileDialogCovered": false,
+    "note": "This smoke observes Chromium-rendered Vite DOM with Playwright. It is not proof of Tauri WebView DOM, OS-native file dialogs, or Tauri shell integration.",
+    "tauriWebviewDomObserved": false,
+    "viteBrowserUrl": "http://127.0.0.1:1420"
+  },
+  "checks": [
+    {
+      "details": {
+        "assertionCount": 14
+      },
+      "name": "browser_dom_visible",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "clickedCount": 17,
+        "controls": [
+          "[data-testid=\"toolbar-load-sample\"]",
+          "[data-testid=\"toolbar-parse-sgf\"]",
+          "[data-testid=\"toolbar-run-review\"]",
+          "[data-testid=\"sgf-tree-node\"][data-sgf-move-number=\"1\"]",
+          "[data-testid=\"sgf-comment-textarea\"]",
+          "[data-testid=\"sgf-comment-save\"]",
+          "[data-testid=\"sgf-annotation-lb-add-input\"]",
+          "[data-testid=\"sgf-annotation-lb-add\"]",
+          "[data-testid=\"sgf-annotations-save\"]",
+          "[data-testid=\"sgf-tree-mode-edit\"]",
+          "[data-testid=\"sgf-move-mode-edit\"]",
+          "[data-testid=\"sgf-move-color-white\"]",
+          "[data-testid=\"provider-source-select\"]",
+          "[data-testid=\"provider-source-input\"]",
+          "[data-testid=\"preferences-board-theme\"]",
+          "[data-testid=\"preferences-toggle-candidates\"]",
+          "[data-testid=\"engine-runtime-assets-refresh\"]"
+        ]
+      },
+      "name": "real_clicks_dispatched",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "screenshotCount": 2
+      },
+      "name": "screenshots_captured",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "nativeFileDialogCovered": false,
+        "reason": "Open/Save/Save As/import controls are selector-visible but not clicked because this browser smoke does not prove native dialogs."
+      },
+      "name": "native_dialog_boundary",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "failures": []
+      },
+      "name": "runner_completed",
+      "status": "pass"
+    }
+  ],
+  "clickObserved": true,
+  "clickedControls": [
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "load sample",
+      "selector": "[data-testid=\"toolbar-load-sample\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "parse sgf",
+      "selector": "[data-testid=\"toolbar-parse-sgf\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "run review",
+      "selector": "[data-testid=\"toolbar-run-review\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "select first move",
+      "selector": "[data-testid=\"sgf-tree-node\"][data-sgf-move-number=\"1\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "edit comment draft",
+      "selector": "[data-testid=\"sgf-comment-textarea\"]",
+      "valueLength": 27,
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "save comment attempt",
+      "selector": "[data-testid=\"sgf-comment-save\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "annotation LB add input",
+      "selector": "[data-testid=\"sgf-annotation-lb-add-input\"]",
+      "valueLength": 4,
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "annotation LB add",
+      "selector": "[data-testid=\"sgf-annotation-lb-add\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "save annotations attempt",
+      "selector": "[data-testid=\"sgf-annotations-save\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "tree edit mode",
+      "selector": "[data-testid=\"sgf-tree-mode-edit\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "move edit mode",
+      "selector": "[data-testid=\"sgf-move-mode-edit\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "move color white",
+      "selector": "[data-testid=\"sgf-move-color-white\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "provider source fox",
+      "selector": "[data-testid=\"provider-source-select\"]",
+      "value": "fox",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "provider source input",
+      "selector": "[data-testid=\"provider-source-input\"]",
+      "valueLength": 14,
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "preferences board theme",
+      "selector": "[data-testid=\"preferences-board-theme\"]",
+      "value": "high-contrast",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "preferences candidates toggle",
+      "selector": "[data-testid=\"preferences-toggle-candidates\"]",
+      "visible": true
+    },
+    {
+      "clicked": true,
+      "enabled": true,
+      "name": "runtime assets refresh",
+      "selector": "[data-testid=\"engine-runtime-assets-refresh\"]",
+      "visible": true
+    }
+  ],
+  "collectionMethod": "vite-browser-playwright-dom-click-screenshot",
+  "completedAt": "2026-05-12T02:19:33Z",
+  "failures": [],
+  "name": "desktop_ui_click_smoke",
+  "platform": "macos",
+  "schema": "lizzieyzy.desktop-ui-click-smoke.v1",
+  "screenshotObserved": true,
+  "screenshots": [
+    {
+      "bytes": 473407,
+      "name": "initial",
+      "path": "docs/qa/screenshots/desktop-ui-click-initial.png",
+      "sha256": "1c42b37133b3d34c5b00668a62091f525c4936d0dd5458cd9c2dd1587215ba26"
+    },
+    {
+      "bytes": 530929,
+      "name": "after-clicks",
+      "path": "docs/qa/screenshots/desktop-ui-click-after-clicks.png",
+      "sha256": "72a92a54a79ffcf97969291828ec74290a618c3dc7198c8bbeb7601cd807891d"
+    }
+  ],
+  "server": {
+    "startedByRunner": true,
+    "url": "http://127.0.0.1:1420"
+  },
+  "startedAt": "2026-05-12T02:19:25Z",
+  "status": "pass",
+  "viewport": {
+    "height": 1100,
+    "width": 1440
+  },
+  "visibleAssertions": [
+    {
+      "name": "legacy shell",
+      "selector": "[data-testid=\"legacy-shell\"]",
+      "text": "LizzieYzy Next\n\nReact review workspace fallback\n\nFile\nGame\nAnalysis\nView\nEngine\nTools\nHelp\nCache idle\nBrowser fallback\nOpen\nSave\nSave As\nImport\nSample\nParse\nReview\nUntitled SGF\nSaved\nCandidates\nOwnership\nPolicy\nMove 0\n6\nPosition\n\nRun review to show candidate moves and winrate data.\n\nCandidates\nPolic",
+      "visible": true
+    },
+    {
+      "name": "menu bar",
+      "selector": "[data-testid=\"legacy-menubar\"]",
+      "text": "File\nGame\nAnalysis\nView\nEngine\nTools\nHelp",
+      "visible": true
+    },
+    {
+      "name": "toolbar",
+      "selector": "[data-testid=\"legacy-toolbar\"]",
+      "text": "Open\nSave\nSave As\nImport\nSample\nParse\nReview\nUntitled SGF\nSaved",
+      "visible": true
+    },
+    {
+      "name": "board pane",
+      "selector": "[data-testid=\"legacy-board-pane\"]",
+      "text": "Candidates\nOwnership\nPolicy\nMove 0\n6",
+      "visible": true
+    },
+    {
+      "name": "analysis pane",
+      "selector": "[data-testid=\"legacy-analysis-pane\"]",
+      "text": "Position\n\nRun review to show candidate moves and winrate data.\n\nCandidates\nPolicy\n\nNo policy data for this move.\n\nReview Marks\n\nNo notable drops yet.\n\nSGF Tree\n21 nodes\n6 W R10\nRoot\n2 properties\nM\nB\n1 B Q16\nNo note\nM\nW\n2 W D16\nNo note\nM\nB\n3 B Q4\nNo note\nM\nW\n4 W D4\nNo note\nM\nB\n5 B K3\nNo note\nM\nW\n6 W ",
+      "visible": true
+    },
+    {
+      "name": "bottom dock",
+      "selector": "[data-testid=\"legacy-bottom-dock\"]",
+      "text": "Untitled SGF\nSaved\nOpen\nSave\nSave As\nImport SGF\nLoad sample\nParse SGF\nRun review\nAppend move\nBlack to play\nAppend\nEdit\nB\nW\nPass\nProvider\nYike URL preview ready.\nSource\nYike\nFox\nPreview\nURL\n\nYike URL preview ready.\n\nFetch & import\n\nProvider fetch ready.\n\nPayload / SGF\nImport pasted payload\n\nPayload i",
+      "visible": true
+    },
+    {
+      "name": "sgf source",
+      "selector": "[data-testid=\"sgf-source-textarea\"]",
+      "text": "",
+      "visible": true
+    },
+    {
+      "name": "sgf tree",
+      "selector": "[data-testid=\"sgf-tree-panel\"]",
+      "text": "SGF Tree\n21 nodes\n6 W R10\nRoot\n2 properties\nM\nB\n1 B Q16\nNo note\nM\nW\n2 W D16\nNo note\nM\nB\n3 B Q4\nNo note\nM\nW\n4 W D4\nNo note\nM\nB\n5 B K3\nNo note\nM\nW\n6 W R10\nNo note\nM\nB\n7 B O17\nNo note\nM\nW\n8 W F17\nNo note\nM\nB\n9 B R14\nNo note\nM\nW\n10 W C6\nNo note\nM\nB\n11 B C4\nNo note\nM\nW\n12 W D5\nNo note\nM\nB\n13 B C5\nNo note",
+      "visible": true
+    },
+    {
+      "name": "annotation editor",
+      "selector": "[data-testid=\"sgf-annotation-editor\"]",
+      "text": "Annotations\nTR SQ CR MA SL LB AR LN markup on the selected node\nTR Triangles\nNo values\nAdd\nClear\nSQ Squares\nNo values\nAdd\nClear\nCR Circles\nNo values\nAdd\nClear\nMA Marks\nNo values\nAdd\nClear\nSL Selected\nNo values\nAdd\nClear\nLB Labels\nNo values\nAdd\nClear\nAR Arrows\nNo values\nAdd\nClear\nLN Lines\nNo values\nA",
+      "visible": true
+    },
+    {
+      "name": "move edit panel",
+      "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+      "text": "Append move\nBlack to play\nAppend\nEdit\nB\nW\nPass",
+      "visible": true
+    },
+    {
+      "name": "provider panel",
+      "selector": "[data-testid=\"provider-panel\"]",
+      "text": "Provider\nYike URL preview ready.\nSource\nYike\nFox\nPreview\nURL\n\nYike URL preview ready.\n\nFetch & import\n\nProvider fetch ready.\n\nPayload / SGF\nImport pasted payload\n\nPayload import ready.\n\nReadboard protocol preview\nReadboard probe ready.\nEndpoint\nProbe\nProtocol preview line\nPreview snapshot\nImport sna",
+      "visible": true
+    },
+    {
+      "name": "engine setup",
+      "selector": "[data-testid=\"engine-setup-panel\"]",
+      "text": "Profile\nLocal KataGo\nName\nAdd profile\nDelete profile\nBundled/runtime assets\nRefresh\nRuntime asset layout inspection requires the Tauri desktop backend.\n\nResource dir unavailable. No runtime asset candidates are visible in this environment.\n\nRuntime asset layout inspection requires the Tauri desktop ",
+      "visible": true
+    },
+    {
+      "name": "preferences",
+      "selector": "[data-testid=\"preferences-panel\"]",
+      "text": "Preferences\nPreferences loaded.\nCandidates\nOwnership\nPolicy\nAuto-load cache\nAuto-save analysis\nCandidates shown\nDefault visits\nReview mode\nQuick\nDeep\nBoard theme\nClassic\nHigh contrast\nLegacy config migration\nNo legacy config selected.\nLegacy config path\nPreview\nApply",
+      "visible": true
+    },
+    {
+      "name": "statusbar",
+      "selector": "[data-testid=\"legacy-statusbar\"]",
+      "text": "Preview workspace ready. Parse the sample SGF or import a local game to start reviewing.",
+      "visible": true
+    }
+  ]
+}

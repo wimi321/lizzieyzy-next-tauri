@@ -39,7 +39,7 @@ export function PreferencesPanel({
   const warnings = legacyConfigApplyResult?.warnings ?? legacyConfigPreview?.warnings ?? [];
 
   return (
-    <section className="preferences-panel" aria-label="Application preferences">
+    <section className="preferences-panel" aria-label="Application preferences" data-testid="preferences-panel">
       <div className="preferences-header">
         <h2>Preferences</h2>
         <span>{status}</span>
@@ -53,6 +53,7 @@ export function PreferencesPanel({
         <label>
           <span>Candidates shown</span>
           <input
+            data-testid="preferences-candidate-limit"
             type="number"
             min={1}
             max={20}
@@ -65,6 +66,7 @@ export function PreferencesPanel({
         <label>
           <span>Default visits</span>
           <input
+            data-testid="preferences-default-visits"
             type="number"
             min={1}
             step={1}
@@ -75,14 +77,14 @@ export function PreferencesPanel({
         </label>
         <label>
           <span>Review mode</span>
-          <select value={preferences.reviewMode} disabled={disabled} onChange={(event) => update({ reviewMode: event.target.value as ReviewMode })}>
+          <select data-testid="preferences-review-mode" value={preferences.reviewMode} disabled={disabled} onChange={(event) => update({ reviewMode: event.target.value as ReviewMode })}>
             <option value="quick">Quick</option>
             <option value="deep">Deep</option>
           </select>
         </label>
         <label>
           <span>Board theme</span>
-          <select value={preferences.boardTheme} disabled={disabled} onChange={(event) => update({ boardTheme: event.target.value as BoardTheme })}>
+          <select data-testid="preferences-board-theme" value={preferences.boardTheme} disabled={disabled} onChange={(event) => update({ boardTheme: event.target.value as BoardTheme })}>
             <option value="classic">Classic</option>
             <option value="high-contrast">High contrast</option>
           </select>
@@ -105,8 +107,8 @@ export function PreferencesPanel({
           />
         </label>
         <div className="legacy-config-actions" aria-label="Legacy config migration actions">
-          <button type="button" disabled={!canRunMigration} onClick={onPreviewLegacyConfigMigration}>Preview</button>
-          <button type="button" disabled={!canRunMigration || legacyConfigPreview === null} onClick={onApplyLegacyConfigMigration}>Apply</button>
+          <button type="button" data-testid="legacy-config-preview" disabled={!canRunMigration} onClick={onPreviewLegacyConfigMigration}>Preview</button>
+          <button type="button" data-testid="legacy-config-apply" disabled={!canRunMigration || legacyConfigPreview === null} onClick={onApplyLegacyConfigMigration}>Apply</button>
         </div>
         {migratedFields.length > 0 ? (
           <div className="migration-result" data-testid="legacy-config-migrated-fields">
@@ -141,7 +143,7 @@ function Toggle({ label, checked, disabled, onChange }: { label: string; checked
   return (
     <label className="toggle-row">
       <span>{label}</span>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" data-testid={`preferences-toggle-${label.toLowerCase().replaceAll(" ", "-")}`} checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }

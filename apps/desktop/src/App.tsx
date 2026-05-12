@@ -1556,19 +1556,19 @@ export function App() {
       }
       providerPanel={
         <div className="sgf-edit-provider-stack">
-          <section className="sgf-edit-panel" aria-label="SGF move editing">
+          <section className="sgf-edit-panel" aria-label="SGF move editing" data-testid="sgf-move-edit-panel">
             <div className="sgf-edit-header">
               <strong>{sgfMoveEditMode === "append" ? "Append move" : "Edit move"}</strong>
               <span>{colorLabel(editColor)} {sgfMoveEditMode === "append" ? "to play" : "move"}</span>
             </div>
             <div className="sgf-edit-controls" aria-label="Move edit mode">
-              <button type="button" aria-pressed={sgfMoveEditMode === "append"} disabled={isBusy} onClick={() => setSgfMoveEditMode("append")}>Append</button>
-              <button type="button" aria-pressed={sgfMoveEditMode === "edit"} disabled={isBusy} onClick={() => setSgfMoveEditMode("edit")}>Edit</button>
+              <button type="button" data-testid="sgf-move-mode-append" aria-pressed={sgfMoveEditMode === "append"} disabled={isBusy} onClick={() => setSgfMoveEditMode("append")}>Append</button>
+              <button type="button" data-testid="sgf-move-mode-edit" aria-pressed={sgfMoveEditMode === "edit"} disabled={isBusy} onClick={() => setSgfMoveEditMode("edit")}>Edit</button>
             </div>
             <div className="sgf-edit-controls" aria-label="Move color">
-              <button type="button" aria-pressed={editColor === "black"} disabled={isBusy} onClick={() => setEditColor("black")}>B</button>
-              <button type="button" aria-pressed={editColor === "white"} disabled={isBusy} onClick={() => setEditColor("white")}>W</button>
-              <button type="button" disabled={isBusy || selectedSgfNodeId === null} onClick={() => handleMoveEditInput("pass")}>Pass</button>
+              <button type="button" data-testid="sgf-move-color-black" aria-pressed={editColor === "black"} disabled={isBusy} onClick={() => setEditColor("black")}>B</button>
+              <button type="button" data-testid="sgf-move-color-white" aria-pressed={editColor === "white"} disabled={isBusy} onClick={() => setEditColor("white")}>W</button>
+              <button type="button" data-testid="sgf-move-pass" disabled={isBusy || selectedSgfNodeId === null} onClick={() => handleMoveEditInput("pass")}>Pass</button>
             </div>
           </section>
           <ProviderPanel disabled={isBusy} onImport={handleProviderImport} />

@@ -204,7 +204,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   }
 
   return (
-    <section className="provider-panel" aria-label="Provider import">
+    <section className="provider-panel" aria-label="Provider import" data-testid="provider-panel">
       <div className="provider-header">
         <h2>Provider</h2>
         <span title={headerStatus}>{headerStatus}</span>
@@ -212,17 +212,18 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       <div className="provider-grid">
         <label>
           <span>Source</span>
-          <select value={provider} disabled={disabled} onChange={(event) => handleProviderChange(event.target.value as ProviderKind)}>
+          <select data-testid="provider-source-select" value={provider} disabled={disabled} onChange={(event) => handleProviderChange(event.target.value as ProviderKind)}>
             <option value="yike">Yike</option>
             <option value="fox">Fox</option>
           </select>
         </label>
-        <button onClick={() => void handlePreviewYikeUrl()} disabled={!canPreviewYike}>Preview</button>
+        <button data-testid="provider-preview" onClick={() => void handlePreviewYikeUrl()} disabled={!canPreviewYike}>Preview</button>
       </div>
       <label>
         <span>{provider === "yike" ? "URL" : "Command / chessid"}</span>
-        <input
-          value={sourceUrl}
+          <input
+            data-testid="provider-source-input"
+            value={sourceUrl}
           disabled={disabled}
           placeholder={provider === "yike" ? "Yike room or live URL" : "123456, chessid 123456, uid 123 [last_code], or user_name name"}
           onChange={(event) => {
@@ -249,14 +250,15 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           </div>
         </dl>
       ) : null}
-      <button onClick={() => void (provider === "yike" ? handleFetchYikeAndImport() : handleFetchFoxAndImport())} disabled={provider === "yike" ? !canFetchYike : !canFetchFox}>
+      <button data-testid="provider-fetch-import" onClick={() => void (provider === "yike" ? handleFetchYikeAndImport() : handleFetchFoxAndImport())} disabled={provider === "yike" ? !canFetchYike : !canFetchFox}>
         Fetch &amp; import
       </button>
       <p className="provider-status" title={statuses.fetch}>{statuses.fetch}</p>
       <label className="provider-payload-label">
         <span>Payload / SGF</span>
-        <textarea
-          className="provider-payload"
+          <textarea
+            data-testid="provider-payload-textarea"
+            className="provider-payload"
           value={payload}
           disabled={disabled}
           spellCheck={false}
@@ -268,7 +270,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           }}
         />
       </label>
-      <button onClick={() => void handleImport()} disabled={!canImport}>Import pasted payload</button>
+      <button data-testid="provider-import-payload" onClick={() => void handleImport()} disabled={!canImport}>Import pasted payload</button>
       <p className="provider-status" title={statuses.import}>{statuses.import}</p>
       <WarningList label="Provider warnings" warnings={providerWarnings} />
 
@@ -280,14 +282,15 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         <div className="provider-grid">
           <label>
             <span>Endpoint</span>
-            <input
-              value={readboardEndpoint}
+              <input
+                data-testid="readboard-endpoint-input"
+                value={readboardEndpoint}
               disabled={disabled}
               placeholder="Optional sidecar endpoint"
               onChange={(event) => setReadboardEndpoint(event.target.value)}
             />
           </label>
-          <button onClick={() => void handleReadboardProbe()} disabled={!canProbeReadboard}>Probe</button>
+            <button data-testid="readboard-probe" onClick={() => void handleReadboardProbe()} disabled={!canProbeReadboard}>Probe</button>
         </div>
         {readboardProbeResult ? (
           <dl className="provider-preview">
@@ -312,8 +315,9 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         <WarningList label="Readboard probe warnings" warnings={readboardProbeResult?.warnings ?? []} />
         <label className="provider-payload-label">
           <span>Protocol preview line</span>
-          <textarea
-            className="provider-payload provider-readboard-line"
+            <textarea
+              data-testid="readboard-protocol-textarea"
+              className="provider-payload provider-readboard-line"
             value={readboardProtocolLine}
             disabled={disabled}
             spellCheck={false}
@@ -323,8 +327,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           />
         </label>
         <div className="provider-grid">
-          <button onClick={() => void handleReadboardSync()} disabled={!canSyncReadboard}>Preview snapshot</button>
-          <button onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import snapshot</button>
+            <button data-testid="readboard-preview-snapshot" onClick={() => void handleReadboardSync()} disabled={!canSyncReadboard}>Preview snapshot</button>
+            <button data-testid="readboard-import-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import snapshot</button>
         </div>
         <p className="provider-status" title={statuses.readboardSync}>{statuses.readboardSync}</p>
         {readboardSyncResult ? (

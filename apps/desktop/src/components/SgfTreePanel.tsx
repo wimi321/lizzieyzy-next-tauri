@@ -164,7 +164,7 @@ export function SgfTreePanel({
   const status = getPanelStatus({ tree, isLoading, parseError });
 
   return (
-    <aside className="sgf-tree-panel" aria-label="SGF tree and comments">
+    <aside className="sgf-tree-panel" aria-label="SGF tree and comments" data-testid="sgf-tree-panel">
       <header className="sgf-tree-header">
         <div>
           <h2>SGF Tree</h2>
@@ -173,10 +173,10 @@ export function SgfTreePanel({
         {selectedNode ? <strong title={selectedNode.id}>{formatNodeMove(selectedNode, boardSize)}</strong> : <strong>No node</strong>}
       </header>
 
-      {status ? <div className={`sgf-tree-state ${status.kind}`} role={status.kind === "sgf-tree-error" ? "alert" : "status"}>
+      {status ? <div className={`sgf-tree-state ${status.kind}`} role={status.kind === "sgf-tree-error" ? "alert" : "status"} data-testid="sgf-tree-state">
         <strong>{status.title}</strong>
         <span>{status.message}</span>
-      </div> : <ol className="sgf-tree-list">
+      </div> : <ol className="sgf-tree-list" data-testid="sgf-tree-list">
         {rows.map(({ node, depth, isOrphan }) => {
           const isSelected = node.id === selectedNodeId;
           const isCurrentMove = node.move_number === currentMove;
@@ -184,11 +184,16 @@ export function SgfTreePanel({
           return (
             <li key={node.id} className={node.is_mainline ? "sgf-tree-mainline" : "sgf-tree-variation"} style={style}>
               <button
-                type="button"
-                className={`sgf-tree-node${isSelected ? " is-selected" : ""}${isCurrentMove ? " is-current-move" : ""}`}
-                aria-current={isSelected ? "true" : undefined}
-                onClick={() => onSelectNode(node.id)}
-              >
+                  type="button"
+                  className={`sgf-tree-node${isSelected ? " is-selected" : ""}${isCurrentMove ? " is-current-move" : ""}`}
+                  aria-current={isSelected ? "true" : undefined}
+                  data-testid="sgf-tree-node"
+                  data-sgf-node-id={node.id}
+                  data-sgf-move-number={node.move_number ?? ""}
+                  data-sgf-variation-index={node.variation_index}
+                  data-sgf-mainline={node.is_mainline ? "true" : "false"}
+                  onClick={() => onSelectNode(node.id)}
+                >
                 <span className="sgf-tree-rail" aria-hidden="true" />
                 <span className={`sgf-tree-stone ${node.color ?? "root"}`} aria-hidden="true">{colorInitial(node.color)}</span>
                 <span className="sgf-tree-move">{formatNodeMove(node, boardSize)}</span>
@@ -211,24 +216,26 @@ export function SgfTreePanel({
           </div>
           <div className="sgf-node-actions" aria-label="Selected node actions">
             <button
-              type="button"
-              className="sgf-reorder-node-button"
-              onClick={() => handleMoveSelectedNode(-1)}
+                type="button"
+                className="sgf-reorder-node-button"
+                data-testid="sgf-node-move-up"
+                onClick={() => handleMoveSelectedNode(-1)}
               disabled={!canMoveSelectedNodeUp}
               title={siblingState.help}
             >
               Move Up
             </button>
             <button
-              type="button"
-              className="sgf-reorder-node-button"
-              onClick={() => handleMoveSelectedNode(1)}
+                type="button"
+                className="sgf-reorder-node-button"
+                data-testid="sgf-node-move-down"
+                onClick={() => handleMoveSelectedNode(1)}
               disabled={!canMoveSelectedNodeDown}
               title={siblingState.help}
             >
               Move Down
             </button>
-            <button type="button" className="sgf-delete-node-button" onClick={handleDeleteNode} disabled={!canDeleteSelectedNode}>
+              <button type="button" className="sgf-delete-node-button" data-testid="sgf-node-delete" onClick={handleDeleteNode} disabled={!canDeleteSelectedNode}>
               {isNodeDeleting ? "Deleting..." : "Delete Node"}
             </button>
           </div>
@@ -253,9 +260,10 @@ export function SgfTreePanel({
           </div>
           <div className="sgf-node-actions" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button
-              type="button"
-              className="sgf-reorder-node-button"
-              onClick={() => handleMoveEditModeChange("append")}
+                type="button"
+                className="sgf-reorder-node-button"
+                data-testid="sgf-tree-mode-append"
+                onClick={() => handleMoveEditModeChange("append")}
               disabled={!canChangeMoveEditMode}
               aria-pressed={moveEditMode === "append"}
               title={canChangeMoveEditMode ? "Append mode" : "Move mode is unavailable."}
@@ -264,9 +272,10 @@ export function SgfTreePanel({
               Append
             </button>
             <button
-              type="button"
-              className="sgf-reorder-node-button"
-              onClick={() => handleMoveEditModeChange("edit")}
+                type="button"
+                className="sgf-reorder-node-button"
+                data-testid="sgf-tree-mode-edit"
+                onClick={() => handleMoveEditModeChange("edit")}
               disabled={!canUseEditMode}
               aria-pressed={moveEditMode === "edit"}
               title={canEditSelectedMove ? "Edit selected move" : moveEditState.help}
@@ -275,9 +284,10 @@ export function SgfTreePanel({
               Edit selected
             </button>
             <button
-              type="button"
-              className="sgf-reorder-node-button"
-              onClick={handleEditSelectedMovePass}
+                type="button"
+                className="sgf-reorder-node-button"
+                data-testid="sgf-tree-edit-pass"
+                onClick={handleEditSelectedMovePass}
               disabled={!canPassSelectedMove}
               title={canPassSelectedMove ? "Change selected move to pass" : "Available in Edit selected mode."}
             >
@@ -286,8 +296,9 @@ export function SgfTreePanel({
           </div>
         </div>
         <p className="sgf-variation-order-note">{siblingState.label}</p>
-        <textarea
-          value={draftValue}
+          <textarea
+            data-testid="sgf-comment-textarea"
+            value={draftValue}
           onChange={(event) => handleDraftChange(event.target.value)}
           disabled={!selectedNode || isLoading || commentReadOnly}
           spellCheck={false}
@@ -295,7 +306,7 @@ export function SgfTreePanel({
           placeholder={selectedNode ? "No comment for this node." : "Select a node to edit its comment."}
         />
         {commentNote ? <p className="sgf-comment-note">{commentNote}</p> : null}
-        <button type="button" onClick={handleSaveComment} disabled={!selectedNode || isLoading || commentReadOnly || isCommentSaving || draftValue === selectedComment}>
+          <button type="button" data-testid="sgf-comment-save" onClick={handleSaveComment} disabled={!selectedNode || isLoading || commentReadOnly || isCommentSaving || draftValue === selectedComment}>
           {isCommentSaving ? "Saving..." : commentActionLabel}
         </button>
       </section>
@@ -308,7 +319,7 @@ export function SgfTreePanel({
         onSaveAnnotations={onSaveAnnotations}
       />
 
-      <section className="sgf-properties-editor" aria-label="SGF node properties">
+      <section className="sgf-properties-editor" aria-label="SGF node properties" data-testid="sgf-properties-editor">
         <div className="sgf-properties-header">
           <div>
             <h3>Node details</h3>
@@ -322,8 +333,9 @@ export function SgfTreePanel({
               <label key={field.key} className="sgf-property-field">
                 <span>{field.label}</span>
                 {field.multiline ? (
-                  <textarea
-                    value={value}
+                    <textarea
+                      data-testid={`sgf-property-${field.key.toLowerCase()}`}
+                      value={value}
                     onChange={(event) => handlePropertyDraftChange(field.key, event.target.value)}
                     disabled={!selectedNode || isLoading || isPropertySaving || !onSaveProperties}
                     spellCheck={false}
@@ -331,8 +343,9 @@ export function SgfTreePanel({
                     placeholder={field.placeholder}
                   />
                 ) : (
-                  <input
-                    value={value}
+                    <input
+                      data-testid={`sgf-property-${field.key.toLowerCase()}`}
+                      value={value}
                     onChange={(event) => handlePropertyDraftChange(field.key, event.target.value)}
                     disabled={!selectedNode || isLoading || isPropertySaving || !onSaveProperties}
                     spellCheck={false}
@@ -345,8 +358,9 @@ export function SgfTreePanel({
           })}
         </div>
         <p className="sgf-properties-note">Markup fields accept comma or line separated SGF values. Empty fields delete that property.</p>
-        <button
-          type="button"
+          <button
+            type="button"
+            data-testid="sgf-properties-save"
           onClick={handleSaveProperties}
           disabled={!selectedNode || isLoading || isPropertySaving || !onSaveProperties || propertyUpdates.length === 0}
         >

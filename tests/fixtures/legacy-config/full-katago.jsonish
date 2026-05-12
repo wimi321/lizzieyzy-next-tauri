@@ -1,0 +1,18 @@
+// Representative JSON-ish Lizzie/KataGo config with comments and trailing commas.
+{
+  "preferences": {
+    "showCandidates": false,
+    "candidateLimit": 12,
+    "showOwnership": true,
+    "showPolicy": true,
+    "theme": "high-contrast",
+    "maxVisits": 1600,
+  },
+  "katago": {
+    "command": "/opt/katago/bin/katago",
+    "model": "/opt/katago/models/kata1.bin.gz",
+    "config": "/opt/katago/configs/analysis.cfg",
+    "unusedLegacyThreadCount": 8,
+  },
+}
+

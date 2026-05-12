@@ -1,0 +1,12 @@
+{
+  "ui": {
+    "showCandidates": "false",
+    "candidateLimit": "9",
+    "showOwnership": "yes",
+    "showPolicy": "no",
+    "theme": "classic",
+    "defaultMaxVisits": "800",
+    "legacyCoordinates": "A1"
+  }
+}
+

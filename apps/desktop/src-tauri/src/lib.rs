@@ -4284,6 +4284,15 @@ mod tests {
         std::env::temp_dir().join(format!("lizzieyzy-{name}-{}", Uuid::new_v4()))
     }
 
+    fn legacy_config_fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join("tests")
+            .join("fixtures")
+            .join("legacy-config")
+            .join(name)
+    }
+
     fn runtime_smoke_report_temp_path(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join(format!("lizzieyzy-runtime-smoke-{name}-{}", Uuid::new_v4()))
@@ -5127,6 +5136,347 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("no supported legacy config fields")));
+    }
+
+    #[test]
+    fn legacy_config_corpus_preview_parses_valid_fixtures_and_writes_nothing() {
+        let cases = [
+            ("minimal.properties", true, false, false),
+            ("full-katago.jsonish", true, true, true),
+            ("multi-engine-conflict.properties", false, true, false),
+            ("ui-review-preferences.json", true, false, true),
+            ("windows-path.properties", false, true, false),
+            ("macos-linux-unicode-space.json", false, true, false),
+            ("partial-invalid.properties", true, true, true),
+            ("unknown-deprecated.json", true, true, true),
+        ];
+
+        for (fixture, expect_preferences, expect_profiles, expect_warnings) in cases {
+            let path = legacy_config_fixture(fixture);
+            let before = fs::read_to_string(&path).unwrap();
+            let preview = preview_legacy_config_migration_from_path(&path).unwrap();
+            let after = fs::read_to_string(&path).unwrap();
+
+            assert_eq!(after, before, "preview must not modify fixture {fixture}");
+            assert_eq!(
+                preview.preferences.is_some(),
+                expect_preferences,
+                "{fixture} preference migration mismatch"
+            );
+            assert_eq!(
+                preview.engine_profiles.is_some(),
+                expect_profiles,
+                "{fixture} engine migration mismatch"
+            );
+            if expect_preferences || expect_profiles {
+                assert!(
+                    !preview.migrated_fields.is_empty(),
+                    "{fixture} should report migrated fields"
+                );
+            }
+            assert_eq!(
+                !preview.warnings.is_empty(),
+                expect_warnings,
+                "{fixture} warning expectation mismatch: {:?}",
+                preview.warnings
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_config_corpus_apply_preferences_only_preserves_next_settings() {
+        let dir = native_config_temp_dir("legacy-corpus-apply-preferences-only");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = legacy_config_fixture("ui-review-preferences.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        save_app_preferences_at_path(
+            &preferences_path,
+            AppPreferencesDto {
+                auto_load_cache: false,
+                auto_save_analysis: false,
+                review_mode: "deep".to_string(),
+                board_theme: "high-contrast".to_string(),
+                ..default_app_preferences()
+            },
+        )
+        .unwrap();
+
+        let applied =
+            apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path).unwrap();
+        let preferences =
+            serde_json::from_str::<AppPreferencesDto>(&fs::read_to_string(&preferences_path).unwrap())
+                .unwrap();
+        let profiles_exists = profiles_path.exists();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "applied");
+        assert!(applied.preferences_written);
+        assert!(!applied.engine_profiles_written);
+        assert_eq!(applied.written_path_labels, vec!["preferences"]);
+        assert!(applied.no_write_on_error);
+        assert!(!applied.rollback_performed);
+        assert_eq!(preferences.candidate_limit, 9);
+        assert!(!preferences.show_candidates);
+        assert!(!preferences.show_policy);
+        assert_eq!(preferences.default_max_visits, 800);
+        assert!(!preferences.auto_load_cache);
+        assert!(!preferences.auto_save_analysis);
+        assert_eq!(preferences.review_mode, "deep");
+        assert_eq!(preferences.board_theme, "classic");
+        assert!(!profiles_exists);
+    }
+
+    #[test]
+    fn legacy_config_corpus_apply_engine_only_preserves_existing_preferences_and_merges_profiles() {
+        let dir = native_config_temp_dir("legacy-corpus-apply-engine-only");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = legacy_config_fixture("macos-linux-unicode-space.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        save_app_preferences_at_path(
+            &preferences_path,
+            AppPreferencesDto {
+                show_candidates: false,
+                candidate_limit: 5,
+                auto_load_cache: false,
+                review_mode: "deep".to_string(),
+                ..default_app_preferences()
+            },
+        )
+        .unwrap();
+        save_engine_profiles_settings_at_path(
+            &profiles_path,
+            EngineProfilesSettingsDto {
+                selected_profile_id: "custom".to_string(),
+                profiles: vec![EngineProfileRecordDto {
+                    id: "custom".to_string(),
+                    profile: EngineProfileDto {
+                        name: "Custom GTP".to_string(),
+                        engine_path: "/custom/gtp".to_string(),
+                        model_path: None,
+                        config_path: None,
+                        working_dir: None,
+                        backend: EngineBackend::GenericGtp,
+                    },
+                    max_visits: 77,
+                }],
+            },
+        )
+        .unwrap();
+        let before_preferences = fs::read_to_string(&preferences_path).unwrap();
+
+        let applied =
+            apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path).unwrap();
+        let after_preferences = fs::read_to_string(&preferences_path).unwrap();
+        let profiles =
+            serde_json::from_str::<EngineProfilesSettingsDto>(&fs::read_to_string(&profiles_path).unwrap())
+                .unwrap();
+        let migrated = profiles
+            .profiles
+            .iter()
+            .find(|record| record.id == DEFAULT_ENGINE_PROFILE_ID)
+            .unwrap();
+        let custom = profiles
+            .profiles
+            .iter()
+            .find(|record| record.id == "custom")
+            .unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "applied");
+        assert!(!applied.preferences_written);
+        assert!(applied.engine_profiles_written);
+        assert_eq!(applied.written_path_labels, vec!["engineProfiles"]);
+        assert_eq!(after_preferences, before_preferences);
+        assert_eq!(migrated.profile.engine_path, "/Applications/KataGo Legacy/katago");
+        assert_eq!(
+            migrated.profile.model_path.as_deref(),
+            Some("/Users/shared/囲碁 models/kata model.bin.gz")
+        );
+        assert_eq!(
+            migrated.profile.config_path.as_deref(),
+            Some("/home/lizzie yzy/.katago/configs/分析.cfg")
+        );
+        assert_eq!(custom.profile.engine_path, "/custom/gtp");
+        assert_eq!(custom.max_visits, 77);
+    }
+
+    #[test]
+    fn legacy_config_corpus_duplicate_conflict_strategy_is_deterministic() {
+        let preview = preview_legacy_config_migration_from_path(&legacy_config_fixture(
+            "multi-engine-conflict.properties",
+        ))
+        .unwrap();
+        let profiles = preview.engine_profiles.unwrap();
+        let profile = &profiles.profiles[0];
+
+        assert_eq!(profile.profile.engine_path, "/legacy/generic-gtp");
+        assert_eq!(
+            profile.profile.model_path.as_deref(),
+            Some("/legacy/generic-model.bin.gz")
+        );
+        assert_eq!(
+            profile.profile.config_path.as_deref(),
+            Some("/configs/analysis.cfg")
+        );
+        assert_eq!(profile.max_visits, 2400);
+    }
+
+    #[test]
+    fn legacy_config_corpus_preserves_windows_paths_and_unicode_space_paths() {
+        let windows =
+            preview_legacy_config_migration_from_path(&legacy_config_fixture("windows-path.properties"))
+                .unwrap();
+        let windows_profile = &windows.engine_profiles.unwrap().profiles[0].profile;
+        assert_eq!(
+            windows_profile.engine_path,
+            "C:\\Program Files\\KataGo\\katago.exe"
+        );
+        assert_eq!(
+            windows_profile.model_path.as_deref(),
+            Some("D:\\KataGo Models\\kata1 b28.bin.gz")
+        );
+        assert_eq!(
+            windows_profile.config_path.as_deref(),
+            Some("D:\\KataGo Configs\\analysis example.cfg")
+        );
+
+        let unicode = preview_legacy_config_migration_from_path(&legacy_config_fixture(
+            "macos-linux-unicode-space.json",
+        ))
+        .unwrap();
+        let unicode_profile = &unicode.engine_profiles.unwrap().profiles[0].profile;
+        assert_eq!(
+            unicode_profile.model_path.as_deref(),
+            Some("/Users/shared/囲碁 models/kata model.bin.gz")
+        );
+        assert_eq!(
+            unicode_profile.config_path.as_deref(),
+            Some("/home/lizzie yzy/.katago/configs/分析.cfg")
+        );
+    }
+
+    #[test]
+    fn legacy_config_corpus_partial_invalid_warns_and_valid_fields_migrate() {
+        let preview =
+            preview_legacy_config_migration_from_path(&legacy_config_fixture("partial-invalid.properties"))
+                .unwrap();
+        let preferences = preview.preferences.unwrap();
+        let profile = &preview.engine_profiles.unwrap().profiles[0].profile;
+
+        assert_eq!(preferences.candidate_limit, 11);
+        assert!(!preferences.show_policy);
+        assert_eq!(profile.engine_path, "/valid/katago");
+        assert_eq!(profile.model_path.as_deref(), Some("/valid/model.bin.gz"));
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("showCandidates value was not a boolean")));
+    }
+
+    #[test]
+    fn legacy_config_corpus_invalid_fixture_causes_no_write_failed_apply() {
+        let dir = native_config_temp_dir("legacy-corpus-invalid-no-write");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = legacy_config_fixture("malformed-json.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        save_app_preferences_at_path(
+            &preferences_path,
+            AppPreferencesDto {
+                show_candidates: false,
+                candidate_limit: 4,
+                ..default_app_preferences()
+            },
+        )
+        .unwrap();
+        let before_preferences = fs::read_to_string(&preferences_path).unwrap();
+
+        let applied =
+            apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path).unwrap();
+        let after_preferences = fs::read_to_string(&preferences_path).unwrap();
+        let profiles_exists = profiles_path.exists();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "failed");
+        assert!(applied.no_write_on_error);
+        assert!(!applied.rollback_performed);
+        assert!(applied.rollback_succeeded);
+        assert!(applied.rollback_paths.is_empty());
+        assert!(applied.rollback_errors.is_empty());
+        assert!(applied.written_path_labels.is_empty());
+        assert!(applied
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no writes"));
+        assert_eq!(after_preferences, before_preferences);
+        assert!(!profiles_exists);
+    }
+
+    #[test]
+    fn legacy_config_corpus_unsupported_and_deprecated_keys_warn() {
+        let preview =
+            preview_legacy_config_migration_from_path(&legacy_config_fixture("unknown-deprecated.json"))
+                .unwrap();
+
+        assert!(preview.preferences.is_some());
+        assert!(preview.engine_profiles.is_some());
+        for expected in [
+            "deprecatedLeelaZeroTuning",
+            "recentFiles",
+            "katago.oldAnalysisThreads",
+            "ui.removedStoneOpacity",
+        ] {
+            assert!(
+                preview.warnings.iter().any(|warning| warning.contains(expected)),
+                "missing warning for {expected}: {:?}",
+                preview.warnings
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_config_corpus_profile_write_failure_rolls_back_preferences_metadata() {
+        let dir = native_config_temp_dir("legacy-corpus-rollback");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = legacy_config_fixture("full-katago.jsonish");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+
+        let applied = apply_legacy_config_migration_to_paths_with_writer(
+            &legacy_path,
+            &preferences_path,
+            &profiles_path,
+            |path, contents| {
+                if path == profiles_path {
+                    Err("injected profile write failure from corpus test".to_string())
+                } else {
+                    fs::write(path, contents)
+                        .map_err(|err| format!("failed to write {}: {err}", path.display()))
+                }
+            },
+        )
+        .unwrap();
+        let preferences_exists = preferences_path.exists();
+        let profiles_exists = profiles_path.exists();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "failed");
+        assert_eq!(applied.written_path_labels, vec!["preferences"]);
+        assert!(!applied.no_write_on_error);
+        assert!(applied.rollback_performed);
+        assert!(applied.rollback_succeeded);
+        assert_eq!(applied.rollback_paths, vec!["preferences"]);
+        assert!(applied.rollback_errors.is_empty());
+        assert!(applied
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("rollback_succeeded=true"));
+        assert!(!preferences_exists);
+        assert!(!profiles_exists);
     }
 
     #[test]

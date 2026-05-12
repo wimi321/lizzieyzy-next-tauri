@@ -57,6 +57,25 @@ class ValidateReleaseAssetsTests(unittest.TestCase):
             self.assertIn("contents: write", failures["release_workflow_dry_run"])
             self.assertIn("--no-bundle --ci --no-sign", failures["release_workflow_dry_run"])
 
+    def test_rejects_missing_windows_linux_smoke_collector(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._create_release_contract(root)
+            workflow = root / ".github/workflows/release-dry-run.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "scripts/smoke_windows_linux_installed_app.py",
+                    "scripts/other.py",
+                ),
+                encoding="utf-8",
+            )
+
+            results = validate_release_assets.ReleaseAssetValidator(root).run()
+
+            failures = {result.name: result.detail for result in results if not result.ok}
+            self.assertIn("release_workflow_dry_run", failures)
+            self.assertIn("smoke_windows_linux_installed_app.py", failures["release_workflow_dry_run"])
+
     def test_rejects_metadata_drift(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -155,6 +174,7 @@ class ValidateReleaseAssetsTests(unittest.TestCase):
               preflight:
                 steps:
                   - run: python scripts/validate_release_assets.py --verbose --summary-dir release-dry-run
+                  - run: sudo apt-get install -y --no-install-recommends xvfb xdotool wmctrl
                   - env:
                       MACOS_SIGNING_READY: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
                       WINDOWS_SIGNING_READY: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
@@ -163,6 +183,26 @@ class ValidateReleaseAssetsTests(unittest.TestCase):
                       echo "Tauri bundle mode: compile-only dry-run; no GitHub release is created"
                       echo "Signing/notarization/publish step: skipped by design for dry-run"
                   - run: npm run tauri:build -- --no-bundle --ci --no-sign
+                  - name: Linux unsigned installed-app smoke
+                    if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.run_tauri_build)
+                    shell: bash
+                    run: |
+                      mkdir -p release-dry-run
+                      xvfb-run -a python scripts/smoke_windows_linux_installed_app.py \\
+                        --platform linux \\
+                        --binary target/release/lizzieyzy-next-desktop \\
+                        --window-title "LizzieYzy Next" \\
+                        --evidence-out "release-dry-run/${RUNNER_OS}-installed-app-smoke.json"
+                  - name: Windows unsigned installed-app smoke
+                    if: runner.os == 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.run_tauri_build)
+                    shell: bash
+                    run: |
+                      mkdir -p release-dry-run
+                      python scripts/smoke_windows_linux_installed_app.py \\
+                        --platform windows \\
+                        --binary target/release/lizzieyzy-next-desktop.exe \\
+                        --window-title "LizzieYzy Next" \\
+                        --evidence-out "release-dry-run/${RUNNER_OS}-installed-app-smoke.json"
                   - uses: actions/upload-artifact@v4
                     with:
                       name: release-dry-run-${{ runner.os }}

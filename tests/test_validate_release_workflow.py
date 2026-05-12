@@ -125,6 +125,22 @@ class ValidateReleaseWorkflowTests(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, r"--no-bundle --ci --no-sign"):
                 validate_release_workflow.validate(root)
 
+    def test_rejects_missing_windows_linux_installed_app_smoke(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_release_workflow_contract(root)
+            dry_run = root / ".github/workflows/release-dry-run.yml"
+            dry_run.write_text(
+                dry_run.read_text(encoding="utf-8").replace(
+                    "scripts/smoke_windows_linux_installed_app.py",
+                    "scripts/other.py",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AssertionError, "smoke_windows_linux_installed_app.py"):
+                validate_release_workflow.validate(root)
+
 
 def create_release_workflow_contract(root: Path) -> None:
     write(
@@ -203,6 +219,7 @@ def create_release_workflow_contract(root: Path) -> None:
               - uses: actions/setup-node@v6
               - uses: actions/setup-python@v6
               - run: python scripts/validate_release_assets.py --verbose --summary-dir release-dry-run
+              - run: sudo apt-get install -y --no-install-recommends xvfb xdotool wmctrl
               - env:
                   MACOS_SIGNING_READY: ${{ secrets.APPLE_CERTIFICATE != '' }}
                   WINDOWS_SIGNING_READY: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
@@ -211,6 +228,26 @@ def create_release_workflow_contract(root: Path) -> None:
                   echo "Tauri bundle mode: compile-only dry-run; no GitHub release is created"
                   echo "Signing/notarization/publish step: skipped by design for dry-run"
               - run: npm run tauri:build -- --no-bundle --ci --no-sign
+              - name: Linux unsigned installed-app smoke
+                if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.run_tauri_build)
+                shell: bash
+                run: |
+                  mkdir -p release-dry-run
+                  xvfb-run -a python scripts/smoke_windows_linux_installed_app.py \\
+                    --platform linux \\
+                    --binary target/release/lizzieyzy-next-desktop \\
+                    --window-title "LizzieYzy Next" \\
+                    --evidence-out "release-dry-run/${RUNNER_OS}-installed-app-smoke.json"
+              - name: Windows unsigned installed-app smoke
+                if: runner.os == 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.run_tauri_build)
+                shell: bash
+                run: |
+                  mkdir -p release-dry-run
+                  python scripts/smoke_windows_linux_installed_app.py \\
+                    --platform windows \\
+                    --binary target/release/lizzieyzy-next-desktop.exe \\
+                    --window-title "LizzieYzy Next" \\
+                    --evidence-out "release-dry-run/${RUNNER_OS}-installed-app-smoke.json"
               - uses: actions/upload-artifact@v7
                 with:
                   name: release-dry-run-${{ runner.os }}

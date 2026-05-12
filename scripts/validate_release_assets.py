@@ -188,6 +188,20 @@ class ReleaseAssetValidator:
             '"v*"',
             "python scripts/validate_release_assets.py --verbose",
             "npm run tauri:build -- --no-bundle --ci --no-sign",
+            "xvfb",
+            "xdotool",
+            "wmctrl",
+            "runner.os == 'Linux'",
+            "runner.os == 'Windows'",
+            "github.event_name != 'workflow_dispatch' || inputs.run_tauri_build",
+            "shell: bash",
+            "python scripts/smoke_windows_linux_installed_app.py",
+            "--platform linux",
+            "--platform windows",
+            "--binary target/release/lizzieyzy-next-desktop",
+            "--binary target/release/lizzieyzy-next-desktop.exe",
+            "--window-title \"LizzieYzy Next\"",
+            "--evidence-out \"release-dry-run/${RUNNER_OS}-installed-app-smoke.json\"",
         ]:
             if token not in workflow:
                 errors.append(f"workflow missing {token!r}")

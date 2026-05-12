@@ -79,7 +79,10 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            xvfb \
+            xdotool \
+            wmctrl
 
       - name: Print toolchain versions
         run: |
@@ -130,6 +133,28 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.run_tauri_build
         working-directory: apps/desktop
         run: npm run tauri:build -- --no-bundle --ci --no-sign
+
+      - name: Linux unsigned installed-app smoke
+        if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.run_tauri_build)
+        shell: bash
+        run: |
+          mkdir -p release-dry-run
+          xvfb-run -a python scripts/smoke_windows_linux_installed_app.py \
+            --platform linux \
+            --binary target/release/lizzieyzy-next-desktop \
+            --window-title "LizzieYzy Next" \
+            --evidence-out "release-dry-run/${RUNNER_OS}-installed-app-smoke.json"
+
+      - name: Windows unsigned installed-app smoke
+        if: runner.os == 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.run_tauri_build)
+        shell: bash
+        run: |
+          mkdir -p release-dry-run
+          python scripts/smoke_windows_linux_installed_app.py \
+            --platform windows \
+            --binary target/release/lizzieyzy-next-desktop.exe \
+            --window-title "LizzieYzy Next" \
+            --evidence-out "release-dry-run/${RUNNER_OS}-installed-app-smoke.json"
 
       - name: Upload dry-run artifacts
         if: github.event_name != 'workflow_dispatch' || inputs.upload_artifacts

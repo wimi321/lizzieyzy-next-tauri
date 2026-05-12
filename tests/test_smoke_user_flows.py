@@ -55,6 +55,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("native_menu_shortcut_smoke", pending_names)
             self.assertIn("tauri_window_runtime_smoke", pending_names)
             self.assertIn("tauri_webview_dom_click_smoke", pending_names)
+            self.assertIn("legacy_layout_parity_smoke", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
@@ -485,6 +486,122 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("tauri_webview_dom_click_smoke", failures)
             self.assertIn("tauri_webview_dom_click_smoke", pending)
             self.assertIn(expected_detail, pending["tauri_webview_dom_click_smoke"])
+
+    def test_valid_legacy_layout_parity_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_legacy_layout_parity_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("legacy_layout_parity_smoke", pass_names)
+            self.assertNotIn("legacy_layout_parity_smoke", pending_names)
+
+    def test_runner_shaped_legacy_layout_parity_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_json(
+                root / smoke_user_flows.LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE,
+                runner_shaped_legacy_layout_parity_evidence(),
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("legacy_layout_parity_smoke", pass_names)
+            self.assertNotIn("legacy_layout_parity_smoke", pending_names)
+
+    def test_legacy_layout_parity_requires_required_screenshots(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            evidence["screenshots"] = screenshots[:-1]
+
+        self.assert_invalid_legacy_layout_parity_pending(
+            mutate,
+            "screenshots missing engine/preferences",
+        )
+
+    def test_legacy_layout_parity_rejects_local_absolute_screenshot_path(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["path"] = "/Users/haoc/layout-default.png"
+
+        self.assert_invalid_legacy_layout_parity_pending(
+            mutate,
+            "screenshots[0].path must not be a local absolute path",
+        )
+
+    def test_legacy_layout_parity_requires_three_viewports(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["viewports"] = [{"width": 1280, "height": 840}, {"width": 900, "height": 840}]
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            for screenshot in screenshots:
+                assert isinstance(screenshot, dict)
+                screenshot.pop("viewport", None)
+
+        self.assert_invalid_legacy_layout_parity_pending(
+            mutate,
+            "viewports must include at least three sizes",
+        )
+
+    def test_legacy_layout_parity_requires_visible_targets(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            assertions = evidence["visibleAssertions"]
+            assert isinstance(assertions, list)
+            evidence["visibleAssertions"] = [assertion for assertion in assertions if "provider" not in str(assertion).lower()]
+
+        self.assert_invalid_legacy_layout_parity_pending(
+            mutate,
+            "visibleAssertions missing provider/readboard",
+        )
+
+    def test_legacy_layout_parity_rejects_critical_overlap(self) -> None:
+        self.assert_invalid_legacy_layout_parity_pending(
+            lambda evidence: evidence.__setitem__("criticalOverlapDetected", True),
+            "criticalOverlapDetected must not be true",
+        )
+
+    def test_legacy_layout_parity_rejects_overclaim_true(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullLegacyUiParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["pixelPerfectParity"] = True
+
+        self.assert_invalid_legacy_layout_parity_pending(
+            mutate,
+            "fullLegacyUiParity must be false",
+        )
+
+    def assert_invalid_legacy_layout_parity_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_legacy_layout_parity_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("legacy_layout_parity_smoke", failures)
+            self.assertIn("legacy_layout_parity_smoke", pending)
+            self.assertIn(expected_detail, pending["legacy_layout_parity_smoke"])
 
     def test_valid_installed_macos_app_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2424,6 +2541,13 @@ def write_valid_tauri_webview_dom_click_evidence(root: Path) -> None:
     )
 
 
+def write_valid_legacy_layout_parity_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.LEGACY_LAYOUT_PARITY_SMOKE_EVIDENCE,
+        valid_legacy_layout_parity_evidence(),
+    )
+
+
 def write_valid_installed_macos_app_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.INSTALLED_MACOS_APP_SMOKE_EVIDENCE,
@@ -3648,6 +3772,178 @@ def valid_tauri_webview_dom_click_evidence() -> dict[str, object]:
             {"name": "scope_boundaries_recorded", "status": "pass", "details": boundaries},
         ],
         "boundaries": boundaries,
+    }
+
+
+def valid_legacy_layout_parity_evidence() -> dict[str, object]:
+    viewports = [
+        {"name": "default", "width": 1280, "height": 840},
+        {"name": "narrow desktop", "width": 900, "height": 840},
+        {"name": "short window", "width": 1280, "height": 620},
+    ]
+    screenshots = [
+        {
+            "label": "default review 1280x840",
+            "path": "docs/qa/screenshots/layout-default-review.png",
+            "sha256": "1" * 64,
+            "viewport": {"width": 1280, "height": 840},
+        },
+        {
+            "label": "SGF editing narrow desktop",
+            "path": "docs/qa/screenshots/layout-sgf-editing.png",
+            "sha256": "2" * 64,
+            "viewport": {"width": 900, "height": 840},
+        },
+        {
+            "label": "KataGo analysis short window",
+            "path": "docs/qa/screenshots/layout-katago-analysis.png",
+            "sha256": "3" * 64,
+            "viewport": {"width": 1280, "height": 620},
+        },
+        {
+            "label": "provider/readboard layout",
+            "path": "docs/qa/screenshots/layout-provider-readboard.png",
+            "sha256": "4" * 64,
+            "viewport": {"width": 1280, "height": 840},
+        },
+        {
+            "label": "engine/preferences layout",
+            "path": "docs/qa/screenshots/layout-engine-preferences.png",
+            "sha256": "5" * 64,
+            "viewport": {"width": 900, "height": 840},
+        },
+    ]
+    visible_assertions = [
+        {"label": "board surface", "selector": "[data-testid='go-board']", "visible": True, "status": "pass"},
+        {"label": "toolbar/menu controls", "selector": "[data-testid='legacy-menubar']", "visible": True, "status": "pass"},
+        {"label": "SGF tree", "selector": "[data-testid='sgf-tree-panel']", "visible": True, "status": "pass"},
+        {"label": "annotation comment properties editor", "selector": ".sgf-annotation-editor", "visible": True, "status": "pass"},
+        {"label": "analysis panel", "selector": "[data-testid='legacy-analysis-pane']", "visible": True, "status": "pass"},
+        {"label": "winrate chart", "selector": "[data-testid='winrate-chart']", "visible": True, "status": "pass"},
+        {"label": "candidates/PV list", "selector": "[data-testid='candidate-list']", "visible": True, "status": "pass"},
+        {"label": "cache/status", "selector": "[data-testid='analysis-cache-status']", "visible": True, "status": "pass"},
+        {"label": "provider/readboard panel", "selector": "[data-testid='provider-panel']", "visible": True, "status": "pass"},
+        {"label": "engine/preferences panel", "selector": "[data-testid='engine-setup-panel']", "visible": True, "status": "pass"},
+    ]
+    boundaries = {
+        "pixelPerfectParity": False,
+        "fullLegacyUiParity": False,
+        "fullShortcutParity": False,
+        "releaseParity": False,
+        "ocrCaptureParity": False,
+        "fullLegacyParity": False,
+    }
+    return {
+        "schema": smoke_user_flows.LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA,
+        "name": "legacy_layout_parity_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "screenshots": screenshots,
+        "viewports": viewports,
+        "visibleAssertions": visible_assertions,
+        "criticalOverlapDetected": False,
+        "criticalClippingDetected": False,
+        **boundaries,
+        "boundaries": boundaries,
+        "checks": [
+            {
+                "name": "overlap_clipping",
+                "status": "pass",
+                "details": {"criticalOverlapDetected": False, "criticalClippingDetected": False},
+            }
+        ],
+    }
+
+
+def runner_shaped_legacy_layout_parity_evidence() -> dict[str, object]:
+    boundaries = {
+        "pixelPerfectParity": False,
+        "fullLegacyUiParity": False,
+        "fullShortcutParity": False,
+        "releaseParity": False,
+        "ocrCaptureParity": False,
+        "fullLegacyParity": False,
+    }
+    viewport_matrix = [
+        {"name": "desktop-1280x840", "width": 1280, "height": 840},
+        {"name": "narrow-desktop-960x840", "width": 960, "height": 840},
+        {"name": "short-window-1280x620", "width": 1280, "height": 620},
+    ]
+    scenarios = [
+        ("default_review_layout", "Default review layout", ["board surface", "toolbar/menu controls", "analysis panel", "winrate chart"]),
+        ("sgf_editing_layout", "SGF editing layout", ["SGF tree", "annotation comment properties editor"]),
+        ("katago_analysis_layout", "KataGo analysis layout", ["candidates/PV list", "cache/status"]),
+        ("provider_readboard_layout", "Provider/readboard layout", ["provider/readboard panel"]),
+        ("engine_preferences_layout", "Engine/preferences layout", ["engine/preferences panel"]),
+    ]
+    screenshots: list[dict[str, object]] = []
+    layouts: list[dict[str, object]] = []
+    visible_assertions: list[dict[str, object]] = []
+    sha_counter = 1
+    for viewport in viewport_matrix:
+        for scenario_name, scenario_label, labels in scenarios:
+            path = f"docs/qa/screenshots/legacy-layout-{viewport['name']}-{scenario_name.replace('_', '-')}.png"
+            screenshot = {
+                "bytes": 12345,
+                "label": f"{scenario_label} {viewport['name']}",
+                "layout": scenario_name,
+                "name": scenario_name,
+                "path": path,
+                "sha256": f"{sha_counter:x}" * 64,
+                "viewport": viewport,
+            }
+            sha_counter += 1
+            assertions = [
+                {
+                    "label": f"{scenario_label} {label}",
+                    "selector": f"[data-testid='{label.replace('/', '-').replace(' ', '-')}']",
+                    "visible": True,
+                    "status": "pass",
+                }
+                for label in labels
+            ]
+            screenshots.append(screenshot)
+            visible_assertions.extend(assertions)
+            layouts.append(
+                {
+                    "name": scenario_name,
+                    "label": scenario_label,
+                    "status": "pass",
+                    "failures": [],
+                    "screenshot": path,
+                    "viewport": viewport,
+                    "visibleAssertions": assertions,
+                    "overflowClippingChecks": {
+                        "bodyHorizontalOverflow": False,
+                        "checks": [{"selector": "[data-testid='legacy-shell']", "visible": True, "clipped": False}],
+                    },
+                }
+            )
+    return {
+        "schema": smoke_user_flows.LEGACY_LAYOUT_PARITY_SMOKE_SCHEMA,
+        "name": "legacy_layout_parity_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "vite_playwright_layout_screenshots",
+        "browserRenderedDomObserved": True,
+        "screenshotObserved": True,
+        "criticalOverlap": False,
+        "criticalClipping": False,
+        "viewportMatrix": viewport_matrix,
+        "layouts": layouts,
+        "screenshots": screenshots,
+        "visibleAssertions": visible_assertions,
+        "boundaries": boundaries,
+        "checks": [
+            {"name": scenario_name, "status": "pass", "details": {"viewportsObserved": 3}}
+            for scenario_name, _, _ in scenarios
+        ]
+        + [
+            {"name": "screenshots_recorded", "status": "pass", "details": {"count": len(screenshots)}},
+            {"name": "overflow_clipping_checks_recorded", "status": "pass", "details": {"layouts": len(layouts)}},
+            {"name": "scope_boundaries_recorded", "status": "pass", "details": boundaries},
+        ],
+        "failures": [],
     }
 
 

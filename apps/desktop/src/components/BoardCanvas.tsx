@@ -109,14 +109,14 @@ export function BoardCanvas({ position, analysis, selectedCandidateIndex, onPlay
     }
   }, [position, analysis, selectedCandidateIndex, effectiveOverlayMode, hasOwnership, hasPolicy, policyPoints]);
 
-  return <div className="board-canvas" style={{ position: "relative", overflow: "hidden" }}>
+  return <div className="board-canvas">
     <canvas
       ref={canvasRef}
       onClick={handleCanvasClick}
       style={{ display: "block", width: "100%", height: "100%", cursor: canEdit && onPlayPoint ? "crosshair" : "default" }}
       aria-label={canEdit && editColor ? `Go board, editing ${editColor} moves` : "Go board"}
     />
-    <div style={{ position: "absolute", left: 10, top: 10, display: "flex", gap: 6, padding: 4, borderRadius: 6, background: "rgba(255,255,255,.82)", boxShadow: "0 4px 14px rgba(15,23,42,.14)" }} aria-label="Board overlay mode">
+    <div className="board-overlay-toggle" aria-label="Board overlay mode">
       <OverlayButton label="Candidates" active={effectiveOverlayMode === "candidates"} onClick={() => setOverlayMode("candidates")} />
       <OverlayButton label="Ownership" active={effectiveOverlayMode === "ownership"} disabled={!hasOwnership} onClick={() => setOverlayMode("ownership")} />
       <OverlayButton label="Policy" active={effectiveOverlayMode === "policy"} disabled={!hasPolicy} onClick={() => setOverlayMode("policy")} />
@@ -153,16 +153,7 @@ function OverlayButton({ label, active, disabled, onClick }: { label: string; ac
     disabled={disabled}
     aria-pressed={active}
     onClick={onClick}
-    style={{
-      border: "1px solid rgba(15,23,42,.18)",
-      borderRadius: 5,
-      background: active ? "#0f172a" : "rgba(255,255,255,.88)",
-      color: active ? "#fff" : disabled ? "rgba(15,23,42,.38)" : "#0f172a",
-      cursor: disabled ? "not-allowed" : "pointer",
-      font: "700 12px system-ui",
-      lineHeight: 1,
-      padding: "7px 8px"
-    }}
+    className="board-overlay-button"
   >{label}</button>;
 }
 

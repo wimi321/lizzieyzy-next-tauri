@@ -1,0 +1,4762 @@
+{
+  "boundaries": {
+    "fullLegacyParity": false,
+    "fullLegacyUiParity": false,
+    "fullShortcutParity": false,
+    "ocrCaptureParity": false,
+    "pixelPerfectParity": false,
+    "releaseParity": false
+  },
+  "browserRenderedDomObserved": true,
+  "checks": [
+    {
+      "details": {
+        "viewportsObserved": 3
+      },
+      "name": "default_review_layout",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "viewportsObserved": 3
+      },
+      "name": "sgf_editing_layout",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "viewportsObserved": 3
+      },
+      "name": "katago_analysis_layout",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "viewportsObserved": 3
+      },
+      "name": "provider_readboard_layout",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "viewportsObserved": 3
+      },
+      "name": "engine_preferences_layout",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "count": 15
+      },
+      "name": "screenshots_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "layouts": 15
+      },
+      "name": "overflow_clipping_checks_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "fullLegacyParity": false,
+        "fullLegacyUiParity": false,
+        "fullShortcutParity": false,
+        "ocrCaptureParity": false,
+        "pixelPerfectParity": false,
+        "releaseParity": false
+      },
+      "name": "scope_boundaries_recorded",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "vite_playwright_layout_screenshots",
+  "completedAt": "2026-05-12T08:41:38Z",
+  "criticalClipping": false,
+  "criticalOverlap": false,
+  "failures": [],
+  "layouts": [
+    {
+      "failures": [],
+      "label": "Default review layout",
+      "name": "default_review_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 840,
+              "width": 1280,
+              "x": 0,
+              "y": 0
+            },
+            "selector": "[data-testid=\"legacy-shell\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 25,
+              "width": 841,
+              "x": 201,
+              "y": 10
+            },
+            "selector": "[data-testid=\"legacy-menubar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 36,
+              "width": 1280,
+              "x": 0,
+              "y": 46
+            },
+            "selector": "[data-testid=\"legacy-toolbar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 521,
+              "width": 591,
+              "x": 8,
+              "y": 90
+            },
+            "selector": "[data-testid=\"legacy-board-pane\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 521,
+              "width": 665,
+              "x": 607,
+              "y": 90
+            },
+            "selector": "[data-testid=\"legacy-analysis-pane\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 96,
+              "width": 575,
+              "x": 16,
+              "y": 473
+            },
+            "selector": "[data-testid=\"winrate-chart\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 28,
+              "width": 1280,
+              "x": 0,
+              "y": 812
+            },
+            "selector": "[data-testid=\"legacy-statusbar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 840,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-desktop-1280x840-default-review-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-shell"
+          },
+          "className": "app-shell legacy-shell",
+          "label": "legacy shell",
+          "rect": {
+            "height": 840,
+            "width": 1280,
+            "x": 0,
+            "y": 0
+          },
+          "selector": "[data-testid=\"legacy-shell\"]",
+          "tagName": "main",
+          "textSnippet": "LizzieYzy NextReact review workspace fallbackFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEng",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-menubar"
+          },
+          "className": "legacy-menubar",
+          "label": "menu bar",
+          "rect": {
+            "height": 25,
+            "width": 841,
+            "x": 201,
+            "y": 10
+          },
+          "selector": "[data-testid=\"legacy-menubar\"]",
+          "tagName": "nav",
+          "textSnippet": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHel",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-toolbar"
+          },
+          "className": "legacy-toolbar",
+          "label": "toolbar",
+          "rect": {
+            "height": 36,
+            "width": 1280,
+            "x": 0,
+            "y": 46
+          },
+          "selector": "[data-testid=\"legacy-toolbar\"]",
+          "tagName": "section",
+          "textSnippet": "OpenSaveSave AsImportSampleParseReviewUntitled SGFSaved",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-board-pane"
+          },
+          "className": "left-pane legacy-board-pane",
+          "label": "board pane",
+          "rect": {
+            "height": 521,
+            "width": 591,
+            "x": 8,
+            "y": 90
+          },
+          "selector": "[data-testid=\"legacy-board-pane\"]",
+          "tagName": "div",
+          "textSnippet": "CandidatesOwnershipPolicyMove 06",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-analysis-pane"
+          },
+          "className": "legacy-right-pane",
+          "label": "analysis pane",
+          "rect": {
+            "height": 521,
+            "width": 665,
+            "x": 607,
+            "y": 90
+          },
+          "selector": "[data-testid=\"legacy-analysis-pane\"]",
+          "tagName": "div",
+          "textSnippet": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.R",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "idle",
+            "reviewSource": "none",
+            "testid": "winrate-chart"
+          },
+          "className": "winrate-chart",
+          "label": "winrate chart",
+          "rect": {
+            "height": 96,
+            "width": 575,
+            "x": 16,
+            "y": 473
+          },
+          "selector": "[data-testid=\"winrate-chart\"]",
+          "tagName": "canvas",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "backend-status",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-statusbar"
+          },
+          "className": "legacy-statusbar",
+          "label": "status bar",
+          "rect": {
+            "height": 28,
+            "width": 1280,
+            "x": 0,
+            "y": 812
+          },
+          "selector": "[data-testid=\"legacy-statusbar\"]",
+          "tagName": "footer",
+          "textSnippet": "Preview workspace ready. Parse the sample SGF or import a local game to start reviewing.",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "SGF editing layout",
+      "name": "sgf_editing_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 521,
+              "width": 341,
+              "x": 931,
+              "y": 90
+            },
+            "selector": "[data-testid=\"sgf-tree-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 110,
+              "width": 319,
+              "x": 942,
+              "y": 145
+            },
+            "selector": "[data-testid=\"sgf-tree-list\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 92,
+              "width": 319,
+              "x": 942,
+              "y": 445
+            },
+            "selector": "[data-testid=\"sgf-comment-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 278,
+              "width": 319,
+              "x": 942,
+              "y": 1270
+            },
+            "selector": "[data-testid=\"sgf-properties-editor\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 630,
+              "width": 319,
+              "x": 942,
+              "y": 632
+            },
+            "selector": "[data-testid=\"sgf-annotation-editor\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 110,
+              "width": 300,
+              "x": 297,
+              "y": 628
+            },
+            "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 840,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-desktop-1280x840-sgf-editing-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-tree-panel"
+          },
+          "className": "sgf-tree-panel",
+          "label": "SGF tree panel",
+          "rect": {
+            "height": 521,
+            "width": 341,
+            "x": 931,
+            "y": 90
+          },
+          "selector": "[data-testid=\"sgf-tree-panel\"]",
+          "tagName": "aside",
+          "textSnippet": "SGF Tree21 nodesRootRoot2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No not",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-tree-list"
+          },
+          "className": "sgf-tree-list",
+          "label": "SGF tree list",
+          "rect": {
+            "height": 110,
+            "width": 319,
+            "x": 942,
+            "y": 145
+          },
+          "selector": "[data-testid=\"sgf-tree-list\"]",
+          "tagName": "ol",
+          "textSnippet": "Root2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No noteMB9 B R14No noteMW1",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-comment-textarea"
+          },
+          "className": "",
+          "label": "SGF comment editor",
+          "rect": {
+            "height": 92,
+            "width": 319,
+            "x": 942,
+            "y": 445
+          },
+          "selector": "[data-testid=\"sgf-comment-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-properties-editor"
+          },
+          "className": "sgf-properties-editor",
+          "label": "SGF property editor",
+          "rect": {
+            "height": 278,
+            "width": 319,
+            "x": 942,
+            "y": 1270
+          },
+          "selector": "[data-testid=\"sgf-properties-editor\"]",
+          "tagName": "section",
+          "textSnippet": "Node detailsSGF properties for the selected nodePB blackPW whiteKM komiRE resultN node nameMarkup fields accept comma or line separated SGF values. Empty fields",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-annotation-editor"
+          },
+          "className": "sgf-annotation-editor",
+          "label": "SGF annotation editor",
+          "rect": {
+            "height": 630,
+            "width": 319,
+            "x": 942,
+            "y": 632
+          },
+          "selector": "[data-testid=\"sgf-annotation-editor\"]",
+          "tagName": "section",
+          "textSnippet": "AnnotationsTR SQ CR MA SL LB AR LN markup on the selected nodeTR TrianglesNo valuesAddClearSQ SquaresNo valuesAddClearCR CirclesNo valuesAddClearMA MarksNo valu",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-move-edit-panel"
+          },
+          "className": "sgf-edit-panel",
+          "label": "move edit panel",
+          "rect": {
+            "height": 110,
+            "width": 300,
+            "x": 297,
+            "y": 628
+          },
+          "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+          "tagName": "section",
+          "textSnippet": "Append moveBlack to playAppendEditBWPass",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "KataGo analysis layout",
+      "name": "katago_analysis_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 512,
+              "width": 316,
+              "x": 607,
+              "y": 98
+            },
+            "selector": "[data-testid=\"analysis-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 36,
+              "width": 298,
+              "x": 616,
+              "y": 141
+            },
+            "selector": "[data-testid=\"analysis-source-status\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 96,
+              "width": 575,
+              "x": 16,
+              "y": 473
+            },
+            "selector": "[data-testid=\"winrate-chart\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 444,
+              "width": 298,
+              "x": 616,
+              "y": 365
+            },
+            "selector": ".candidate-list",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 16,
+              "width": 284,
+              "x": 623,
+              "y": 392
+            },
+            "selector": ".candidate-pv",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 43,
+              "width": 231,
+              "x": 912,
+              "y": 5
+            },
+            "selector": "[data-testid=\"cache-status-badge\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 60,
+              "width": 370,
+              "x": 605,
+              "y": 1183
+            },
+            "selector": "[data-testid=\"katago-review-workflow-status\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 840,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-desktop-1280x840-katago-analysis-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "analysis-panel"
+          },
+          "className": "analysis-panel",
+          "label": "analysis panel",
+          "rect": {
+            "height": 512,
+            "width": 316,
+            "x": 607,
+            "y": 98
+          },
+          "selector": "[data-testid=\"analysis-panel\"]",
+          "tagName": "aside",
+          "textSnippet": "PositionReview data is shown from the current workspace state.Visits3,540Black winrate47.5%Score lead-0.7OwnershipnonePolicynoneCandidatesC22,178 visits46.6%PV ",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "analysis-source-status"
+          },
+          "className": "muted",
+          "label": "analysis source status",
+          "rect": {
+            "height": 36,
+            "width": 298,
+            "x": 616,
+            "y": 141
+          },
+          "selector": "[data-testid=\"analysis-source-status\"]",
+          "tagName": "p",
+          "textSnippet": "Review data is shown from the current workspace state.",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "winrate-chart"
+          },
+          "className": "winrate-chart",
+          "label": "winrate chart",
+          "rect": {
+            "height": 96,
+            "width": 575,
+            "x": 16,
+            "y": 473
+          },
+          "selector": "[data-testid=\"winrate-chart\"]",
+          "tagName": "canvas",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": null
+          },
+          "className": "candidate-list",
+          "label": "candidate list",
+          "rect": {
+            "height": 444,
+            "width": 298,
+            "x": 616,
+            "y": 365
+          },
+          "selector": ".candidate-list",
+          "tagName": "ol",
+          "textSnippet": "C22,178 visits46.6%PV C2K101,251 visits45.7%PV K10R18878 visits44.8%PV R18E7676 visits43.2%PV E7M15550 visits40.7%PV M15T4463 visits37.9%PV T4G12400 visits35.5%",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": null
+          },
+          "className": "candidate-pv",
+          "label": "principal variation",
+          "rect": {
+            "height": 16,
+            "width": 284,
+            "x": 623,
+            "y": 392
+          },
+          "selector": ".candidate-pv",
+          "tagName": "span",
+          "textSnippet": "PV C2",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": "saved",
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "cache-status-badge"
+          },
+          "className": "status-pill",
+          "label": "cache status",
+          "rect": {
+            "height": 43,
+            "width": 231,
+            "x": 912,
+            "y": 5
+          },
+          "selector": "[data-testid=\"cache-status-badge\"]",
+          "tagName": "div",
+          "textSnippet": "Cache savedfake | 20/20 moves | May 12, 04:41 PM",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "katago-review-workflow-status"
+          },
+          "className": "analysis-progress",
+          "label": "KataGo workflow status",
+          "rect": {
+            "height": 60,
+            "width": 370,
+            "x": 605,
+            "y": 1183
+          },
+          "selector": "[data-testid=\"katago-review-workflow-status\"]",
+          "tagName": "section",
+          "textSnippet": "Browser review completeBrowser review completed with 21 frames.21/21 positions, move 20",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Provider and readboard layout",
+      "name": "provider_readboard_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 232,
+              "x": 297,
+              "y": 789
+            },
+            "selector": "[data-testid=\"provider-source-select\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 88,
+              "width": 300,
+              "x": 297,
+              "y": 959
+            },
+            "selector": "[data-testid=\"provider-payload-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 550,
+              "width": 300,
+              "x": 297,
+              "y": 1103
+            },
+            "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 243,
+              "x": 297,
+              "y": 1190
+            },
+            "selector": "[data-testid=\"readboard-endpoint-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 160,
+              "x": 297,
+              "y": 1333
+            },
+            "selector": "[data-testid=\"readboard-image-path-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 58,
+              "width": 300,
+              "x": 297,
+              "y": 1534
+            },
+            "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": true,
+            "present": true,
+            "rect": {
+              "height": 15,
+              "width": 300,
+              "x": 297,
+              "y": 1494
+            },
+            "selector": "[data-testid=\"readboard-image-boundary\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 840,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-desktop-1280x840-provider-readboard-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "provider-source-select"
+          },
+          "className": "",
+          "label": "provider source selector",
+          "rect": {
+            "height": 32,
+            "width": 232,
+            "x": 297,
+            "y": 789
+          },
+          "selector": "[data-testid=\"provider-source-select\"]",
+          "tagName": "select",
+          "textSnippet": "YikeFox",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "provider-payload-textarea"
+          },
+          "className": "provider-payload",
+          "label": "provider payload textarea",
+          "rect": {
+            "height": 88,
+            "width": 300,
+            "x": 297,
+            "y": 959
+          },
+          "selector": "[data-testid=\"provider-payload-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "controlled-board-image-import-mvp"
+          },
+          "className": "provider-readboard",
+          "label": "controlled board image import MVP",
+          "rect": {
+            "height": 550,
+            "width": 300,
+            "x": 297,
+            "y": 1103
+          },
+          "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+          "tagName": "div",
+          "textSnippet": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or ",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-endpoint-input"
+          },
+          "className": "",
+          "label": "readboard endpoint input",
+          "rect": {
+            "height": 32,
+            "width": 243,
+            "x": 297,
+            "y": 1190
+          },
+          "selector": "[data-testid=\"readboard-endpoint-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-image-path-input"
+          },
+          "className": "",
+          "label": "readboard image path input",
+          "rect": {
+            "height": 32,
+            "width": 160,
+            "x": 297,
+            "y": 1333
+          },
+          "selector": "[data-testid=\"readboard-image-path-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-protocol-textarea"
+          },
+          "className": "provider-payload provider-readboard-line",
+          "label": "readboard protocol textarea",
+          "rect": {
+            "height": 58,
+            "width": 300,
+            "x": 297,
+            "y": 1534
+          },
+          "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-image-boundary"
+          },
+          "className": "provider-status",
+          "label": "external capture boundary",
+          "rect": {
+            "height": 15,
+            "width": 300,
+            "x": 297,
+            "y": 1494
+          },
+          "selector": "[data-testid=\"readboard-image-boundary\"]",
+          "tagName": "p",
+          "textSnippet": "Image import is scoped to controlled board images and imports only the previewed current position. Failed preview is recoverable and does not import or replace ",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Engine and preferences layout",
+      "name": "engine_preferences_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 167,
+              "width": 370,
+              "x": 605,
+              "y": 628
+            },
+            "selector": "[data-testid=\"engine-setup-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 103,
+              "x": 605,
+              "y": 609
+            },
+            "selector": "[data-testid=\"engine-path-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 103,
+              "x": 794,
+              "y": 609
+            },
+            "selector": "[data-testid=\"engine-model-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 118,
+              "x": 731,
+              "y": 763
+            },
+            "selector": "[data-testid=\"engine-check-assets\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 167,
+              "width": 280,
+              "x": 983,
+              "y": 628
+            },
+            "selector": "[data-testid=\"preferences-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 136,
+              "x": 1127,
+              "y": 765
+            },
+            "selector": "[data-testid=\"preferences-candidate-limit\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 136,
+              "x": 1127,
+              "y": 822
+            },
+            "selector": "[data-testid=\"preferences-review-mode\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 840,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-desktop-1280x840-engine-preferences-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-setup-panel"
+          },
+          "className": "engine-setup-panel",
+          "label": "engine setup panel",
+          "rect": {
+            "height": 167,
+            "width": 370,
+            "x": 605,
+            "y": 628
+          },
+          "selector": "[data-testid=\"engine-setup-panel\"]",
+          "tagName": "section",
+          "textSnippet": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout inspection requires the Tauri desktop backend.Resource dir una",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-path-input"
+          },
+          "className": "",
+          "label": "engine path input",
+          "rect": {
+            "height": 32,
+            "width": 103,
+            "x": 605,
+            "y": 609
+          },
+          "selector": "[data-testid=\"engine-path-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-model-input"
+          },
+          "className": "",
+          "label": "engine model input",
+          "rect": {
+            "height": 32,
+            "width": 103,
+            "x": 794,
+            "y": 609
+          },
+          "selector": "[data-testid=\"engine-model-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "assets",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-check-assets"
+          },
+          "className": "",
+          "label": "engine check assets",
+          "rect": {
+            "height": 32,
+            "width": 118,
+            "x": 731,
+            "y": 763
+          },
+          "selector": "[data-testid=\"engine-check-assets\"]",
+          "tagName": "button",
+          "textSnippet": "Check assets",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "preferences",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-panel"
+          },
+          "className": "preferences-panel legacy-focus-highlight",
+          "label": "preferences panel",
+          "rect": {
+            "height": 167,
+            "width": 280,
+            "x": 983,
+            "y": 628
+          },
+          "selector": "[data-testid=\"preferences-panel\"]",
+          "tagName": "section",
+          "textSnippet": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-candidate-limit"
+          },
+          "className": "",
+          "label": "candidate limit preference",
+          "rect": {
+            "height": 32,
+            "width": 136,
+            "x": 1127,
+            "y": 765
+          },
+          "selector": "[data-testid=\"preferences-candidate-limit\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-review-mode"
+          },
+          "className": "",
+          "label": "review mode preference",
+          "rect": {
+            "height": 32,
+            "width": 136,
+            "x": 1127,
+            "y": 822
+          },
+          "selector": "[data-testid=\"preferences-review-mode\"]",
+          "tagName": "select",
+          "textSnippet": "QuickDeep",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Default review layout",
+      "name": "default_review_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 840,
+              "width": 960,
+              "x": 0,
+              "y": 0
+            },
+            "selector": "[data-testid=\"legacy-shell\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 25,
+              "width": 521,
+              "x": 201,
+              "y": 10
+            },
+            "selector": "[data-testid=\"legacy-menubar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 36,
+              "width": 960,
+              "x": 0,
+              "y": 46
+            },
+            "selector": "[data-testid=\"legacy-toolbar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 521,
+              "width": 616,
+              "x": 8,
+              "y": 90
+            },
+            "selector": "[data-testid=\"legacy-board-pane\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 521,
+              "width": 320,
+              "x": 632,
+              "y": 90
+            },
+            "selector": "[data-testid=\"legacy-analysis-pane\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 96,
+              "width": 600,
+              "x": 16,
+              "y": 473
+            },
+            "selector": "[data-testid=\"winrate-chart\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 28,
+              "width": 960,
+              "x": 0,
+              "y": 812
+            },
+            "selector": "[data-testid=\"legacy-statusbar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 960,
+        "viewport": {
+          "height": 840,
+          "width": 960
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-default-review-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-shell"
+          },
+          "className": "app-shell legacy-shell",
+          "label": "legacy shell",
+          "rect": {
+            "height": 840,
+            "width": 960,
+            "x": 0,
+            "y": 0
+          },
+          "selector": "[data-testid=\"legacy-shell\"]",
+          "tagName": "main",
+          "textSnippet": "LizzieYzy NextReact review workspace fallbackFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEng",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-menubar"
+          },
+          "className": "legacy-menubar",
+          "label": "menu bar",
+          "rect": {
+            "height": 25,
+            "width": 521,
+            "x": 201,
+            "y": 10
+          },
+          "selector": "[data-testid=\"legacy-menubar\"]",
+          "tagName": "nav",
+          "textSnippet": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHel",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-toolbar"
+          },
+          "className": "legacy-toolbar",
+          "label": "toolbar",
+          "rect": {
+            "height": 36,
+            "width": 960,
+            "x": 0,
+            "y": 46
+          },
+          "selector": "[data-testid=\"legacy-toolbar\"]",
+          "tagName": "section",
+          "textSnippet": "OpenSaveSave AsImportSampleParseReviewUntitled SGFSaved",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-board-pane"
+          },
+          "className": "left-pane legacy-board-pane",
+          "label": "board pane",
+          "rect": {
+            "height": 521,
+            "width": 616,
+            "x": 8,
+            "y": 90
+          },
+          "selector": "[data-testid=\"legacy-board-pane\"]",
+          "tagName": "div",
+          "textSnippet": "CandidatesOwnershipPolicyMove 06",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-analysis-pane"
+          },
+          "className": "legacy-right-pane",
+          "label": "analysis pane",
+          "rect": {
+            "height": 521,
+            "width": 320,
+            "x": 632,
+            "y": 90
+          },
+          "selector": "[data-testid=\"legacy-analysis-pane\"]",
+          "tagName": "div",
+          "textSnippet": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.R",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "idle",
+            "reviewSource": "none",
+            "testid": "winrate-chart"
+          },
+          "className": "winrate-chart",
+          "label": "winrate chart",
+          "rect": {
+            "height": 96,
+            "width": 600,
+            "x": 16,
+            "y": 473
+          },
+          "selector": "[data-testid=\"winrate-chart\"]",
+          "tagName": "canvas",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "backend-status",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-statusbar"
+          },
+          "className": "legacy-statusbar",
+          "label": "status bar",
+          "rect": {
+            "height": 28,
+            "width": 960,
+            "x": 0,
+            "y": 812
+          },
+          "selector": "[data-testid=\"legacy-statusbar\"]",
+          "tagName": "footer",
+          "textSnippet": "Preview workspace ready. Parse the sample SGF or import a local game to start reviewing.",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "SGF editing layout",
+      "name": "sgf_editing_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": true,
+            "present": true,
+            "rect": {
+              "height": 273,
+              "width": 320,
+              "x": 632,
+              "y": 338
+            },
+            "selector": "[data-testid=\"sgf-tree-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 110,
+              "width": 314,
+              "x": 637,
+              "y": 393
+            },
+            "selector": "[data-testid=\"sgf-tree-list\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 92,
+              "width": 314,
+              "x": 637,
+              "y": 708
+            },
+            "selector": "[data-testid=\"sgf-comment-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 278,
+              "width": 314,
+              "x": 637,
+              "y": 1532
+            },
+            "selector": "[data-testid=\"sgf-properties-editor\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 630,
+              "width": 314,
+              "x": 637,
+              "y": 895
+            },
+            "selector": "[data-testid=\"sgf-annotation-editor\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 110,
+              "width": 350,
+              "x": 17,
+              "y": 715
+            },
+            "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 960,
+        "viewport": {
+          "height": 840,
+          "width": 960
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-sgf-editing-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-tree-panel"
+          },
+          "className": "sgf-tree-panel",
+          "label": "SGF tree panel",
+          "rect": {
+            "height": 273,
+            "width": 320,
+            "x": 632,
+            "y": 338
+          },
+          "selector": "[data-testid=\"sgf-tree-panel\"]",
+          "tagName": "aside",
+          "textSnippet": "SGF Tree21 nodesRootRoot2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No not",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-tree-list"
+          },
+          "className": "sgf-tree-list",
+          "label": "SGF tree list",
+          "rect": {
+            "height": 110,
+            "width": 314,
+            "x": 637,
+            "y": 393
+          },
+          "selector": "[data-testid=\"sgf-tree-list\"]",
+          "tagName": "ol",
+          "textSnippet": "Root2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No noteMB9 B R14No noteMW1",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-comment-textarea"
+          },
+          "className": "",
+          "label": "SGF comment editor",
+          "rect": {
+            "height": 92,
+            "width": 314,
+            "x": 637,
+            "y": 708
+          },
+          "selector": "[data-testid=\"sgf-comment-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-properties-editor"
+          },
+          "className": "sgf-properties-editor",
+          "label": "SGF property editor",
+          "rect": {
+            "height": 278,
+            "width": 314,
+            "x": 637,
+            "y": 1532
+          },
+          "selector": "[data-testid=\"sgf-properties-editor\"]",
+          "tagName": "section",
+          "textSnippet": "Node detailsSGF properties for the selected nodePB blackPW whiteKM komiRE resultN node nameMarkup fields accept comma or line separated SGF values. Empty fields",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-annotation-editor"
+          },
+          "className": "sgf-annotation-editor",
+          "label": "SGF annotation editor",
+          "rect": {
+            "height": 630,
+            "width": 314,
+            "x": 637,
+            "y": 895
+          },
+          "selector": "[data-testid=\"sgf-annotation-editor\"]",
+          "tagName": "section",
+          "textSnippet": "AnnotationsTR SQ CR MA SL LB AR LN markup on the selected nodeTR TrianglesNo valuesAddClearSQ SquaresNo valuesAddClearCR CirclesNo valuesAddClearMA MarksNo valu",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-move-edit-panel"
+          },
+          "className": "sgf-edit-panel",
+          "label": "move edit panel",
+          "rect": {
+            "height": 110,
+            "width": 350,
+            "x": 17,
+            "y": 715
+          },
+          "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+          "tagName": "section",
+          "textSnippet": "Append moveBlack to playAppendEditBWPass",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "KataGo analysis layout",
+      "name": "katago_analysis_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 236,
+              "width": 320,
+              "x": 632,
+              "y": 98
+            },
+            "selector": "[data-testid=\"analysis-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 36,
+              "width": 302,
+              "x": 641,
+              "y": 141
+            },
+            "selector": "[data-testid=\"analysis-source-status\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 96,
+              "width": 600,
+              "x": 16,
+              "y": 473
+            },
+            "selector": "[data-testid=\"winrate-chart\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 444,
+              "width": 302,
+              "x": 641,
+              "y": 365
+            },
+            "selector": ".candidate-list",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 16,
+              "width": 288,
+              "x": 648,
+              "y": 392
+            },
+            "selector": ".candidate-pv",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 43,
+              "width": 231,
+              "x": 592,
+              "y": 5
+            },
+            "selector": "[data-testid=\"cache-status-badge\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 86,
+              "width": 300,
+              "x": 375,
+              "y": 1232
+            },
+            "selector": "[data-testid=\"katago-review-workflow-status\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 960,
+        "viewport": {
+          "height": 840,
+          "width": 960
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-katago-analysis-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "analysis-panel"
+          },
+          "className": "analysis-panel",
+          "label": "analysis panel",
+          "rect": {
+            "height": 236,
+            "width": 320,
+            "x": 632,
+            "y": 98
+          },
+          "selector": "[data-testid=\"analysis-panel\"]",
+          "tagName": "aside",
+          "textSnippet": "PositionReview data is shown from the current workspace state.Visits3,540Black winrate47.5%Score lead-0.7OwnershipnonePolicynoneCandidatesC22,178 visits46.6%PV ",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "analysis-source-status"
+          },
+          "className": "muted",
+          "label": "analysis source status",
+          "rect": {
+            "height": 36,
+            "width": 302,
+            "x": 641,
+            "y": 141
+          },
+          "selector": "[data-testid=\"analysis-source-status\"]",
+          "tagName": "p",
+          "textSnippet": "Review data is shown from the current workspace state.",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "winrate-chart"
+          },
+          "className": "winrate-chart",
+          "label": "winrate chart",
+          "rect": {
+            "height": 96,
+            "width": 600,
+            "x": 16,
+            "y": 473
+          },
+          "selector": "[data-testid=\"winrate-chart\"]",
+          "tagName": "canvas",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": null
+          },
+          "className": "candidate-list",
+          "label": "candidate list",
+          "rect": {
+            "height": 444,
+            "width": 302,
+            "x": 641,
+            "y": 365
+          },
+          "selector": ".candidate-list",
+          "tagName": "ol",
+          "textSnippet": "C22,178 visits46.6%PV C2K101,251 visits45.7%PV K10R18878 visits44.8%PV R18E7676 visits43.2%PV E7M15550 visits40.7%PV M15T4463 visits37.9%PV T4G12400 visits35.5%",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": null
+          },
+          "className": "candidate-pv",
+          "label": "principal variation",
+          "rect": {
+            "height": 16,
+            "width": 288,
+            "x": 648,
+            "y": 392
+          },
+          "selector": ".candidate-pv",
+          "tagName": "span",
+          "textSnippet": "PV C2",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": "saved",
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "cache-status-badge"
+          },
+          "className": "status-pill",
+          "label": "cache status",
+          "rect": {
+            "height": 43,
+            "width": 231,
+            "x": 592,
+            "y": 5
+          },
+          "selector": "[data-testid=\"cache-status-badge\"]",
+          "tagName": "div",
+          "textSnippet": "Cache savedfake | 20/20 moves | May 12, 04:41 PM",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "katago-review-workflow-status"
+          },
+          "className": "analysis-progress",
+          "label": "KataGo workflow status",
+          "rect": {
+            "height": 86,
+            "width": 300,
+            "x": 375,
+            "y": 1232
+          },
+          "selector": "[data-testid=\"katago-review-workflow-status\"]",
+          "tagName": "section",
+          "textSnippet": "Browser review completeBrowser review completed with 21 frames.21/21 positions, move 20",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Provider and readboard layout",
+      "name": "provider_readboard_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 282,
+              "x": 17,
+              "y": 838
+            },
+            "selector": "[data-testid=\"provider-source-select\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 88,
+              "width": 350,
+              "x": 17,
+              "y": 1008
+            },
+            "selector": "[data-testid=\"provider-payload-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 550,
+              "width": 350,
+              "x": 17,
+              "y": 1152
+            },
+            "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 293,
+              "x": 17,
+              "y": 1239
+            },
+            "selector": "[data-testid=\"readboard-endpoint-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 210,
+              "x": 17,
+              "y": 1383
+            },
+            "selector": "[data-testid=\"readboard-image-path-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 58,
+              "width": 350,
+              "x": 17,
+              "y": 1584
+            },
+            "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": true,
+            "present": true,
+            "rect": {
+              "height": 15,
+              "width": 350,
+              "x": 17,
+              "y": 1544
+            },
+            "selector": "[data-testid=\"readboard-image-boundary\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 960,
+        "viewport": {
+          "height": 840,
+          "width": 960
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-provider-readboard-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "provider-source-select"
+          },
+          "className": "",
+          "label": "provider source selector",
+          "rect": {
+            "height": 32,
+            "width": 282,
+            "x": 17,
+            "y": 838
+          },
+          "selector": "[data-testid=\"provider-source-select\"]",
+          "tagName": "select",
+          "textSnippet": "YikeFox",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "provider-payload-textarea"
+          },
+          "className": "provider-payload",
+          "label": "provider payload textarea",
+          "rect": {
+            "height": 88,
+            "width": 350,
+            "x": 17,
+            "y": 1008
+          },
+          "selector": "[data-testid=\"provider-payload-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "controlled-board-image-import-mvp"
+          },
+          "className": "provider-readboard",
+          "label": "controlled board image import MVP",
+          "rect": {
+            "height": 550,
+            "width": 350,
+            "x": 17,
+            "y": 1152
+          },
+          "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+          "tagName": "div",
+          "textSnippet": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or ",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-endpoint-input"
+          },
+          "className": "",
+          "label": "readboard endpoint input",
+          "rect": {
+            "height": 32,
+            "width": 293,
+            "x": 17,
+            "y": 1239
+          },
+          "selector": "[data-testid=\"readboard-endpoint-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-image-path-input"
+          },
+          "className": "",
+          "label": "readboard image path input",
+          "rect": {
+            "height": 32,
+            "width": 210,
+            "x": 17,
+            "y": 1383
+          },
+          "selector": "[data-testid=\"readboard-image-path-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-protocol-textarea"
+          },
+          "className": "provider-payload provider-readboard-line",
+          "label": "readboard protocol textarea",
+          "rect": {
+            "height": 58,
+            "width": 350,
+            "x": 17,
+            "y": 1584
+          },
+          "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-image-boundary"
+          },
+          "className": "provider-status",
+          "label": "external capture boundary",
+          "rect": {
+            "height": 15,
+            "width": 350,
+            "x": 17,
+            "y": 1544
+          },
+          "selector": "[data-testid=\"readboard-image-boundary\"]",
+          "tagName": "p",
+          "textSnippet": "Image import is scoped to controlled board images and imports only the previewed current position. Failed preview is recoverable and does not import or replace ",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Engine and preferences layout",
+      "name": "engine_preferences_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 167,
+              "width": 300,
+              "x": 375,
+              "y": 628
+            },
+            "selector": "[data-testid=\"engine-setup-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 68,
+              "x": 375,
+              "y": 609
+            },
+            "selector": "[data-testid=\"engine-path-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 68,
+              "x": 529,
+              "y": 609
+            },
+            "selector": "[data-testid=\"engine-model-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 95,
+              "x": 478,
+              "y": 763
+            },
+            "selector": "[data-testid=\"engine-check-assets\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 167,
+              "width": 260,
+              "x": 683,
+              "y": 628
+            },
+            "selector": "[data-testid=\"preferences-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 126,
+              "x": 817,
+              "y": 765
+            },
+            "selector": "[data-testid=\"preferences-candidate-limit\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 126,
+              "x": 817,
+              "y": 822
+            },
+            "selector": "[data-testid=\"preferences-review-mode\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 840,
+        "documentWidth": 960,
+        "viewport": {
+          "height": 840,
+          "width": 960
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-engine-preferences-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-setup-panel"
+          },
+          "className": "engine-setup-panel",
+          "label": "engine setup panel",
+          "rect": {
+            "height": 167,
+            "width": 300,
+            "x": 375,
+            "y": 628
+          },
+          "selector": "[data-testid=\"engine-setup-panel\"]",
+          "tagName": "section",
+          "textSnippet": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout inspection requires the Tauri desktop backend.Resource dir una",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-path-input"
+          },
+          "className": "",
+          "label": "engine path input",
+          "rect": {
+            "height": 32,
+            "width": 68,
+            "x": 375,
+            "y": 609
+          },
+          "selector": "[data-testid=\"engine-path-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-model-input"
+          },
+          "className": "",
+          "label": "engine model input",
+          "rect": {
+            "height": 32,
+            "width": 68,
+            "x": 529,
+            "y": 609
+          },
+          "selector": "[data-testid=\"engine-model-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "assets",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-check-assets"
+          },
+          "className": "",
+          "label": "engine check assets",
+          "rect": {
+            "height": 32,
+            "width": 95,
+            "x": 478,
+            "y": 763
+          },
+          "selector": "[data-testid=\"engine-check-assets\"]",
+          "tagName": "button",
+          "textSnippet": "Check assets",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "preferences",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-panel"
+          },
+          "className": "preferences-panel legacy-focus-highlight",
+          "label": "preferences panel",
+          "rect": {
+            "height": 167,
+            "width": 260,
+            "x": 683,
+            "y": 628
+          },
+          "selector": "[data-testid=\"preferences-panel\"]",
+          "tagName": "section",
+          "textSnippet": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-candidate-limit"
+          },
+          "className": "",
+          "label": "candidate limit preference",
+          "rect": {
+            "height": 32,
+            "width": 126,
+            "x": 817,
+            "y": 765
+          },
+          "selector": "[data-testid=\"preferences-candidate-limit\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-review-mode"
+          },
+          "className": "",
+          "label": "review mode preference",
+          "rect": {
+            "height": 32,
+            "width": 126,
+            "x": 817,
+            "y": 822
+          },
+          "selector": "[data-testid=\"preferences-review-mode\"]",
+          "tagName": "select",
+          "textSnippet": "QuickDeep",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Default review layout",
+      "name": "default_review_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 620,
+              "width": 1280,
+              "x": 0,
+              "y": 0
+            },
+            "selector": "[data-testid=\"legacy-shell\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 25,
+              "width": 854,
+              "x": 188,
+              "y": 7
+            },
+            "selector": "[data-testid=\"legacy-menubar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 36,
+              "width": 1280,
+              "x": 0,
+              "y": 40
+            },
+            "selector": "[data-testid=\"legacy-toolbar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 376,
+              "width": 591,
+              "x": 8,
+              "y": 84
+            },
+            "selector": "[data-testid=\"legacy-board-pane\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 376,
+              "width": 665,
+              "x": 607,
+              "y": 84
+            },
+            "selector": "[data-testid=\"legacy-analysis-pane\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 72,
+              "width": 575,
+              "x": 16,
+              "y": 348
+            },
+            "selector": "[data-testid=\"winrate-chart\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 28,
+              "width": 1280,
+              "x": 0,
+              "y": 592
+            },
+            "selector": "[data-testid=\"legacy-statusbar\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 620,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 620,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-short-window-1280x620-default-review-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-shell"
+          },
+          "className": "app-shell legacy-shell",
+          "label": "legacy shell",
+          "rect": {
+            "height": 620,
+            "width": 1280,
+            "x": 0,
+            "y": 0
+          },
+          "selector": "[data-testid=\"legacy-shell\"]",
+          "tagName": "main",
+          "textSnippet": "LizzieYzy NextReact review workspace fallbackFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEng",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-menubar"
+          },
+          "className": "legacy-menubar",
+          "label": "menu bar",
+          "rect": {
+            "height": 25,
+            "width": 854,
+            "x": 188,
+            "y": 7
+          },
+          "selector": "[data-testid=\"legacy-menubar\"]",
+          "tagName": "nav",
+          "textSnippet": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHel",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-toolbar"
+          },
+          "className": "legacy-toolbar",
+          "label": "toolbar",
+          "rect": {
+            "height": 36,
+            "width": 1280,
+            "x": 0,
+            "y": 40
+          },
+          "selector": "[data-testid=\"legacy-toolbar\"]",
+          "tagName": "section",
+          "textSnippet": "OpenSaveSave AsImportSampleParseReviewUntitled SGFSaved",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-board-pane"
+          },
+          "className": "left-pane legacy-board-pane",
+          "label": "board pane",
+          "rect": {
+            "height": 376,
+            "width": 591,
+            "x": 8,
+            "y": 84
+          },
+          "selector": "[data-testid=\"legacy-board-pane\"]",
+          "tagName": "div",
+          "textSnippet": "CandidatesOwnershipPolicyMove 06",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-analysis-pane"
+          },
+          "className": "legacy-right-pane",
+          "label": "analysis pane",
+          "rect": {
+            "height": 376,
+            "width": 665,
+            "x": 607,
+            "y": 84
+          },
+          "selector": "[data-testid=\"legacy-analysis-pane\"]",
+          "tagName": "div",
+          "textSnippet": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.R",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "idle",
+            "reviewSource": "none",
+            "testid": "winrate-chart"
+          },
+          "className": "winrate-chart",
+          "label": "winrate chart",
+          "rect": {
+            "height": 72,
+            "width": 575,
+            "x": 16,
+            "y": 348
+          },
+          "selector": "[data-testid=\"winrate-chart\"]",
+          "tagName": "canvas",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "backend-status",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "legacy-statusbar"
+          },
+          "className": "legacy-statusbar",
+          "label": "status bar",
+          "rect": {
+            "height": 28,
+            "width": 1280,
+            "x": 0,
+            "y": 592
+          },
+          "selector": "[data-testid=\"legacy-statusbar\"]",
+          "tagName": "footer",
+          "textSnippet": "Preview workspace ready. Parse the sample SGF or import a local game to start reviewing.",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "SGF editing layout",
+      "name": "sgf_editing_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 376,
+              "width": 341,
+              "x": 931,
+              "y": 84
+            },
+            "selector": "[data-testid=\"sgf-tree-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 110,
+              "width": 319,
+              "x": 942,
+              "y": 139
+            },
+            "selector": "[data-testid=\"sgf-tree-list\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 92,
+              "width": 319,
+              "x": 942,
+              "y": 439
+            },
+            "selector": "[data-testid=\"sgf-comment-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 278,
+              "width": 319,
+              "x": 942,
+              "y": 1264
+            },
+            "selector": "[data-testid=\"sgf-properties-editor\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 630,
+              "width": 319,
+              "x": 942,
+              "y": 626
+            },
+            "selector": "[data-testid=\"sgf-annotation-editor\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 110,
+              "width": 300,
+              "x": 297,
+              "y": 477
+            },
+            "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 620,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 620,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-short-window-1280x620-sgf-editing-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-tree-panel"
+          },
+          "className": "sgf-tree-panel",
+          "label": "SGF tree panel",
+          "rect": {
+            "height": 376,
+            "width": 341,
+            "x": 931,
+            "y": 84
+          },
+          "selector": "[data-testid=\"sgf-tree-panel\"]",
+          "tagName": "aside",
+          "textSnippet": "SGF Tree21 nodesRootRoot2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No not",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-tree-list"
+          },
+          "className": "sgf-tree-list",
+          "label": "SGF tree list",
+          "rect": {
+            "height": 110,
+            "width": 319,
+            "x": 942,
+            "y": 139
+          },
+          "selector": "[data-testid=\"sgf-tree-list\"]",
+          "tagName": "ol",
+          "textSnippet": "Root2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No noteMB9 B R14No noteMW1",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-comment-textarea"
+          },
+          "className": "",
+          "label": "SGF comment editor",
+          "rect": {
+            "height": 92,
+            "width": 319,
+            "x": 942,
+            "y": 439
+          },
+          "selector": "[data-testid=\"sgf-comment-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-properties-editor"
+          },
+          "className": "sgf-properties-editor",
+          "label": "SGF property editor",
+          "rect": {
+            "height": 278,
+            "width": 319,
+            "x": 942,
+            "y": 1264
+          },
+          "selector": "[data-testid=\"sgf-properties-editor\"]",
+          "tagName": "section",
+          "textSnippet": "Node detailsSGF properties for the selected nodePB blackPW whiteKM komiRE resultN node nameMarkup fields accept comma or line separated SGF values. Empty fields",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-annotation-editor"
+          },
+          "className": "sgf-annotation-editor",
+          "label": "SGF annotation editor",
+          "rect": {
+            "height": 630,
+            "width": 319,
+            "x": 942,
+            "y": 626
+          },
+          "selector": "[data-testid=\"sgf-annotation-editor\"]",
+          "tagName": "section",
+          "textSnippet": "AnnotationsTR SQ CR MA SL LB AR LN markup on the selected nodeTR TrianglesNo valuesAddClearSQ SquaresNo valuesAddClearCR CirclesNo valuesAddClearMA MarksNo valu",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "sgf-move-edit-panel"
+          },
+          "className": "sgf-edit-panel",
+          "label": "move edit panel",
+          "rect": {
+            "height": 110,
+            "width": 300,
+            "x": 297,
+            "y": 477
+          },
+          "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+          "tagName": "section",
+          "textSnippet": "Append moveBlack to playAppendEditBWPass",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "KataGo analysis layout",
+      "name": "katago_analysis_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 362,
+              "width": 316,
+              "x": 607,
+              "y": 98
+            },
+            "selector": "[data-testid=\"analysis-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 36,
+              "width": 298,
+              "x": 616,
+              "y": 141
+            },
+            "selector": "[data-testid=\"analysis-source-status\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 72,
+              "width": 575,
+              "x": 16,
+              "y": 348
+            },
+            "selector": "[data-testid=\"winrate-chart\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 444,
+              "width": 298,
+              "x": 616,
+              "y": 362
+            },
+            "selector": ".candidate-list",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 16,
+              "width": 284,
+              "x": 623,
+              "y": 389
+            },
+            "selector": ".candidate-pv",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 43,
+              "width": 231,
+              "x": 912,
+              "y": 5
+            },
+            "selector": "[data-testid=\"cache-status-badge\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 60,
+              "width": 370,
+              "x": 605,
+              "y": 1032
+            },
+            "selector": "[data-testid=\"katago-review-workflow-status\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 620,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 620,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-short-window-1280x620-katago-analysis-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "analysis-panel"
+          },
+          "className": "analysis-panel",
+          "label": "analysis panel",
+          "rect": {
+            "height": 362,
+            "width": 316,
+            "x": 607,
+            "y": 98
+          },
+          "selector": "[data-testid=\"analysis-panel\"]",
+          "tagName": "aside",
+          "textSnippet": "PositionReview data is shown from the current workspace state.Visits3,540Black winrate47.5%Score lead-0.7OwnershipnonePolicynoneCandidatesC22,178 visits46.6%PV ",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "analysis-source-status"
+          },
+          "className": "muted",
+          "label": "analysis source status",
+          "rect": {
+            "height": 36,
+            "width": 298,
+            "x": 616,
+            "y": 141
+          },
+          "selector": "[data-testid=\"analysis-source-status\"]",
+          "tagName": "p",
+          "textSnippet": "Review data is shown from the current workspace state.",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "winrate-chart"
+          },
+          "className": "winrate-chart",
+          "label": "winrate chart",
+          "rect": {
+            "height": 72,
+            "width": 575,
+            "x": 16,
+            "y": 348
+          },
+          "selector": "[data-testid=\"winrate-chart\"]",
+          "tagName": "canvas",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": null
+          },
+          "className": "candidate-list",
+          "label": "candidate list",
+          "rect": {
+            "height": 444,
+            "width": 298,
+            "x": 616,
+            "y": 362
+          },
+          "selector": ".candidate-list",
+          "tagName": "ol",
+          "textSnippet": "C22,178 visits46.6%PV C2K101,251 visits45.7%PV K10R18878 visits44.8%PV R18E7676 visits43.2%PV E7M15550 visits40.7%PV M15T4463 visits37.9%PV T4G12400 visits35.5%",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": null
+          },
+          "className": "candidate-pv",
+          "label": "principal variation",
+          "rect": {
+            "height": 16,
+            "width": 284,
+            "x": 623,
+            "y": 389
+          },
+          "selector": ".candidate-pv",
+          "tagName": "span",
+          "textSnippet": "PV C2",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": "saved",
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "cache-status-badge"
+          },
+          "className": "status-pill",
+          "label": "cache status",
+          "rect": {
+            "height": 43,
+            "width": 231,
+            "x": 912,
+            "y": 5
+          },
+          "selector": "[data-testid=\"cache-status-badge\"]",
+          "tagName": "div",
+          "textSnippet": "Cache savedfake | 20/20 moves | May 12, 04:41 PM",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": "completed",
+            "reviewSource": "fake",
+            "testid": "katago-review-workflow-status"
+          },
+          "className": "analysis-progress",
+          "label": "KataGo workflow status",
+          "rect": {
+            "height": 60,
+            "width": 370,
+            "x": 605,
+            "y": 1032
+          },
+          "selector": "[data-testid=\"katago-review-workflow-status\"]",
+          "tagName": "section",
+          "textSnippet": "Browser review completeBrowser review completed with 21 frames.21/21 positions, move 20",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Provider and readboard layout",
+      "name": "provider_readboard_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 232,
+              "x": 297,
+              "y": 618
+            },
+            "selector": "[data-testid=\"provider-source-select\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 88,
+              "width": 300,
+              "x": 297,
+              "y": 788
+            },
+            "selector": "[data-testid=\"provider-payload-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 550,
+              "width": 300,
+              "x": 297,
+              "y": 932
+            },
+            "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 243,
+              "x": 297,
+              "y": 1019
+            },
+            "selector": "[data-testid=\"readboard-endpoint-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 160,
+              "x": 297,
+              "y": 1162
+            },
+            "selector": "[data-testid=\"readboard-image-path-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 58,
+              "width": 300,
+              "x": 297,
+              "y": 1363
+            },
+            "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": true,
+            "present": true,
+            "rect": {
+              "height": 15,
+              "width": 300,
+              "x": 297,
+              "y": 1323
+            },
+            "selector": "[data-testid=\"readboard-image-boundary\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 620,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 620,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-short-window-1280x620-provider-readboard-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "provider-source-select"
+          },
+          "className": "",
+          "label": "provider source selector",
+          "rect": {
+            "height": 32,
+            "width": 232,
+            "x": 297,
+            "y": 618
+          },
+          "selector": "[data-testid=\"provider-source-select\"]",
+          "tagName": "select",
+          "textSnippet": "YikeFox",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "provider-payload-textarea"
+          },
+          "className": "provider-payload",
+          "label": "provider payload textarea",
+          "rect": {
+            "height": 88,
+            "width": 300,
+            "x": 297,
+            "y": 788
+          },
+          "selector": "[data-testid=\"provider-payload-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "controlled-board-image-import-mvp"
+          },
+          "className": "provider-readboard",
+          "label": "controlled board image import MVP",
+          "rect": {
+            "height": 550,
+            "width": 300,
+            "x": 297,
+            "y": 932
+          },
+          "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+          "tagName": "div",
+          "textSnippet": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or ",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-endpoint-input"
+          },
+          "className": "",
+          "label": "readboard endpoint input",
+          "rect": {
+            "height": 32,
+            "width": 243,
+            "x": 297,
+            "y": 1019
+          },
+          "selector": "[data-testid=\"readboard-endpoint-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-image-path-input"
+          },
+          "className": "",
+          "label": "readboard image path input",
+          "rect": {
+            "height": 32,
+            "width": 160,
+            "x": 297,
+            "y": 1162
+          },
+          "selector": "[data-testid=\"readboard-image-path-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-protocol-textarea"
+          },
+          "className": "provider-payload provider-readboard-line",
+          "label": "readboard protocol textarea",
+          "rect": {
+            "height": 58,
+            "width": 300,
+            "x": 297,
+            "y": 1363
+          },
+          "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+          "tagName": "textarea",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "readboard-image-boundary"
+          },
+          "className": "provider-status",
+          "label": "external capture boundary",
+          "rect": {
+            "height": 15,
+            "width": 300,
+            "x": 297,
+            "y": 1323
+          },
+          "selector": "[data-testid=\"readboard-image-boundary\"]",
+          "tagName": "p",
+          "textSnippet": "Image import is scoped to controlled board images and imports only the previewed current position. Failed preview is recoverable and does not import or replace ",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "label": "Engine and preferences layout",
+      "name": "engine_preferences_layout",
+      "overflowClippingChecks": {
+        "bodyHorizontalOverflow": false,
+        "checks": [
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 98,
+              "width": 370,
+              "x": 605,
+              "y": 477
+            },
+            "selector": "[data-testid=\"engine-setup-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 103,
+              "x": 605,
+              "y": 389
+            },
+            "selector": "[data-testid=\"engine-path-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 103,
+              "x": 794,
+              "y": 389
+            },
+            "selector": "[data-testid=\"engine-model-input\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 118,
+              "x": 731,
+              "y": 543
+            },
+            "selector": "[data-testid=\"engine-check-assets\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 98,
+              "width": 280,
+              "x": 983,
+              "y": 477
+            },
+            "selector": "[data-testid=\"preferences-panel\"]",
+            "verticalOverflow": true,
+            "visible": true
+          },
+          {
+            "clipped": false,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 136,
+              "x": 1127,
+              "y": 614
+            },
+            "selector": "[data-testid=\"preferences-candidate-limit\"]",
+            "verticalOverflow": false,
+            "visible": true
+          },
+          {
+            "clipped": true,
+            "horizontalOverflow": false,
+            "present": true,
+            "rect": {
+              "height": 32,
+              "width": 136,
+              "x": 1127,
+              "y": 671
+            },
+            "selector": "[data-testid=\"preferences-review-mode\"]",
+            "verticalOverflow": false,
+            "visible": true
+          }
+        ],
+        "documentHeight": 620,
+        "documentWidth": 1280,
+        "viewport": {
+          "height": 620,
+          "width": 1280
+        }
+      },
+      "screenshot": "docs/qa/screenshots/legacy-layout-short-window-1280x620-engine-preferences-layout.png",
+      "status": "pass",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      },
+      "visibleAssertions": [
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-setup-panel"
+          },
+          "className": "engine-setup-panel",
+          "label": "engine setup panel",
+          "rect": {
+            "height": 98,
+            "width": 370,
+            "x": 605,
+            "y": 477
+          },
+          "selector": "[data-testid=\"engine-setup-panel\"]",
+          "tagName": "section",
+          "textSnippet": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout inspection requires the Tauri desktop backend.Resource dir una",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-path-input"
+          },
+          "className": "",
+          "label": "engine path input",
+          "rect": {
+            "height": 32,
+            "width": 103,
+            "x": 605,
+            "y": 389
+          },
+          "selector": "[data-testid=\"engine-path-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-model-input"
+          },
+          "className": "",
+          "label": "engine model input",
+          "rect": {
+            "height": 32,
+            "width": 103,
+            "x": 794,
+            "y": 389
+          },
+          "selector": "[data-testid=\"engine-model-input\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "assets",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "engine-check-assets"
+          },
+          "className": "",
+          "label": "engine check assets",
+          "rect": {
+            "height": 32,
+            "width": 118,
+            "x": 731,
+            "y": 543
+          },
+          "selector": "[data-testid=\"engine-check-assets\"]",
+          "tagName": "button",
+          "textSnippet": "Check assets",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": "preferences",
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-panel"
+          },
+          "className": "preferences-panel legacy-focus-highlight",
+          "label": "preferences panel",
+          "rect": {
+            "height": 98,
+            "width": 280,
+            "x": 983,
+            "y": 477
+          },
+          "selector": "[data-testid=\"preferences-panel\"]",
+          "tagName": "section",
+          "textSnippet": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-candidate-limit"
+          },
+          "className": "",
+          "label": "candidate limit preference",
+          "rect": {
+            "height": 32,
+            "width": 136,
+            "x": 1127,
+            "y": 614
+          },
+          "selector": "[data-testid=\"preferences-candidate-limit\"]",
+          "tagName": "input",
+          "textSnippet": "",
+          "visible": true
+        },
+        {
+          "attributes": {
+            "cacheStatus": null,
+            "menuTarget": null,
+            "reviewPhase": null,
+            "reviewSource": null,
+            "testid": "preferences-review-mode"
+          },
+          "className": "",
+          "label": "review mode preference",
+          "rect": {
+            "height": 32,
+            "width": 136,
+            "x": 1127,
+            "y": 671
+          },
+          "selector": "[data-testid=\"preferences-review-mode\"]",
+          "tagName": "select",
+          "textSnippet": "QuickDeep",
+          "visible": true
+        }
+      ]
+    }
+  ],
+  "name": "legacy_layout_parity_smoke",
+  "platform": "macos",
+  "schema": "lizzieyzy.legacy-layout-parity-smoke.v1",
+  "screenshotObserved": true,
+  "screenshots": [
+    {
+      "bytes": 202577,
+      "label": "default review layout desktop 1280x840",
+      "layout": "default_review_layout",
+      "name": "default review layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-default-review-layout.png",
+      "sha256": "bccb0087018813bed5d1eec60db3ab27e7ed9211844512bf25d85134b47c3ec1",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 200536,
+      "label": "SGF editing layout desktop 1280x840",
+      "layout": "sgf_editing_layout",
+      "name": "SGF editing layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-sgf-editing-layout.png",
+      "sha256": "6701e603accee26ec0d0e5dc41136024c045a14e1b27f32d7bfa19851389ae64",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 242832,
+      "label": "KataGo analysis layout desktop 1280x840",
+      "layout": "katago_analysis_layout",
+      "name": "KataGo analysis layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-katago-analysis-layout.png",
+      "sha256": "f4af38029c1bd933d206cbcf3cdb43c287818381acf138852f5445c2ca473125",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 242601,
+      "label": "provider/readboard layout desktop 1280x840",
+      "layout": "provider_readboard_layout",
+      "name": "provider/readboard layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-provider-readboard-layout.png",
+      "sha256": "74571a9a6b481fafd1ea58e27c505e2986e68c2364b641d1d42531f4c591cd0c",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 243262,
+      "label": "engine/preferences layout desktop 1280x840",
+      "layout": "engine_preferences_layout",
+      "name": "engine/preferences layout desktop 1280x840",
+      "path": "docs/qa/screenshots/legacy-layout-desktop-1280x840-engine-preferences-layout.png",
+      "sha256": "83c63fbf3f313ef07243f1d78bcee0537d6c01d9e98709d9199ca75e5ed58f9e",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 152933,
+      "label": "default review layout narrow desktop 960x840",
+      "layout": "default_review_layout",
+      "name": "default review layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-default-review-layout.png",
+      "sha256": "344a76d4ccc165eba99bbeca7d48c329e88feb2063760b60720f6ce18af0e3c0",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    },
+    {
+      "bytes": 152093,
+      "label": "SGF editing layout narrow desktop 960x840",
+      "layout": "sgf_editing_layout",
+      "name": "SGF editing layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-sgf-editing-layout.png",
+      "sha256": "ca86f265cddc516e453025bf56867c8ed9c9c0220eea62ba0e3fabc2927eebd3",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    },
+    {
+      "bytes": 182584,
+      "label": "KataGo analysis layout narrow desktop 960x840",
+      "layout": "katago_analysis_layout",
+      "name": "KataGo analysis layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-katago-analysis-layout.png",
+      "sha256": "09874ed85dd2746805acd621a283e14f2e7410c6e0db08bd768d43ae6dec3fab",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    },
+    {
+      "bytes": 181855,
+      "label": "provider/readboard layout narrow desktop 960x840",
+      "layout": "provider_readboard_layout",
+      "name": "provider/readboard layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-provider-readboard-layout.png",
+      "sha256": "53cf4f4431cb6040270c3368187b4c886762f097cafffded3153de888f0ea623",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    },
+    {
+      "bytes": 184682,
+      "label": "engine/preferences layout narrow desktop 960x840",
+      "layout": "engine_preferences_layout",
+      "name": "engine/preferences layout narrow desktop 960x840",
+      "path": "docs/qa/screenshots/legacy-layout-narrow-desktop-960x840-engine-preferences-layout.png",
+      "sha256": "09e16fd8d2f6f7f89e7612ba3431dd514fc7ba249277eadb8629536afa4cb44f",
+      "viewport": {
+        "height": 840,
+        "name": "narrow-desktop-960x840",
+        "width": 960
+      }
+    },
+    {
+      "bytes": 150971,
+      "label": "default review layout short window 1280x620",
+      "layout": "default_review_layout",
+      "name": "default review layout short window 1280x620",
+      "path": "docs/qa/screenshots/legacy-layout-short-window-1280x620-default-review-layout.png",
+      "sha256": "5e569403fb3c620bc89abcadc8599a4439ddd72c209f83897b46efe08aff3c66",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 148859,
+      "label": "SGF editing layout short window 1280x620",
+      "layout": "sgf_editing_layout",
+      "name": "SGF editing layout short window 1280x620",
+      "path": "docs/qa/screenshots/legacy-layout-short-window-1280x620-sgf-editing-layout.png",
+      "sha256": "6fdf7e0e67b142bd92d6b94d2867708432e860ad545f05a09c1bb03d9785bfa8",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 173037,
+      "label": "KataGo analysis layout short window 1280x620",
+      "layout": "katago_analysis_layout",
+      "name": "KataGo analysis layout short window 1280x620",
+      "path": "docs/qa/screenshots/legacy-layout-short-window-1280x620-katago-analysis-layout.png",
+      "sha256": "b9a2880ac90e3308043f691826cd6086fc2f944ef1b0f41d08188ebb33e2285d",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 171611,
+      "label": "provider/readboard layout short window 1280x620",
+      "layout": "provider_readboard_layout",
+      "name": "provider/readboard layout short window 1280x620",
+      "path": "docs/qa/screenshots/legacy-layout-short-window-1280x620-provider-readboard-layout.png",
+      "sha256": "43421e1952faf34d62512cf1fb84b08414af1ff428c76d11c14590caad61a463",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      }
+    },
+    {
+      "bytes": 174171,
+      "label": "engine/preferences layout short window 1280x620",
+      "layout": "engine_preferences_layout",
+      "name": "engine/preferences layout short window 1280x620",
+      "path": "docs/qa/screenshots/legacy-layout-short-window-1280x620-engine-preferences-layout.png",
+      "sha256": "24258965e1fee77b5070816789e67dac326bcd3fd7d47a2c5a5265afde08411c",
+      "viewport": {
+        "height": 620,
+        "name": "short-window-1280x620",
+        "width": 1280
+      }
+    }
+  ],
+  "server": {
+    "startedByRunner": true,
+    "url": "http://127.0.0.1:1420"
+  },
+  "startedAt": "2026-05-12T08:41:23Z",
+  "status": "pass",
+  "viewportMatrix": [
+    {
+      "height": 840,
+      "name": "desktop-1280x840",
+      "width": 1280
+    },
+    {
+      "height": 840,
+      "name": "narrow-desktop-960x840",
+      "width": 960
+    },
+    {
+      "height": 620,
+      "name": "short-window-1280x620",
+      "width": 1280
+    }
+  ],
+  "visibleAssertions": [
+    {
+      "clipped": false,
+      "label": "default review legacy shell",
+      "name": "default review legacy shell",
+      "overlap": false,
+      "selector": "[data-testid=\"legacy-shell\"]",
+      "status": "pass",
+      "textSnippet": "LizzieYzy NextReact review workspace fallbackFileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEng",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "default review menu bar",
+      "name": "default review menu bar",
+      "overlap": false,
+      "selector": "[data-testid=\"legacy-menubar\"]",
+      "status": "pass",
+      "textSnippet": "FileOpenSaveSave AsImport SGFGameLoad sampleParse SGFAnalysisRun reviewKataGo panelViewCandidatesOwnershipPolicyEngineProfilesAssetsToolsProvidersPreferencesHel",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "default review toolbar",
+      "name": "default review toolbar",
+      "overlap": false,
+      "selector": "[data-testid=\"legacy-toolbar\"]",
+      "status": "pass",
+      "textSnippet": "OpenSaveSave AsImportSampleParseReviewUntitled SGFSaved",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "default review board pane",
+      "name": "default review board pane",
+      "overlap": false,
+      "selector": "[data-testid=\"legacy-board-pane\"]",
+      "status": "pass",
+      "textSnippet": "CandidatesOwnershipPolicyMove 06",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "default review analysis pane",
+      "name": "default review analysis pane",
+      "overlap": false,
+      "selector": "[data-testid=\"legacy-analysis-pane\"]",
+      "status": "pass",
+      "textSnippet": "PositionReview data is shown from the current workspace state.Run review to show candidate moves and winrate data.CandidatesPolicyNo policy data for this move.R",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "default review winrate chart",
+      "name": "default review winrate chart",
+      "overlap": false,
+      "selector": "[data-testid=\"winrate-chart\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "default review status bar",
+      "name": "default review status bar",
+      "overlap": false,
+      "selector": "[data-testid=\"legacy-statusbar\"]",
+      "status": "pass",
+      "textSnippet": "Preview workspace ready. Parse the sample SGF or import a local game to start reviewing.",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "SGF editing SGF tree panel",
+      "name": "SGF editing SGF tree panel",
+      "overlap": false,
+      "selector": "[data-testid=\"sgf-tree-panel\"]",
+      "status": "pass",
+      "textSnippet": "SGF Tree21 nodesRootRoot2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No not",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "SGF editing SGF tree list",
+      "name": "SGF editing SGF tree list",
+      "overlap": false,
+      "selector": "[data-testid=\"sgf-tree-list\"]",
+      "status": "pass",
+      "textSnippet": "Root2 propertiesMB1 B Q16No noteMW2 W D16No noteMB3 B Q4No noteMW4 W D4No noteMB5 B K3No noteMW6 W R10No noteMB7 B O17No noteMW8 W F17No noteMB9 B R14No noteMW1",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "SGF editing SGF comment editor",
+      "name": "SGF editing SGF comment editor",
+      "overlap": false,
+      "selector": "[data-testid=\"sgf-comment-textarea\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "SGF editing SGF property editor",
+      "name": "SGF editing SGF property editor",
+      "overlap": false,
+      "selector": "[data-testid=\"sgf-properties-editor\"]",
+      "status": "pass",
+      "textSnippet": "Node detailsSGF properties for the selected nodePB blackPW whiteKM komiRE resultN node nameMarkup fields accept comma or line separated SGF values. Empty fields",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "SGF editing SGF annotation editor",
+      "name": "SGF editing SGF annotation editor",
+      "overlap": false,
+      "selector": "[data-testid=\"sgf-annotation-editor\"]",
+      "status": "pass",
+      "textSnippet": "AnnotationsTR SQ CR MA SL LB AR LN markup on the selected nodeTR TrianglesNo valuesAddClearSQ SquaresNo valuesAddClearCR CirclesNo valuesAddClearMA MarksNo valu",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "SGF editing move edit panel",
+      "name": "SGF editing move edit panel",
+      "overlap": false,
+      "selector": "[data-testid=\"sgf-move-edit-panel\"]",
+      "status": "pass",
+      "textSnippet": "Append moveBlack to playAppendEditBWPass",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis analysis panel",
+      "name": "KataGo analysis analysis panel",
+      "overlap": false,
+      "selector": "[data-testid=\"analysis-panel\"]",
+      "status": "pass",
+      "textSnippet": "PositionReview data is shown from the current workspace state.Visits3,540Black winrate47.5%Score lead-0.7OwnershipnonePolicynoneCandidatesC22,178 visits46.6%PV ",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis analysis source status",
+      "name": "KataGo analysis analysis source status",
+      "overlap": false,
+      "selector": "[data-testid=\"analysis-source-status\"]",
+      "status": "pass",
+      "textSnippet": "Review data is shown from the current workspace state.",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis winrate chart",
+      "name": "KataGo analysis winrate chart",
+      "overlap": false,
+      "selector": "[data-testid=\"winrate-chart\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis candidate list",
+      "name": "KataGo analysis candidate list",
+      "overlap": false,
+      "selector": ".candidate-list",
+      "status": "pass",
+      "textSnippet": "C22,178 visits46.6%PV C2K101,251 visits45.7%PV K10R18878 visits44.8%PV R18E7676 visits43.2%PV E7M15550 visits40.7%PV M15T4463 visits37.9%PV T4G12400 visits35.5%",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis principal variation",
+      "name": "KataGo analysis principal variation",
+      "overlap": false,
+      "selector": ".candidate-pv",
+      "status": "pass",
+      "textSnippet": "PV C2",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis cache status",
+      "name": "KataGo analysis cache status",
+      "overlap": false,
+      "selector": "[data-testid=\"cache-status-badge\"]",
+      "status": "pass",
+      "textSnippet": "Cache savedfake | 20/20 moves | May 12, 04:41 PM",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "KataGo analysis KataGo workflow status",
+      "name": "KataGo analysis KataGo workflow status",
+      "overlap": false,
+      "selector": "[data-testid=\"katago-review-workflow-status\"]",
+      "status": "pass",
+      "textSnippet": "Browser review completeBrowser review completed with 21 frames.21/21 positions, move 20",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard provider source selector",
+      "name": "provider/readboard provider source selector",
+      "overlap": false,
+      "selector": "[data-testid=\"provider-source-select\"]",
+      "status": "pass",
+      "textSnippet": "YikeFox",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard provider payload textarea",
+      "name": "provider/readboard provider payload textarea",
+      "overlap": false,
+      "selector": "[data-testid=\"provider-payload-textarea\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard controlled board image import MVP",
+      "name": "provider/readboard controlled board image import MVP",
+      "overlap": false,
+      "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+      "status": "pass",
+      "textSnippet": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or ",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard readboard endpoint input",
+      "name": "provider/readboard readboard endpoint input",
+      "overlap": false,
+      "selector": "[data-testid=\"readboard-endpoint-input\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard readboard image path input",
+      "name": "provider/readboard readboard image path input",
+      "overlap": false,
+      "selector": "[data-testid=\"readboard-image-path-input\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard readboard protocol textarea",
+      "name": "provider/readboard readboard protocol textarea",
+      "overlap": false,
+      "selector": "[data-testid=\"readboard-protocol-textarea\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "provider/readboard external capture boundary",
+      "name": "provider/readboard external capture boundary",
+      "overlap": false,
+      "selector": "[data-testid=\"readboard-image-boundary\"]",
+      "status": "pass",
+      "textSnippet": "Image import is scoped to controlled board images and imports only the previewed current position. Failed preview is recoverable and does not import or replace ",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences engine setup panel",
+      "name": "engine/preferences engine setup panel",
+      "overlap": false,
+      "selector": "[data-testid=\"engine-setup-panel\"]",
+      "status": "pass",
+      "textSnippet": "ProfileLocal KataGoNameAdd profileDelete profileBundled/runtime assetsRefreshRuntime asset layout inspection requires the Tauri desktop backend.Resource dir una",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences engine path input",
+      "name": "engine/preferences engine path input",
+      "overlap": false,
+      "selector": "[data-testid=\"engine-path-input\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences engine model input",
+      "name": "engine/preferences engine model input",
+      "overlap": false,
+      "selector": "[data-testid=\"engine-model-input\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences engine check assets",
+      "name": "engine/preferences engine check assets",
+      "overlap": false,
+      "selector": "[data-testid=\"engine-check-assets\"]",
+      "status": "pass",
+      "textSnippet": "Check assets",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences preferences panel",
+      "name": "engine/preferences preferences panel",
+      "overlap": false,
+      "selector": "[data-testid=\"preferences-panel\"]",
+      "status": "pass",
+      "textSnippet": "PreferencesPreferences loaded.CandidatesOwnershipPolicyAuto-load cacheAuto-save analysisCandidates shownDefault visitsReview modeQuickDeepBoard themeClassicHigh",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences candidate limit preference",
+      "name": "engine/preferences candidate limit preference",
+      "overlap": false,
+      "selector": "[data-testid=\"preferences-candidate-limit\"]",
+      "status": "pass",
+      "textSnippet": "",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    },
+    {
+      "clipped": false,
+      "label": "engine/preferences review mode preference",
+      "name": "engine/preferences review mode preference",
+      "overlap": false,
+      "selector": "[data-testid=\"preferences-review-mode\"]",
+      "status": "pass",
+      "textSnippet": "QuickDeep",
+      "viewport": {
+        "height": 840,
+        "name": "desktop-1280x840",
+        "width": 1280
+      },
+      "visible": true
+    }
+  ]
+}

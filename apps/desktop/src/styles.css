@@ -10,8 +10,8 @@
 
 body {
   margin: 0;
-  min-width: 1100px;
-  min-height: 720px;
+  min-width: 960px;
+  min-height: 620px;
   background: #d9dde3;
 }
 
@@ -45,20 +45,22 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto minmax(440px, 1fr) auto auto;
-  min-height: 100vh;
+  grid-template-rows: auto auto minmax(0, 1fr) minmax(132px, 23vh) auto;
+  height: 100vh;
+  min-height: 620px;
   gap: 0;
   padding: 0;
+  overflow: hidden;
   background: #d9dde3;
 }
 
 .legacy-titlebar {
   display: grid;
-  grid-template-columns: minmax(210px, auto) minmax(360px, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: minmax(170px, auto) minmax(320px, 1fr) minmax(220px, auto);
+  gap: 8px;
   align-items: center;
-  min-height: 58px;
-  padding: 8px 12px;
+  min-height: 46px;
+  padding: 5px 10px;
   border-bottom: 1px solid #aab2bf;
   background: linear-gradient(#f7f9fb, #dfe5ec);
 }
@@ -75,8 +77,14 @@ button:disabled {
 
 .legacy-appmark h1 {
   color: #18202b;
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1.1;
+}
+
+.legacy-appmark p {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .legacy-appmark p,
@@ -99,9 +107,9 @@ button:disabled {
 .legacy-menu summary {
   display: block;
   border-radius: 4px;
-  padding: 6px 9px;
+  padding: 5px 8px;
   color: #27313f;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   list-style: none;
   cursor: pointer;
@@ -161,7 +169,7 @@ button:disabled {
 
 .legacy-title-status {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
@@ -178,10 +186,10 @@ button:disabled {
 
 .legacy-toolbar {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
-  min-height: 44px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 4px 8px;
   border-bottom: 1px solid #aab2bf;
   background: #c9d0d9;
 }
@@ -190,10 +198,10 @@ button:disabled {
 .legacy-tool-file {
   display: inline-grid;
   align-items: center;
-  height: 30px;
-  min-width: 48px;
-  padding: 5px 9px;
-  font-size: 12px;
+  height: 26px;
+  min-width: 42px;
+  padding: 4px 7px;
+  font-size: 11px;
 }
 
 .legacy-tool-file {
@@ -202,8 +210,8 @@ button:disabled {
 
 .legacy-toolbar-divider {
   width: 1px;
-  height: 28px;
-  margin: 0 4px;
+  height: 24px;
+  margin: 0 3px;
   background: #9aa5b2;
 }
 
@@ -216,9 +224,9 @@ button:disabled {
   grid-template-columns: minmax(0, auto) auto;
   gap: 8px;
   align-items: center;
-  min-width: 220px;
-  max-width: 360px;
-  padding: 5px 9px;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 4px 7px;
   border: 1px solid #aab2bf;
   border-radius: 4px;
   background: #edf1f5;
@@ -269,7 +277,8 @@ button:disabled {
 
 .status-pill {
   border-radius: 4px;
-  padding: 7px 10px;
+  max-width: 210px;
+  padding: 5px 8px;
   background: #e7f0fb;
   border: 1px solid #9fc0e8;
   color: #1f4d7a;
@@ -279,11 +288,12 @@ button:disabled {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(660px, 1fr) 350px;
+  grid-template-columns: minmax(500px, 1.42fr) minmax(250px, 0.72fr) minmax(300px, 0.86fr);
   gap: 8px;
-  min-height: 440px;
+  min-height: 0;
   min-width: 0;
   padding: 8px;
+  overflow: hidden;
 }
 
 .left-pane,
@@ -297,10 +307,10 @@ button:disabled {
 
 .left-pane {
   display: grid;
-  grid-template-rows: minmax(320px, 1fr) 128px 32px;
-  gap: 8px;
-  padding: 8px;
-  min-height: 440px;
+  grid-template-rows: minmax(0, 1fr) 96px 28px;
+  gap: 6px;
+  padding: 7px;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
@@ -311,17 +321,21 @@ button:disabled {
 
 .legacy-board-stage {
   display: grid;
+  place-items: center;
   min-width: 0;
   min-height: 0;
-  padding: 8px;
+  overflow: hidden;
+  padding: 6px;
   border: 1px solid #9aa5b2;
   border-radius: 4px;
   background: #eef2f6;
 }
 
 .board-canvas {
-  width: min(100%, calc(100vh - 320px));
-  height: min(100%, calc(100vh - 320px));
+  position: relative;
+  overflow: hidden;
+  width: min(100%, calc(100vh - 240px));
+  height: min(100%, calc(100vh - 240px));
   max-width: 100%;
   max-height: 100%;
   min-width: 0;
@@ -333,9 +347,45 @@ button:disabled {
   border: 1px solid rgba(15, 23, 42, 0.2);
 }
 
+.board-overlay-toggle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  padding: 3px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.12);
+}
+
+.board-overlay-button {
+  min-width: 0;
+  height: 24px;
+  padding: 4px 6px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #0f172a;
+  font: 700 11px system-ui;
+  line-height: 1;
+}
+
+.board-overlay-button[aria-pressed="true"] {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.board-overlay-button:disabled {
+  color: rgba(15, 23, 42, 0.38);
+}
+
 .winrate-chart {
   width: 100%;
-  height: 128px;
+  height: 96px;
   border-radius: 4px;
   border: 1px solid #9aa5b2;
   background: #f8fafc;
@@ -344,6 +394,7 @@ button:disabled {
 .legacy-chart-strip {
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .legacy-statusbar {
@@ -374,8 +425,8 @@ button:disabled {
 
 .timeline-row {
   display: grid;
-  grid-template-columns: 72px 1fr 42px;
-  gap: 10px;
+  grid-template-columns: 62px 1fr 36px;
+  gap: 8px;
   align-items: center;
   color: #475569;
   font-size: 13px;
@@ -388,19 +439,22 @@ button:disabled {
 
 .analysis-panel {
   height: 100%;
-  padding: 12px;
+  min-height: 0;
+  padding: 8px;
   overflow: auto;
 }
 
 .legacy-right-pane {
   display: grid;
+  grid-column: 2 / -1;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .legacy-review-stack {
   display: grid;
-  grid-template-rows: minmax(240px, 0.9fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
   gap: 8px;
   min-width: 0;
   min-height: 0;
@@ -412,7 +466,7 @@ button:disabled {
 }
 
 .analysis-panel section + section {
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .analysis-panel h2 {
@@ -423,8 +477,8 @@ button:disabled {
 .metric-grid {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
-  padding: 10px;
+  gap: 6px;
+  padding: 8px;
   border-radius: 4px;
   background: #eef2f6;
   border: 1px solid #d2d8e0;
@@ -439,8 +493,8 @@ button:disabled {
 
 .candidate-list li,
 .problem-list li {
-  margin-bottom: 8px;
-  font-size: 13px;
+  margin-bottom: 6px;
+  font-size: 12px;
 }
 
 button.candidate-button,
@@ -469,9 +523,9 @@ button.problem-button:focus-visible {
 button.candidate-button {
   display: grid;
   grid-template-columns: minmax(48px, 1fr) auto auto;
-  gap: 6px 8px;
+  gap: 5px 7px;
   align-items: center;
-  padding: 8px;
+  padding: 6px;
 }
 
 button.candidate-button.is-selected {
@@ -492,7 +546,8 @@ button.candidate-button.is-selected {
   font-size: 12px;
   line-height: 1.35;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .candidate-pv strong {
@@ -506,7 +561,7 @@ button.problem-button {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 8px;
   align-items: center;
-  padding: 9px;
+  padding: 7px;
 }
 
 .problem-button small {
@@ -540,9 +595,11 @@ button.problem-button {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(240px, 300px) minmax(300px, 370px) minmax(230px, 280px);
   gap: 8px;
-  align-items: start;
+  align-items: stretch;
   padding: 8px;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .legacy-bottom-dock {
@@ -556,6 +613,7 @@ button.problem-button {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
+  min-height: 0;
 }
 
 .document-row {
@@ -583,7 +641,8 @@ button.problem-button {
 
 textarea {
   width: 100%;
-  height: 132px;
+  height: 100%;
+  min-height: 72px;
   resize: vertical;
   border-radius: 4px;
   border: 1px solid #aab2bf;
@@ -624,10 +683,13 @@ textarea {
   display: grid;
   gap: 8px;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
 }
 
 .engine-setup-panel {
-  grid-template-rows: 1fr auto auto auto;
+  grid-template-rows: auto auto auto auto;
 }
 
 .engine-grid {
@@ -677,6 +739,8 @@ textarea {
   display: grid;
   gap: 8px;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
   align-content: start;
 }
 
@@ -1123,7 +1187,16 @@ button.path-picker-button {
   }
 
   .workspace {
-    grid-template-columns: minmax(500px, 1fr) 310px;
+    grid-template-columns: minmax(420px, 1fr) minmax(280px, 320px);
+  }
+
+  .legacy-right-pane {
+    grid-column: auto;
+  }
+
+  .legacy-review-stack {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(180px, 0.88fr) minmax(210px, 1fr);
   }
 
   .board-canvas {
@@ -1132,7 +1205,7 @@ button.path-picker-button {
   }
 
   .bottom-dock {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 330px) minmax(230px, 280px);
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 300px) minmax(220px, 260px);
   }
 
   .provider-panel {
@@ -1150,13 +1223,44 @@ button.path-picker-button {
   }
 }
 
+@media (max-height: 760px) {
+  .app-shell {
+    grid-template-rows: auto auto minmax(0, 1fr) minmax(112px, 20vh) auto;
+  }
+
+  .legacy-titlebar {
+    min-height: 40px;
+  }
+
+  .legacy-appmark p {
+    display: none;
+  }
+
+  .left-pane {
+    grid-template-rows: minmax(0, 1fr) 72px 26px;
+  }
+
+  .winrate-chart {
+    height: 72px;
+  }
+
+  .analysis-panel section + section {
+    margin-top: 9px;
+  }
+
+  .sgf-comment-editor textarea {
+    height: 68px;
+  }
+}
+
 .sgf-tree-panel {
   display: grid;
-  grid-template-rows: auto minmax(120px, 1fr) auto;
+  grid-template-rows: auto minmax(110px, 1fr) auto auto auto;
   gap: 8px;
   min-width: 0;
   min-height: 0;
   padding: 10px;
+  overflow: auto;
   border: 1px solid #aab2bf;
   border-radius: 4px;
   background: #f5f7fa;

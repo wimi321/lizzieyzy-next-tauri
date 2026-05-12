@@ -35,10 +35,11 @@ CI should not run platform packaging builds inside the repository smoke gate. `s
 
 Current alpha-gate status for the repository-local smoke gate:
 
-- `python3 scripts/smoke_user_flows.py --verbose` currently reports `26 passed, 0 failed, 0 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped macOS two-launch save/reopen runtime evidence, scoped macOS live KataGo evidence, scoped macOS readboard runtime evidence, scoped macOS provider controlled-network evidence, and scoped multiplatform packaging smoke evidence are complete for their current gates.
+- `python3 scripts/smoke_user_flows.py --verbose` currently reports `27 passed, 0 failed, 0 pending`; repository-local native SGF save/read-back refresh, existing-move edit surface evidence, scoped legacy config migration UI/API surface evidence, scoped macOS two-launch save/reopen runtime evidence, scoped macOS live KataGo evidence, scoped macOS readboard runtime evidence, scoped macOS provider controlled-network evidence, and scoped multiplatform packaging smoke evidence are complete for their current gates.
 - The static `legacy_shell_menu_surface` check passes for the LegacyShell `View`, `Engine`, `Tools`, and `Help` menu entries, but this is not runtime UI proof that each entry reaches the expected surface.
 - The static `native_sgf_save_readback_surface` check passes for repository-local native SGF save/read-back refresh evidence: save writes through native SGF file I/O, reads the saved SGF back, and refreshes App parse/replay/tree/cache state from the read-back text. This is not real desktop GUI smoke proof.
 - The static `sgf_existing_move_edit_surface` and `edit-existing-move` checks pass for repository-local existing-move edit surface evidence: existing SGF node edits are exposed through the command-backed edit surface and covered by repository-local wiring evidence. This is not real desktop GUI smoke proof.
+- The static `legacy_config_migration_surface` check passes for repository-local legacy Java/Swing config migration entrypoint evidence: backend wrappers call the existing Tauri preview/apply commands, App wires path/preview/apply state, and PreferencesPanel exposes path input, Preview/Apply actions, status, warnings, and migrated fields. This is not broad migrated-config corpus, rollback, or real-user migration proof.
 - `docs/qa/tauri-runtime-ui-smoke-macos.json` is the macOS local runtime evidence target from `scripts/smoke_tauri_runtime_ui.py --evidence-out docs/qa/tauri-runtime-ui-smoke-macos.json`. The repository gate requires schema `lizzieyzy.tauri-runtime-ui-smoke.v1`, status `pass`, platform `macos`, all required check names passing, top-level `firstLaunch`/`secondLaunch`/`saveReopenProof`, and semantic `secondLaunch`, `reopen`, and `afterReopen` fields proving save/reopen after a second launch.
 - `docs/qa/katago-live-smoke-macos.json` is the macOS live KataGo CLI evidence target from `scripts/smoke_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-live-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-live-smoke.v1`, status `pass`, platform `macos`, engine/model/config metadata, and passing checks for engine assets, version probe, one-position analysis, batch analysis, and stderr capture.
 - `docs/qa/katago-tauri-runtime-smoke-macos.json` is the macOS Tauri runtime KataGo evidence target from `scripts/smoke_tauri_katago_live.py --engine ... --model ... --config ... --evidence-out docs/qa/katago-tauri-runtime-smoke-macos.json`. The repository gate requires schema `lizzieyzy.katago-tauri-runtime-smoke.v1`, status `pass`, platform `macos`, and passing runtime checks for startup, assets, analyze-once, analyze-game, and start/cancel.
@@ -128,6 +129,14 @@ python3 scripts/smoke_user_flows.py --verbose
 ```
 
 Pass: `docs/qa/provider-live-smoke-macos.json` is sanitized, has schema `lizzieyzy.provider-live-smoke.v1`, status `pass`, platform `macos`, and includes `runtime_started`, `yike_controlled_fetch`, `fox_controlled_fetch`, `provider_failure_modes`, `controlled_network_observed`, `offline_not_counted_as_external_live`, and `external_account_scope`. The Yike check must use `networkMode: controlled_network`, a 2xx/3xx HTTP status, validated payload, non-negative result count, and `fixtureParserOnly: false`; the Fox check must use `networkMode: controlled_network`, a 2xx/3xx HTTP status, imported payload, positive move count, and `directHttpWarning: true`. This is scoped controlled-network Tauri provider evidence; it is not real Fox/Yike service parity, account login proof, anti-bot stability proof, or service schema drift proof.
+
+For scoped legacy Java/Swing config migration entrypoint evidence, verify the Preferences panel exposes the migration controls and run:
+
+```bash
+python3 scripts/smoke_user_flows.py --verbose
+```
+
+Pass: `legacy_config_migration_surface` reports PASS, proving repository-local frontend/API wiring for legacy config path input, Preview, Apply, status, warnings, migrated fields, and backend calls to `preview_legacy_config_migration`/`apply_legacy_config_migration`. This is scoped UI/API surface evidence; it is not broad legacy config corpus migration proof, rollback proof, or a claim that every Java/Swing setting migrates.
 
 For scoped multiplatform packaging smoke evidence, run the packaging smoke collector and then:
 

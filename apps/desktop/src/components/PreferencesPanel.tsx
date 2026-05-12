@@ -1,3 +1,4 @@
+import type { LegacyConfigMigrationApplyDto, LegacyConfigMigrationPreviewDto } from "../api/backend";
 import type { AppPreferences, BoardTheme, ReviewMode } from "../domain/preferences";
 
 type Props = {
@@ -5,12 +6,37 @@ type Props = {
   status: string;
   disabled?: boolean;
   onChange: (preferences: AppPreferences) => void;
+  legacyConfigPath: string;
+  legacyConfigStatus: string;
+  legacyConfigPreview: LegacyConfigMigrationPreviewDto | null;
+  legacyConfigApplyResult: LegacyConfigMigrationApplyDto | null;
+  isLegacyConfigMigrating?: boolean;
+  onLegacyConfigPathChange: (path: string) => void;
+  onPreviewLegacyConfigMigration: () => void;
+  onApplyLegacyConfigMigration: () => void;
 };
 
-export function PreferencesPanel({ preferences, status, disabled = false, onChange }: Props) {
+export function PreferencesPanel({
+  preferences,
+  status,
+  disabled = false,
+  onChange,
+  legacyConfigPath,
+  legacyConfigStatus,
+  legacyConfigPreview,
+  legacyConfigApplyResult,
+  isLegacyConfigMigrating = false,
+  onLegacyConfigPathChange,
+  onPreviewLegacyConfigMigration,
+  onApplyLegacyConfigMigration
+}: Props) {
   function update(patch: Partial<AppPreferences>) {
     onChange({ ...preferences, ...patch });
   }
+
+  const canRunMigration = !disabled && !isLegacyConfigMigrating && legacyConfigPath.trim().length > 0;
+  const migratedFields = legacyConfigApplyResult?.migratedFields ?? legacyConfigPreview?.migratedFields ?? [];
+  const warnings = legacyConfigApplyResult?.warnings ?? legacyConfigPreview?.warnings ?? [];
 
   return (
     <section className="preferences-panel" aria-label="Application preferences">
@@ -62,6 +88,51 @@ export function PreferencesPanel({ preferences, status, disabled = false, onChan
           </select>
         </label>
       </div>
+      <section className="legacy-config-migration" aria-label="Legacy Java/Swing config migration">
+        <div className="preferences-header">
+          <h3>Legacy config migration</h3>
+          <span>{legacyConfigStatus}</span>
+        </div>
+        <label>
+          <span>Legacy config path</span>
+          <input
+            data-testid="legacy-config-path-input"
+            type="text"
+            value={legacyConfigPath}
+            disabled={disabled || isLegacyConfigMigrating}
+            placeholder="/path/to/legacy/config"
+            onChange={(event) => onLegacyConfigPathChange(event.target.value)}
+          />
+        </label>
+        <div className="legacy-config-actions" aria-label="Legacy config migration actions">
+          <button type="button" disabled={!canRunMigration} onClick={onPreviewLegacyConfigMigration}>Preview</button>
+          <button type="button" disabled={!canRunMigration || legacyConfigPreview === null} onClick={onApplyLegacyConfigMigration}>Apply</button>
+        </div>
+        {migratedFields.length > 0 ? (
+          <div className="migration-result" data-testid="legacy-config-migrated-fields">
+            <strong>Migrated fields</strong>
+            <ul>
+              {migratedFields.map((field) => <li key={field}>{field}</li>)}
+            </ul>
+          </div>
+        ) : null}
+        {warnings.length > 0 ? (
+          <div className="migration-result" data-testid="legacy-config-warnings">
+            <strong>Warnings</strong>
+            <ul>
+              {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+            </ul>
+          </div>
+        ) : null}
+        {legacyConfigApplyResult ? (
+          <div className="migration-result" data-testid="legacy-config-apply-status">
+            <strong>Applied</strong>
+            <span>
+              Preferences {legacyConfigApplyResult.preferencesWritten ? "written" : "unchanged"}; engine profiles {legacyConfigApplyResult.engineProfilesWritten ? "written" : "unchanged"}.
+            </span>
+          </div>
+        ) : null}
+      </section>
     </section>
   );
 }

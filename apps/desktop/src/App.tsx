@@ -25,6 +25,9 @@ import {
   startKataGoGameAnalysis,
   updateSgfNodeComment,
   updateSgfNodeProperties,
+  previewLegacyConfigMigration,
+  applyLegacyConfigMigration,
+  loadEngineProfilesSettings,
   type SgfPropertyUpdate
 } from "./api/backend";
 import { computeGameCacheKey, loadAnalysisCache, saveAnalysisCache } from "./api/analysisCache";
@@ -98,6 +101,11 @@ export function App() {
   const [treeNodePositionOverride, setTreeNodePositionOverride] = useState<PositionDto | null>(null);
   const [preferences, setPreferences] = useState<AppPreferences>(() => defaultAppPreferences);
   const [preferencesStatus, setPreferencesStatus] = useState("Loading preferences...");
+  const [legacyConfigPath, setLegacyConfigPath] = useState("");
+  const [legacyConfigStatus, setLegacyConfigStatus] = useState("No legacy config selected.");
+  const [legacyConfigPreview, setLegacyConfigPreview] = useState<backendApi.LegacyConfigMigrationPreviewDto | null>(null);
+  const [legacyConfigApplyResult, setLegacyConfigApplyResult] = useState<backendApi.LegacyConfigMigrationApplyDto | null>(null);
+  const [isLegacyConfigMigrating, setIsLegacyConfigMigrating] = useState(false);
   const activeJobIdRef = useRef<string | null>(null);
   const startingAnalysisRef = useRef(false);
   const userChangedPreferencesRef = useRef(false);
@@ -225,6 +233,66 @@ export function App() {
       }
     } finally {
       preferencesSaveInFlightRef.current = false;
+    }
+  }
+
+  function handleLegacyConfigPathChange(path: string) {
+    setLegacyConfigPath(path);
+    setLegacyConfigPreview(null);
+    setLegacyConfigApplyResult(null);
+    setLegacyConfigStatus(path.trim() ? "Ready to preview legacy config." : "No legacy config selected.");
+  }
+
+  async function handlePreviewLegacyConfigMigration() {
+    const path = legacyConfigPath.trim();
+    if (!path) {
+      setLegacyConfigStatus("Enter a legacy Java/Swing config path before previewing.");
+      return;
+    }
+    setIsLegacyConfigMigrating(true);
+    setLegacyConfigStatus("Previewing legacy config migration...");
+    setLegacyConfigApplyResult(null);
+    try {
+      const preview = await previewLegacyConfigMigration(path);
+      setLegacyConfigPreview(preview);
+      const fieldCount = preview.migratedFields.length;
+      const warningCount = preview.warnings.length;
+      setLegacyConfigStatus(`Preview ready: ${fieldCount} migrated fields, ${warningCount} warnings.`);
+    } catch (error) {
+      setLegacyConfigPreview(null);
+      setLegacyConfigStatus(`Preview failed: ${errorMessage(error)}`);
+    } finally {
+      setIsLegacyConfigMigrating(false);
+    }
+  }
+
+  async function handleApplyLegacyConfigMigration() {
+    const path = legacyConfigPath.trim();
+    if (!path) {
+      setLegacyConfigStatus("Enter a legacy Java/Swing config path before applying.");
+      return;
+    }
+    setIsLegacyConfigMigrating(true);
+    setLegacyConfigStatus("Applying legacy config migration...");
+    try {
+      const result = await applyLegacyConfigMigration(path);
+      setLegacyConfigApplyResult(result);
+      setLegacyConfigPreview({
+        sourcePath: result.sourcePath,
+        preferences: null,
+        engineProfiles: null,
+        migratedFields: result.migratedFields,
+        warnings: result.warnings
+      });
+      const loadedPreferences = await loadAppPreferences();
+      setPreferences(loadedPreferences);
+      await loadEngineProfilesSettings();
+      setPreferencesStatus("Preferences loaded after legacy migration.");
+      setLegacyConfigStatus(`Applied legacy config migration: ${result.migratedFields.length} migrated fields.`);
+    } catch (error) {
+      setLegacyConfigStatus(`Apply failed: ${errorMessage(error)}`);
+    } finally {
+      setIsLegacyConfigMigrating(false);
     }
   }
 
@@ -1449,6 +1517,14 @@ export function App() {
           status={preferencesStatus}
           disabled={isBusy}
           onChange={(nextPreferences) => void handlePreferencesChange(nextPreferences)}
+          legacyConfigPath={legacyConfigPath}
+          legacyConfigStatus={legacyConfigStatus}
+          legacyConfigPreview={legacyConfigPreview}
+          legacyConfigApplyResult={legacyConfigApplyResult}
+          isLegacyConfigMigrating={isLegacyConfigMigrating}
+          onLegacyConfigPathChange={handleLegacyConfigPathChange}
+          onPreviewLegacyConfigMigration={() => void handlePreviewLegacyConfigMigration()}
+          onApplyLegacyConfigMigration={() => void handleApplyLegacyConfigMigration()}
         />
       }
       documentName={documentName}

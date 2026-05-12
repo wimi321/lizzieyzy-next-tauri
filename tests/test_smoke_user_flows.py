@@ -43,6 +43,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_shell_menu_surface", pass_names)
             self.assertIn("native_sgf_save_readback_surface", pass_names)
             self.assertIn("sgf_existing_move_edit_surface", pass_names)
+            self.assertIn("legacy_config_migration_surface", pass_names)
             for name in smoke_user_flows.TAURI_COMMAND_GROUPS:
                 self.assertIn(name, pass_names)
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
@@ -564,11 +565,39 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("sgf_existing_move_edit_surface", failures)
             self.assertIn("App missing handleEditExistingMove", failures["sgf_existing_move_edit_surface"])
 
+    def test_legacy_config_migration_surface_passes_with_frontend_wiring(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            passes = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("legacy_config_migration_surface", failures)
+            self.assertIn("legacy_config_migration_surface", passes)
+
+    def test_legacy_config_migration_surface_missing_preferences_ui_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, preferences_migration_ui=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_config_migration_surface", failures)
+            self.assertIn("PreferencesPanel missing legacyConfigPath", failures["legacy_config_migration_surface"])
+
     def test_edit_existing_move_surface_reduced_fixture_all_frontend_sources_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             create_complete_smoke_fixture(root)
-            for rel in (smoke_user_flows.BACKEND_SOURCE, smoke_user_flows.APP_SOURCE, smoke_user_flows.SGF_TREE_PANEL_SOURCE):
+            for rel in (
+                smoke_user_flows.BACKEND_SOURCE,
+                smoke_user_flows.APP_SOURCE,
+                smoke_user_flows.SGF_TREE_PANEL_SOURCE,
+                smoke_user_flows.PREFERENCES_PANEL_SOURCE,
+            ):
                 (root / rel).unlink()
 
             results = smoke_user_flows.UserFlowSmoke(root).run()
@@ -696,6 +725,7 @@ def create_complete_smoke_fixture(
     *,
     omitted_commands: set[str] | None = None,
     app_edit_handler: bool = True,
+    preferences_migration_ui: bool = True,
 ) -> None:
     omitted_commands = omitted_commands or set()
     write_json(
@@ -768,6 +798,7 @@ def create_complete_smoke_fixture(
     create_backend_fixture(root)
     create_app_fixture(root, edit_existing_move_handler=app_edit_handler)
     create_sgf_tree_panel_fixture(root)
+    create_preferences_panel_fixture(root, migration_ui=preferences_migration_ui)
 
 
 def write_valid_tauri_runtime_ui_evidence(root: Path) -> None:
@@ -1312,6 +1343,29 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
         export async function editSgfMove(sgfText: string, nodeId: string, point: MoveVertex | "pass") {{
           return await invoke("edit_sgf_move", {{ sgfText, nodeId, point }});
         }}
+
+        export type LegacyConfigMigrationPreviewDto = {{
+          sourcePath: string;
+          migratedFields: string[];
+          warnings: string[];
+        }};
+
+        export type LegacyConfigMigrationApplyDto = {{
+          sourcePath: string;
+          preferencesWritten: boolean;
+          engineProfilesWritten: boolean;
+          writtenPaths: string[];
+          migratedFields: string[];
+          warnings: string[];
+        }};
+
+        export async function previewLegacyConfigMigration(path: string): Promise<LegacyConfigMigrationPreviewDto> {{
+          return await invoke<LegacyConfigMigrationPreviewDto>("preview_legacy_config_migration", {{ path }});
+        }}
+
+        export async function applyLegacyConfigMigration(path: string): Promise<LegacyConfigMigrationApplyDto> {{
+          return await invoke<LegacyConfigMigrationApplyDto>("apply_legacy_config_migration", {{ path }});
+        }}
         """,
     )
 
@@ -1377,7 +1431,26 @@ def create_app_fixture(
           const currentFilePath = null;
           const sgfText = "(;GM[1])";
           const saveFileName = "review.sgf";
+          const legacyConfigPath = "/tmp/legacy.properties";
+          const legacyConfigStatus = "Ready to preview legacy config.";
+          const legacyConfigPreview = null;
+          const legacyConfigApplyResult = null;
           const sgfTextEditVersionRef = {{ current: 0 }};
+          async function loadAppPreferences() {{
+            return {{}};
+          }}
+          async function loadEngineProfilesSettings() {{
+            return {{}};
+          }}
+          async function handlePreviewLegacyConfigMigration() {{
+            return await previewLegacyConfigMigration(legacyConfigPath);
+          }}
+          async function handleApplyLegacyConfigMigration() {{
+            const result = await applyLegacyConfigMigration(legacyConfigPath);
+            await loadAppPreferences();
+            await loadEngineProfilesSettings();
+            return result;
+          }}
           async function handleSaveSgfDocument(saveAs = false) {{
             try {{
               {save_body}
@@ -1386,7 +1459,7 @@ def create_app_fixture(
             }}
           }}
           {edit_handler_body}
-          return handleSaveSgfDocument;
+          return {{ handleSaveSgfDocument, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
         }}
         """,
     )
@@ -1407,6 +1480,49 @@ def create_sgf_tree_panel_fixture(root: Path) -> None:
         }
         """,
     )
+
+
+def create_preferences_panel_fixture(root: Path, *, migration_ui: bool = True) -> None:
+    if migration_ui:
+        body = """
+        type Props = {
+          legacyConfigPath: string;
+          legacyConfigStatus: string;
+          legacyConfigPreview: { migratedFields: string[]; warnings: string[] } | null;
+          legacyConfigApplyResult: { migratedFields: string[]; warnings: string[] } | null;
+          onPreviewLegacyConfigMigration: () => void;
+          onApplyLegacyConfigMigration: () => void;
+        };
+
+        export function PreferencesPanel({
+          legacyConfigPath,
+          legacyConfigStatus,
+          legacyConfigPreview,
+          legacyConfigApplyResult,
+          onPreviewLegacyConfigMigration,
+          onApplyLegacyConfigMigration
+        }: Props) {
+          return (
+            <section aria-label="Legacy Java/Swing config migration">
+              <label>Legacy config path<input value={legacyConfigPath} /></label>
+              <span>{legacyConfigStatus}</span>
+              <button onClick={onPreviewLegacyConfigMigration}>Preview</button>
+              <button onClick={onApplyLegacyConfigMigration}>Apply</button>
+              <strong>Migrated fields</strong>
+              <strong>Warnings</strong>
+              {legacyConfigPreview}
+              {legacyConfigApplyResult}
+            </section>
+          );
+        }
+        """
+    else:
+        body = """
+        export function PreferencesPanel() {
+          return <section aria-label="Application preferences">Preferences</section>;
+        }
+        """
+    write(root / smoke_user_flows.PREFERENCES_PANEL_SOURCE, body)
 
 
 def re_identifier_parts(value: str) -> list[str]:

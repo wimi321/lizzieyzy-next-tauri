@@ -5,6 +5,8 @@ import type {
   ProviderFetchResult,
   ProviderImportRequest,
   ProviderImportResult,
+  ReadboardExternalCaptureRequest,
+  ReadboardExternalCaptureResult,
   LegacyImportCaptureHelperRequest,
   LegacyImportCaptureHelperResult,
   ReadboardSidecarProbeRequest,
@@ -65,6 +67,23 @@ export async function syncReadboardSidecarSnapshot(
   return await invoke<ReadboardSidecarSyncSnapshotResult>("readboard_sidecar_sync_snapshot", { request });
 }
 
+export async function captureReadboardExternal(request: ReadboardExternalCaptureRequest): Promise<ReadboardExternalCaptureResult> {
+  if (!isTauriRuntime()) return readboardExternalCaptureFallback(request, "Browser preview cannot capture external screens or windows.");
+  try {
+    return await invoke<ReadboardExternalCaptureResult>("readboard_external_capture", {
+      request: {
+        captureSource: request.source,
+        endpoint: request.endpoint ?? null,
+        windowTitle: request.window_title ?? null,
+        timeoutMs: request.timeout_ms ?? null,
+        metadata: request.metadata
+      }
+    });
+  } catch (error) {
+    return readboardExternalCaptureFallback(request, errorMessage(error));
+  }
+}
+
 export async function previewLegacyImportCaptureHelper(
   request: LegacyImportCaptureHelperRequest
 ): Promise<LegacyImportCaptureHelperResult> {
@@ -74,6 +93,21 @@ export async function previewLegacyImportCaptureHelper(
   } catch (error) {
     return legacyImportCaptureHelperFallback(request, errorMessage(error));
   }
+}
+
+function readboardExternalCaptureFallback(request: ReadboardExternalCaptureRequest, message: string): ReadboardExternalCaptureResult {
+  return {
+    status: classifyCaptureStatus(message),
+    source: request.source,
+    warnings: [
+      "Operator-selected screen/window capture did not produce an image preview.",
+      "No SGF was imported and the board was not replaced."
+    ],
+    message: `${message} This is a recoverable boundary for the external capture MVP.`,
+    recoverable: true,
+    imported: false,
+    metadata: request.metadata
+  };
 }
 
 function importProviderPayloadLocally(request: ProviderImportRequest): ProviderImportResult {
@@ -351,4 +385,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function classifyCaptureStatus(message: string): ReadboardExternalCaptureResult["status"] {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("cancel")) return "cancelled";
+  if (normalized.includes("permission") || normalized.includes("denied")) return "permission";
+  if (normalized.includes("decode") || normalized.includes("image")) return "decode_error";
+  if (normalized.includes("unsupported") || normalized.includes("not found") || normalized.includes("unknown command") || normalized.includes("browser preview")) return "unsupported";
+  return "error";
 }

@@ -820,6 +820,10 @@ textarea {
   align-items: end;
 }
 
+.provider-capture-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .provider-grid button,
 .provider-panel > button,
 .provider-readboard > button {

@@ -102,6 +102,47 @@ export type ReadboardSidecarSyncSnapshotResult = {
   warnings: string[];
 };
 
+export type ReadboardExternalCaptureSource = "screen" | "window";
+
+export type ReadboardExternalCaptureStatus = "captured" | "cancelled" | "permission" | "unsupported" | "decode_error" | "error" | string;
+
+export type ReadboardExternalCaptureRequest = {
+  source: ReadboardExternalCaptureSource;
+  endpoint?: string | null;
+  window_title?: string | null;
+  timeout_ms?: number | null;
+  metadata: Record<string, string>;
+};
+
+export type ReadboardExternalCaptureResult = {
+  status: ReadboardExternalCaptureStatus;
+  source: ReadboardExternalCaptureSource | string;
+  image_path?: string | null;
+  imagePath?: string | null;
+  image_base64?: string | null;
+  imageBase64?: string | null;
+  snapshot_id?: string | null;
+  snapshotId?: string | null;
+  snapshot_hash?: string | null;
+  snapshotHash?: string | null;
+  hash?: string | null;
+  sanitizedPath?: string | null;
+  sha256?: string | null;
+  size?: number | null;
+  decode?: Record<string, unknown> | string | null;
+  confidence?: number | string | null;
+  position?: PositionDto | null;
+  warnings: string[];
+  message?: string | null;
+  errorMessage?: string | null;
+  recoverable?: boolean;
+  imported?: boolean;
+  metadata?: Record<string, string> | null;
+  source_metadata?: Record<string, string> | null;
+  sourceMetadata?: Record<string, string> | null;
+  [key: string]: unknown;
+};
+
 export type LegacyImportCaptureHelperKind =
   | "sgf_payload"
   | "protocol_snapshot"

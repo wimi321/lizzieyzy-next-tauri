@@ -3,7 +3,7 @@ use app_model::{
     PointDto, PositionDto, ProviderError, ProviderErrorKind, ProviderFetchMethod, ProviderFetchRequest,
     ProviderFetchResult, ProviderGameMetadata, ProviderImportRequest, ProviderImportResult, ProviderKind,
     ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest,
-    ReadboardSidecarSyncSnapshotResult, SgfTreeDto,
+    ReadboardSidecarSyncSnapshotResult, SgfTreeDto, SgfTreeNodeDto,
 };
 use engine_manager::{
     build_command_spec, check_assets, AnalysisBatchRunOptions, AnalysisCancelToken, AssetCheck, CommandSpec,
@@ -826,6 +826,51 @@ struct InstalledAppRuntimeBoundariesDto {
     full_legacy_parity: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppSgfWorkflowProofRequestDto {
+    path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppSgfWorkflowProofDto {
+    schema: String,
+    status: String,
+    saved_path: String,
+    checks: Vec<InstalledAppSgfWorkflowCheckDto>,
+    initial_node_count: usize,
+    reopened_node_count: usize,
+    reopened_move_count: usize,
+    comment_persisted: bool,
+    property_persisted: bool,
+    annotation_persisted: bool,
+    append_persisted: bool,
+    edit_persisted: bool,
+    reorder_persisted: bool,
+    delete_persisted: bool,
+    save_readback_persisted: bool,
+    reopen_invariant: String,
+    boundaries: InstalledAppSgfWorkflowBoundariesDto,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppSgfWorkflowCheckDto {
+    name: String,
+    status: String,
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledAppSgfWorkflowBoundariesDto {
+    dev_server_required: bool,
+    native_dialog_covered: bool,
+    webview_dom_covered: bool,
+    full_legacy_parity: bool,
+}
+
 #[tauri::command]
 fn health() -> AppHealthDto {
     AppHealthDto {
@@ -1572,6 +1617,18 @@ fn replay_sgf_position_at_node(sgf_text: String, node_id: NodeId) -> Result<Posi
 }
 
 #[tauri::command]
+fn installed_app_sgf_workflow_proof(
+    request: Option<InstalledAppSgfWorkflowProofRequestDto>,
+) -> Result<InstalledAppSgfWorkflowProofDto, String> {
+    installed_app_sgf_workflow_proof_for_path(
+        request
+            .and_then(|request| request.path)
+            .map(non_empty_path)
+            .transpose()?,
+    )
+}
+
+#[tauri::command]
 fn read_sgf_file(path: String) -> Result<String, String> {
     let path = non_empty_path(path)?;
     fs::read_to_string(&path).map_err(|err| format!("failed to read SGF file {}: {err}", path.display()))
@@ -1582,6 +1639,267 @@ fn write_sgf_file(path: String, sgf_text: String) -> Result<(), String> {
     let path = non_empty_path(path)?;
     sgf::parse_sgf(&sgf_text).map_err(|err| format!("failed to parse SGF text: {err}"))?;
     fs::write(&path, sgf_text).map_err(|err| format!("failed to write SGF file {}: {err}", path.display()))
+}
+
+fn installed_app_sgf_workflow_proof_for_path(
+    requested_path: Option<PathBuf>,
+) -> Result<InstalledAppSgfWorkflowProofDto, String> {
+    let save_path = requested_path.unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("lizzieyzy-installed-sgf-workflow-{}.sgf", Uuid::new_v4()))
+    });
+    let save_path_string = save_path.display().to_string();
+    let mut checks = Vec::new();
+    let initial_sgf = installed_app_sgf_workflow_fixture();
+
+    let initial_tree = parse_sgf_tree(initial_sgf.to_string())?
+        .ok_or_else(|| "workflow fixture did not produce an SGF tree".to_string())?;
+    let initial_node_count = initial_tree.nodes.len();
+    sgf_workflow_check(
+        &mut checks,
+        "app_started_backend",
+        true,
+        "Tauri backend command executed without requiring a dev server",
+    );
+
+    write_sgf_file(save_path_string.clone(), initial_sgf.to_string())?;
+    let mut sgf_text = read_sgf_file(save_path_string.clone())?;
+    let readback_tree = parse_sgf_tree(sgf_text.clone())?
+        .ok_or_else(|| "readback SGF did not produce an SGF tree".to_string())?;
+    sgf_workflow_check(
+        &mut checks,
+        "save_readback_reparse",
+        readback_tree.nodes.len() == initial_node_count,
+        "initial SGF saved, read back, and reparsed with the same node count",
+    );
+
+    let first_move_id = find_sgf_node_by_move(&readback_tree, 1)?.id;
+    let branch_id = find_sgf_node_by_comment(&readback_tree, "branch variation")?.id;
+    let branch_position = replay_sgf_position_at_node(sgf_text.clone(), branch_id)?;
+    let tree_navigation_ok = position_has_stone(&branch_position, 0, 0, app_model::PlayerColor::Black)
+        && position_has_stone(&branch_position, 2, 2, app_model::PlayerColor::White);
+    sgf_workflow_check(
+        &mut checks,
+        "tree_navigation_branch_replay",
+        tree_navigation_ok,
+        "branch replay uses the selected tree path, not path-derived node ids",
+    );
+
+    sgf_text = update_sgf_node_comment(
+        sgf_text,
+        first_move_id,
+        Some("installed workflow comment".to_string()),
+    )?;
+    let properties = update_sgf_node_properties(
+        sgf_text,
+        first_move_id,
+        vec![
+            SgfPropertyUpdateDto {
+                key: "N".to_string(),
+                values: vec!["installed-node".to_string()],
+            },
+            SgfPropertyUpdateDto {
+                key: "TR".to_string(),
+                values: vec!["bb".to_string()],
+            },
+            SgfPropertyUpdateDto {
+                key: "LB".to_string(),
+                values: vec!["cc:A".to_string()],
+            },
+            SgfPropertyUpdateDto {
+                key: "AR".to_string(),
+                values: vec!["aa:bb".to_string()],
+            },
+        ],
+    )?;
+    sgf_text = properties.sgf_text;
+    let annotated_tree = parse_sgf_tree(sgf_text.clone())?
+        .ok_or_else(|| "annotated SGF did not produce an SGF tree".to_string())?;
+    let annotated_node = find_sgf_node_by_comment(&annotated_tree, "installed workflow comment")?;
+    let comment_persisted = annotated_node.comment.as_deref() == Some("installed workflow comment");
+    let property_persisted = sgf_node_has_property(annotated_node, "N", "installed-node");
+    let annotation_persisted = sgf_node_has_property(annotated_node, "TR", "bb")
+        && sgf_node_has_property(annotated_node, "LB", "cc:A")
+        && sgf_node_has_property(annotated_node, "AR", "aa:bb");
+    sgf_workflow_check(
+        &mut checks,
+        "comment_property_annotation_persistence",
+        comment_persisted && property_persisted && annotation_persisted,
+        "comment, regular property, and FF4 annotation markup survive update/reparse",
+    );
+
+    let append = append_sgf_move(
+        sgf_text,
+        first_move_id,
+        app_model::PlayerColor::White,
+        MoveVertex::Point(PointDto { x: 3, y: 3 }),
+    )?;
+    sgf_text = append.sgf_text;
+    let appended_id = append.new_node_id;
+    let edit = edit_sgf_move(
+        sgf_text,
+        appended_id,
+        app_model::PlayerColor::White,
+        MoveVertex::Pass,
+    )?;
+    sgf_text = edit.sgf_text;
+    let reorder = reorder_sgf_variation(sgf_text, edit.node_id, 0)?;
+    sgf_text = reorder.sgf_text;
+    let reordered_tree = parse_sgf_tree(sgf_text.clone())?
+        .ok_or_else(|| "reordered SGF did not produce an SGF tree".to_string())?;
+    let reordered_node = reordered_tree
+        .nodes
+        .iter()
+        .find(|node| node.id == reorder.node_id)
+        .ok_or_else(|| "reordered node was not found after reparse".to_string())?;
+    let append_persisted = reordered_tree.nodes.iter().any(|node| node.id == reorder.node_id);
+    let edit_persisted = reordered_node.vertex == Some(MoveVertex::Pass);
+    let reorder_persisted = reordered_node.variation_index == 0 && reordered_node.is_mainline;
+    sgf_workflow_check(
+        &mut checks,
+        "append_edit_reorder_persistence",
+        append_persisted && edit_persisted && reorder_persisted,
+        "append, edit-to-pass, and variation reorder survive immediate reparse",
+    );
+
+    let delete_id = find_sgf_node_by_comment(&reordered_tree, "delete me")?.id;
+    let delete = delete_sgf_node(sgf_text, delete_id)?;
+    sgf_text = delete.sgf_text;
+    let deleted_tree = parse_sgf_tree(sgf_text.clone())?
+        .ok_or_else(|| "deleted SGF did not produce an SGF tree".to_string())?;
+    let delete_persisted = deleted_tree
+        .nodes
+        .iter()
+        .all(|node| node.comment.as_deref() != Some("delete me"));
+    sgf_workflow_check(
+        &mut checks,
+        "delete_persistence",
+        delete_persisted,
+        "target leaf node is absent after delete/reparse",
+    );
+
+    write_sgf_file(save_path_string.clone(), sgf_text.clone())?;
+    let reopened_sgf = read_sgf_file(save_path_string.clone())?;
+    let reopened_tree = parse_sgf_tree(reopened_sgf.clone())?
+        .ok_or_else(|| "reopened SGF did not produce an SGF tree".to_string())?;
+    let reopened_game = parse_sgf_summary(reopened_sgf.clone())?;
+    let reopened_node = find_sgf_node_by_comment(&reopened_tree, "installed workflow comment")?;
+    let reopened_pass = reopened_tree
+        .nodes
+        .iter()
+        .find(|node| node.vertex == Some(MoveVertex::Pass) && node.variation_index == 0);
+    let save_readback_persisted = reopened_sgf == sgf_text;
+    let reopened_comment = reopened_node.comment.as_deref() == Some("installed workflow comment");
+    let reopened_property = sgf_node_has_property(reopened_node, "N", "installed-node");
+    let reopened_annotation = sgf_node_has_property(reopened_node, "TR", "bb")
+        && sgf_node_has_property(reopened_node, "LB", "cc:A")
+        && sgf_node_has_property(reopened_node, "AR", "aa:bb");
+    let reopened_append_edit_reorder = reopened_pass.is_some();
+    let reopened_delete = reopened_tree
+        .nodes
+        .iter()
+        .all(|node| node.comment.as_deref() != Some("delete me"));
+    sgf_workflow_check(
+        &mut checks,
+        "save_reopen_invariants",
+        save_readback_persisted
+            && reopened_comment
+            && reopened_property
+            && reopened_annotation
+            && reopened_append_edit_reorder
+            && reopened_delete,
+        "final SGF was saved, read back, reparsed, and semantic edit invariants were retained",
+    );
+
+    let status = if checks.iter().all(|check| check.status == "pass") {
+        "pass"
+    } else {
+        "fail"
+    };
+
+    Ok(InstalledAppSgfWorkflowProofDto {
+        schema: "lizzieyzy.installed-app-sgf-workflow-proof.v1".to_string(),
+        status: status.to_string(),
+        saved_path: save_path_string,
+        checks,
+        initial_node_count,
+        reopened_node_count: reopened_tree.nodes.len(),
+        reopened_move_count: reopened_game.summary.move_count,
+        comment_persisted: reopened_comment,
+        property_persisted: reopened_property,
+        annotation_persisted: reopened_annotation,
+        append_persisted: append_persisted && reopened_append_edit_reorder,
+        edit_persisted: edit_persisted && reopened_append_edit_reorder,
+        reorder_persisted: reorder_persisted && reopened_append_edit_reorder,
+        delete_persisted: delete_persisted && reopened_delete,
+        save_readback_persisted,
+        reopen_invariant: sgf_workflow_invariant(&reopened_tree),
+        boundaries: InstalledAppSgfWorkflowBoundariesDto {
+            dev_server_required: false,
+            native_dialog_covered: false,
+            webview_dom_covered: false,
+            full_legacy_parity: false,
+        },
+    })
+}
+
+fn installed_app_sgf_workflow_fixture() -> &'static str {
+    "(;GM[1]FF[4]SZ[5]KM[0]C[root];B[aa]C[first move](;W[bb]C[main variation];B[cc]C[delete me])(;W[cc]C[branch variation]))"
+}
+
+fn sgf_workflow_check(
+    checks: &mut Vec<InstalledAppSgfWorkflowCheckDto>,
+    name: &str,
+    passed: bool,
+    message: &str,
+) {
+    checks.push(InstalledAppSgfWorkflowCheckDto {
+        name: name.to_string(),
+        status: if passed { "pass" } else { "fail" }.to_string(),
+        message: message.to_string(),
+    });
+}
+
+fn find_sgf_node_by_move(tree: &SgfTreeDto, move_number: u32) -> Result<&SgfTreeNodeDto, String> {
+    tree.nodes
+        .iter()
+        .find(|node| node.move_number == Some(move_number) && node.is_mainline)
+        .ok_or_else(|| format!("SGF node for mainline move {move_number} was not found"))
+}
+
+fn find_sgf_node_by_comment<'a>(tree: &'a SgfTreeDto, comment: &str) -> Result<&'a SgfTreeNodeDto, String> {
+    tree.nodes
+        .iter()
+        .find(|node| node.comment.as_deref() == Some(comment))
+        .ok_or_else(|| format!("SGF node with comment `{comment}` was not found"))
+}
+
+fn sgf_node_has_property(node: &SgfTreeNodeDto, key: &str, value: &str) -> bool {
+    node.properties
+        .iter()
+        .any(|property| property.key == key && property.values.iter().any(|candidate| candidate == value))
+}
+
+fn position_has_stone(position: &PositionDto, x: u8, y: u8, color: app_model::PlayerColor) -> bool {
+    position
+        .stones
+        .iter()
+        .any(|stone| stone.x == x && stone.y == y && stone.color == color)
+}
+
+fn sgf_workflow_invariant(tree: &SgfTreeDto) -> String {
+    let comments = tree
+        .nodes
+        .iter()
+        .filter_map(|node| node.comment.as_deref())
+        .collect::<Vec<_>>()
+        .join("|");
+    let moves = tree
+        .nodes
+        .iter()
+        .filter_map(|node| node.move_number.map(|move_number| move_number.to_string()))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("nodes={};moves={};comments={comments}", tree.nodes.len(), moves)
 }
 
 #[tauri::command]
@@ -4680,6 +4998,7 @@ pub fn run() {
             delete_sgf_node,
             reorder_sgf_variation,
             replay_sgf_position_at_node,
+            installed_app_sgf_workflow_proof,
             read_sgf_file,
             write_sgf_file,
             fake_analyze,
@@ -6732,6 +7051,42 @@ mod tests {
         remove_native_sgf_temp_file(&path);
         assert!(error.contains("failed to parse SGF text"));
         assert_eq!(after, original);
+    }
+
+    #[test]
+    fn installed_app_sgf_workflow_proof_covers_save_reopen_and_edit_invariants() {
+        let path = native_sgf_temp_path("installed-workflow");
+
+        let proof = installed_app_sgf_workflow_proof_for_path(Some(path.clone())).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+
+        remove_native_sgf_temp_file(&path);
+        assert_eq!(proof.schema, "lizzieyzy.installed-app-sgf-workflow-proof.v1");
+        assert_eq!(proof.status, "pass");
+        assert!(proof.saved_path.ends_with(".sgf"));
+        assert!(proof.initial_node_count >= 5);
+        assert!(proof.reopened_node_count >= 5);
+        assert!(proof.reopened_move_count >= 2);
+        assert!(proof.comment_persisted);
+        assert!(proof.property_persisted);
+        assert!(proof.annotation_persisted);
+        assert!(proof.append_persisted);
+        assert!(proof.edit_persisted);
+        assert!(proof.reorder_persisted);
+        assert!(proof.delete_persisted);
+        assert!(proof.save_readback_persisted);
+        assert!(proof.checks.iter().all(|check| check.status == "pass"));
+        assert!(saved.contains("C[installed workflow comment]"));
+        assert!(saved.contains("N[installed-node]"));
+        assert!(saved.contains("TR[bb]"));
+        assert!(saved.contains("LB[cc:A]"));
+        assert!(saved.contains("AR[aa:bb]"));
+        assert!(saved.contains("W[]"));
+        assert!(!saved.contains("delete me"));
+        assert!(!proof.boundaries.dev_server_required);
+        assert!(!proof.boundaries.native_dialog_covered);
+        assert!(!proof.boundaries.webview_dom_covered);
+        assert!(!proof.boundaries.full_legacy_parity);
     }
 
     #[test]

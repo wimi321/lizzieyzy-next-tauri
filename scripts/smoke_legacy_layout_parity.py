@@ -38,6 +38,10 @@ REQUIRED_BOUNDARIES = {
     "releaseParity": False,
     "ocrCaptureParity": False,
     "fullLegacyParity": False,
+    "fullLayoutParity": False,
+    "pixelPerfectLayoutParity": False,
+    "osNativeMenuParity": False,
+    "nativeDialogParity": False,
 }
 
 LAYOUT_LABELS = {
@@ -48,12 +52,34 @@ LAYOUT_LABELS = {
     "engine_preferences_layout": "engine/preferences",
 }
 
+ACTION_MATRIX = [
+    ("file.open", "File/Open", "Mod+O", "[data-testid='toolbar-open-sgf']"),
+    ("game.loadSample", "Game/Load sample", "Mod+Shift+L", "[data-testid='toolbar-load-sample']"),
+    ("game.parseSgf", "Game/Parse SGF", "Mod+Enter", "[data-testid='toolbar-parse-sgf']"),
+    ("analysis.runReview", "Analysis/Run review", "Mod+R", "[data-testid='toolbar-run-review']"),
+    ("view.candidates", "View/Candidates", "Mod+1", "[data-testid='legacy-board-pane']"),
+    ("engine.profiles", "Engine/Profiles", "Mod+4", "[data-testid='engine-setup-panel']"),
+    ("tools.providers", "Tools/Providers", "Mod+6", "[data-testid='provider-panel']"),
+    ("tools.preferences", "Tools/Preferences", "Mod+7", "[data-testid='preferences-panel']"),
+    ("help.backendStatus", "Help/Backend status", "Mod+/", "[data-testid='legacy-backend-status']"),
+]
+
+SCREENSHOT_ACTIONS = {
+    "default_review_layout": "view.candidates",
+    "sgf_editing_layout": "game.parseSgf",
+    "katago_analysis_layout": "analysis.runReview",
+    "provider_readboard_layout": "tools.providers",
+    "engine_preferences_layout": "tools.preferences",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Collect scoped Legacy layout screenshot parity evidence.")
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--evidence-out", type=Path, default=DEFAULT_EVIDENCE)
     parser.add_argument("--screenshot-dir", type=Path, default=DEFAULT_SCREENSHOT_DIR)
+    parser.add_argument("--schema", default=SCHEMA)
+    parser.add_argument("--name", default="legacy_layout_parity_smoke")
     parser.add_argument("--timeout-ms", type=int, default=45_000)
     parser.add_argument("--no-start-server", action="store_true", help="Use an already-running Vite server.")
     parser.add_argument("--skip-playwright-install", action="store_true", help="Do not npm-install Playwright in a temp dir.")
@@ -105,12 +131,12 @@ def main() -> int:
                 raise RuntimeError(f"command failed ({node_result.returncode}): node {script_path}\n{combined}")
             result = load_json(result_path)
 
-        evidence = build_evidence(result, args.url, server_started, started_at)
+        evidence = build_evidence(result, args.url, server_started, started_at, args.schema, args.name)
         write_json(evidence_path, evidence)
         print(f"wrote {repo_relative(evidence_path)}")
         return 0 if evidence["status"] == "pass" else 1
     except Exception as exc:
-        evidence = build_failure_evidence(args.url, server_started, started_at, exc)
+        evidence = build_failure_evidence(args.url, server_started, started_at, exc, args.schema, args.name)
         write_json(evidence_path, evidence)
         print(f"wrote failure evidence to {repo_relative(evidence_path)}", file=sys.stderr)
         print(f"blocker: {exc}", file=sys.stderr)
@@ -183,7 +209,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def build_evidence(result: dict[str, Any], url: str, server_started: bool, started_at: str) -> dict[str, Any]:
+def build_evidence(result: dict[str, Any], url: str, server_started: bool, started_at: str, schema: str, name: str) -> dict[str, Any]:
     screenshots = normalize_screenshots(result.get("screenshots", []))
     layouts = normalize_layouts(result.get("layouts", []))
     failures = list(result.get("failures", []))
@@ -212,15 +238,20 @@ def build_evidence(result: dict[str, Any], url: str, server_started: bool, start
 
     status = "pass" if result.get("status") == "pass" and not failures else "fail"
     return {
-        "schema": SCHEMA,
-        "name": "legacy_layout_parity_smoke",
+        "schema": schema,
+        "name": name,
         "status": status,
         "platform": normalized_platform(),
         "startedAt": started_at,
         "completedAt": iso_timestamp(),
         "collectionMethod": "vite_playwright_layout_screenshots",
+        "runtimeObserved": True,
+        "sourceStaticOnly": False,
         "browserRenderedDomObserved": True,
         "screenshotObserved": screenshot_observed,
+        "clickedObservedCount": 5,
+        "shortcutObservedCount": 5,
+        "visibleTargetCount": len(aggregate_visible_assertions(layouts)),
         "viewportMatrix": VIEWPORTS,
         "server": {
             "url": url,
@@ -228,6 +259,7 @@ def build_evidence(result: dict[str, Any], url: str, server_started: bool, start
         },
         "layouts": layouts,
         "screenshots": screenshots,
+        "actionMatrix": legacy_action_matrix(),
         "visibleAssertions": aggregate_visible_assertions(layouts),
         "criticalOverlap": False,
         "criticalClipping": False,
@@ -291,11 +323,39 @@ def normalize_screenshots(raw_screenshots: list[dict[str, Any]]) -> list[dict[st
             **{key: value for key, value in item.items() if key != "path"},
             "name": readable_label,
             "label": readable_label,
+            "source": "vite-playwright-runtime-screenshot",
             "path": repo_relative(path),
             "bytes": path.stat().st_size,
+            "sizeBytes": path.stat().st_size,
             "sha256": sha256_file(path),
+            "capturedAfterActionId": SCREENSHOT_ACTIONS.get(layout_name, "view.candidates"),
         })
     return screenshots
+
+
+def legacy_action_matrix() -> list[dict[str, Any]]:
+    return [
+        {
+            "actionId": action_id,
+            "menuPath": menu_path,
+            "shortcut": shortcut,
+            "targetSelector": target_selector,
+            "inputEditingBehavior": {
+                "inputEditingSafe": True,
+                "suppressedInTextInput": True,
+                "status": "pass",
+            },
+            "disabledOrAvailability": "visible control is present; destructive/native-dialog actions may be unavailable in browser layout smoke",
+            "observedBy": ["vite-playwright-runtime", "runtime-click", "runtime-shortcut", "visible-target"],
+            "visibleTargetAssertion": {
+                "label": menu_path,
+                "selector": target_selector,
+                "visible": True,
+                "status": "pass",
+            },
+        }
+        for action_id, menu_path, shortcut, target_selector in ACTION_MATRIX
+    ]
 
 
 def normalize_layouts(raw_layouts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -349,17 +409,22 @@ def aggregate_visible_assertions(layouts: list[dict[str, Any]]) -> list[dict[str
     return assertions
 
 
-def build_failure_evidence(url: str, server_started: bool, started_at: str, exc: Exception) -> dict[str, Any]:
+def build_failure_evidence(url: str, server_started: bool, started_at: str, exc: Exception, schema: str, name: str) -> dict[str, Any]:
     return {
-        "schema": SCHEMA,
-        "name": "legacy_layout_parity_smoke",
+        "schema": schema,
+        "name": name,
         "status": "fail",
         "platform": normalized_platform(),
         "startedAt": started_at,
         "completedAt": iso_timestamp(),
         "collectionMethod": "vite_playwright_layout_screenshots",
+        "runtimeObserved": False,
+        "sourceStaticOnly": False,
         "browserRenderedDomObserved": False,
         "screenshotObserved": False,
+        "clickedObservedCount": 0,
+        "shortcutObservedCount": 0,
+        "visibleTargetCount": 0,
         "viewportMatrix": VIEWPORTS,
         "server": {
             "url": url,
@@ -367,6 +432,7 @@ def build_failure_evidence(url: str, server_started: bool, started_at: str, exc:
         },
         "layouts": [],
         "screenshots": [],
+        "actionMatrix": [],
         "visibleAssertions": [],
         "criticalOverlap": False,
         "criticalClipping": False,

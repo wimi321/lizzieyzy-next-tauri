@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { listenToLegacyMenuActionEvents } from "../api/backend";
 import {
   legacyActionFromKeyboardEvent,
+  legacyActionDefinition,
   legacyActionLabel,
+  legacyActionMenuPath,
   legacyActionMatrix,
+  legacyActionTestId,
+  legacyShortcutAria,
   type LegacyActionDefinition,
   type LegacyActionId,
   type LegacyActionSource,
@@ -208,6 +212,21 @@ export function LegacyShell({
     element.dataset.legacyMenuTargetId = menuTargetId(target);
   }
 
+  function actionData(actionId: LegacyActionId) {
+    const action = legacyActionDefinition(actionId);
+    return {
+      "data-legacy-action": action.id,
+      "data-legacy-action-group": action.group,
+      "data-legacy-action-label": action.label,
+      "data-legacy-action-menu-path": legacyActionMenuPath(action),
+      "data-legacy-action-shortcut": action.shortcut ?? "",
+      "data-legacy-action-target": action.target ?? "",
+      "data-legacy-action-target-selector": action.targetSelector ?? "",
+      "data-legacy-action-testid": legacyActionTestId(action.id),
+      "aria-keyshortcuts": legacyShortcutAria(action.shortcut)
+    };
+  }
+
   function markActionStatus(action: LegacyActionDefinition, source: LegacyActionSource, status: LegacyMenuActionState["status"]) {
     setMenuAction({
       activeTarget: action.target ?? null,
@@ -324,15 +343,19 @@ export function LegacyShell({
       data-last-legacy-action-source={menuAction.lastActionSource}
       data-last-menu-action={menuAction.lastAction}
       data-menu-action-status={menuAction.status}
+      data-legacy-action-count={legacyActionMatrix.length}
+      data-legacy-action-ids={legacyActionMatrix.map((action) => action.id).join(" ")}
+      data-legacy-shortcut-editing-protection="input,textarea,select,[contenteditable=true]"
+      data-legacy-shortcut-input-editing-protected="true"
     >
       <header className="legacy-titlebar">
         <div className="legacy-appmark">
           <h1>LizzieYzy Next</h1>
           <p>{architectureLabel}</p>
         </div>
-        <nav className="legacy-menubar" aria-label="Application menu" data-testid="legacy-menubar">
+        <nav className="legacy-menubar" aria-label="Application menu" data-testid="legacy-menubar" data-legacy-menu-groups="File Game Analysis View Engine Tools Help">
           {menuGroups.map((group) => (
-            <details key={group.label} className="legacy-menu">
+            <details key={group.label} className="legacy-menu" data-legacy-menu-group={group.label}>
               <summary>{group.label}</summary>
               <div className="legacy-menu-popover">
                 {group.items.map((item) => (
@@ -340,8 +363,11 @@ export function LegacyShell({
                     key={item.action.id}
                     type="button"
                     disabled={item.disabled}
-                    data-legacy-action={item.action.id}
+                    {...actionData(item.action.id)}
                     data-menu-target={item.action.target ?? undefined}
+                    data-menu-path={legacyActionMenuPath(item.action)}
+                    data-shortcut={item.action.shortcut ?? undefined}
+                    data-target-selector={item.action.targetSelector ?? undefined}
                     aria-controls={item.action.target ? menuTargetId(item.action.target) : undefined}
                     title={item.action.shortcut}
                     data-testid={`legacy-menu-${group.label.toLowerCase()}-${item.action.label.toLowerCase().replaceAll(" ", "-")}`}
@@ -367,12 +393,13 @@ export function LegacyShell({
       </span>
 
       <section className="legacy-toolbar" aria-label="Main toolbar" data-testid="legacy-toolbar">
-        <button type="button" data-testid="toolbar-open-sgf" onClick={() => void dispatchLegacyAction("file.open", "toolbar")} disabled={isBusy} title="Open SGF">Open</button>
-        <button type="button" data-testid="toolbar-save-sgf" onClick={() => void dispatchLegacyAction("file.save", "toolbar")} disabled={isBusy || !canSave} title="Save SGF">Save</button>
-        <button type="button" data-testid="toolbar-save-as-sgf" onClick={() => void dispatchLegacyAction("file.saveAs", "toolbar")} disabled={isBusy} title="Save SGF as">Save As</button>
+        <button type="button" data-testid="toolbar-open-sgf" {...actionData("file.open")} onClick={() => void dispatchLegacyAction("file.open", "toolbar")} disabled={isBusy} title="Open SGF">Open</button>
+        <button type="button" data-testid="toolbar-save-sgf" {...actionData("file.save")} onClick={() => void dispatchLegacyAction("file.save", "toolbar")} disabled={isBusy || !canSave} title="Save SGF">Save</button>
+        <button type="button" data-testid="toolbar-save-as-sgf" {...actionData("file.saveAs")} onClick={() => void dispatchLegacyAction("file.saveAs", "toolbar")} disabled={isBusy} title="Save SGF as">Save As</button>
         <label
           className={`file-button legacy-tool-file${isBusy ? " file-button-disabled" : ""}`}
           data-testid="toolbar-import-sgf"
+          {...actionData("file.importSgf")}
           title="Import SGF"
         >
           Import
@@ -382,9 +409,9 @@ export function LegacyShell({
           }} />
         </label>
         <span className="legacy-toolbar-divider" aria-hidden="true" />
-        <button type="button" data-testid="toolbar-load-sample" onClick={() => void dispatchLegacyAction("game.loadSample", "toolbar")} disabled={isBusy} title="Load sample game">Sample</button>
-        <button type="button" data-testid="toolbar-parse-sgf" onClick={() => void dispatchLegacyAction("game.parseSgf", "toolbar")} disabled={isBusy} title="Parse SGF source">Parse</button>
-        <button type="button" data-testid="toolbar-run-review" onClick={() => void dispatchLegacyAction("analysis.runReview", "toolbar")} disabled={isBusy} title="Run review">Review</button>
+        <button type="button" data-testid="toolbar-load-sample" {...actionData("game.loadSample")} onClick={() => void dispatchLegacyAction("game.loadSample", "toolbar")} disabled={isBusy} title="Load sample game">Sample</button>
+        <button type="button" data-testid="toolbar-parse-sgf" {...actionData("game.parseSgf")} onClick={() => void dispatchLegacyAction("game.parseSgf", "toolbar")} disabled={isBusy} title="Parse SGF source">Parse</button>
+        <button type="button" data-testid="toolbar-run-review" {...actionData("analysis.runReview")} onClick={() => void dispatchLegacyAction("analysis.runReview", "toolbar")} disabled={isBusy} title="Run review">Review</button>
         <span className="legacy-toolbar-spacer" />
         <div className="legacy-document-chip" title={documentTitle}>
           <strong>{documentName}{dirty ? " *" : ""}</strong>
@@ -415,7 +442,7 @@ export function LegacyShell({
             <strong title={documentTitle}>{documentName}{dirty ? " *" : ""}</strong>
             <span>{dirty ? "Unsaved changes" : "Saved"}</span>
           </div>
-          <textarea data-testid="sgf-source-textarea" value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
+          <textarea data-testid="sgf-source-textarea" data-legacy-shortcut-scope="editable" data-legacy-shortcut-protected="true" value={sgfText} onChange={(event) => onSgfTextChange(event.target.value)} disabled={isBusy} spellCheck={false} aria-label="SGF source" />
           <div className="button-row">
             <button type="button" data-testid="sgf-source-open" onClick={() => void dispatchLegacyAction("file.open", "toolbar")} disabled={isBusy}>Open</button>
             <button type="button" data-testid="sgf-source-save" onClick={() => void dispatchLegacyAction("file.save", "toolbar")} disabled={isBusy || !canSave}>Save</button>

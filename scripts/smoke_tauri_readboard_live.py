@@ -24,8 +24,8 @@ REQUIRED_CHECKS = [
     "sidecar_probe_unavailable",
     "protocol_line_sync",
     "target_state_change_sync",
-    "unsupported_ocr_path",
-    "external_client_not_covered",
+    "arbitrary_ocr_not_covered",
+    "external_capture_not_covered",
 ]
 SMOKE_SGF = "(;FF[4]GM[1]SZ[2]C[readboard runtime smoke])\n"
 GENERATED_READBOARD_ARTIFACTS = ["readboard_boofcv_config.txt"]
@@ -102,6 +102,10 @@ def validate_report(report: Any) -> list[str]:
         failures.append("checks must be a list")
         return failures
     check_by_name = {check.get("name"): check for check in checks if isinstance(check, dict)}
+    if "arbitrary_ocr_not_covered" not in check_by_name and "unsupported_ocr_path" in check_by_name:
+        check_by_name["arbitrary_ocr_not_covered"] = check_by_name["unsupported_ocr_path"]
+    if "external_capture_not_covered" not in check_by_name and "external_client_not_covered" in check_by_name:
+        check_by_name["external_capture_not_covered"] = check_by_name["external_client_not_covered"]
     missing = [name for name in REQUIRED_CHECKS if name not in check_by_name]
     not_pass = [
         name
@@ -117,8 +121,8 @@ def validate_report(report: Any) -> list[str]:
     failures.extend(validate_unavailable_probe(check_by_name.get("sidecar_probe_unavailable")))
     failures.extend(validate_protocol_line_sync(check_by_name.get("protocol_line_sync")))
     failures.extend(validate_target_state_change_sync(check_by_name.get("target_state_change_sync")))
-    failures.extend(validate_unsupported_ocr(check_by_name.get("unsupported_ocr_path")))
-    failures.extend(validate_external_scope(check_by_name.get("external_client_not_covered")))
+    failures.extend(validate_arbitrary_ocr_scope(check_by_name.get("arbitrary_ocr_not_covered")))
+    failures.extend(validate_external_capture_scope(check_by_name.get("external_capture_not_covered")))
     return failures
 
 
@@ -198,30 +202,47 @@ def validate_target_state_change_sync(check: Any) -> list[str]:
     return failures
 
 
-def validate_unsupported_ocr(check: Any) -> list[str]:
+def validate_arbitrary_ocr_scope(check: Any) -> list[str]:
     evidence = check_evidence(check)
     if evidence is None:
-        return ["unsupported_ocr_path evidence must be an object"]
+        return ["arbitrary_ocr_not_covered evidence must be an object"]
+    if "unsupported" in evidence or "observed" in evidence:
+        message = str(evidence.get("message", "")).lower()
+        if evidence.get("observed") is not True:
+            return ["unsupported_ocr_path must confirm observed true"]
+        if evidence.get("unsupported") is not True:
+            return ["unsupported_ocr_path must confirm unsupported true"]
+        if evidence.get("messageIncludesBoundary") is not True:
+            return ["unsupported_ocr_path must confirm messageIncludesBoundary true"]
+        if "image" not in message and "ocr" not in message:
+            return ["unsupported_ocr_path must name image/OCR boundary"]
+        return []
     message = str(evidence.get("message", "")).lower()
-    if evidence.get("observed") is not True:
-        return ["unsupported_ocr_path must confirm observed true"]
-    if evidence.get("unsupported") is not True:
-        return ["unsupported_ocr_path must confirm unsupported true"]
-    if evidence.get("messageIncludesBoundary") is not True:
-        return ["unsupported_ocr_path must confirm messageIncludesBoundary true"]
-    if "image" not in message and "ocr" not in message:
-        return ["unsupported_ocr_path must name image/OCR boundary"]
+    if evidence.get("covered") is not False:
+        return ["arbitrary_ocr_not_covered must explicitly mark covered false"]
+    if evidence.get("controlledImageImportCoveredBySeparateGate") is not True:
+        return ["arbitrary_ocr_not_covered must point to the separate controlled image import gate"]
+    if evidence.get("fullOcrParity") is not False:
+        return ["arbitrary_ocr_not_covered must keep fullOcrParity false"]
+    if "arbitrary" not in message and "ocr" not in message:
+        return ["arbitrary_ocr_not_covered must name arbitrary OCR boundary"]
     return []
 
 
-def validate_external_scope(check: Any) -> list[str]:
+def validate_external_capture_scope(check: Any) -> list[str]:
     evidence = check_evidence(check)
     if evidence is None:
-        return ["external_client_not_covered evidence must be an object"]
+        return ["external_capture_not_covered evidence must be an object"]
+    if "ocrCovered" in evidence:
+        if evidence.get("covered") is not False:
+            return ["external_client_not_covered must explicitly mark covered false"]
+        if evidence.get("ocrCovered") is not False or evidence.get("externalClientCaptureCovered") is not False:
+            return ["external_client_not_covered must exclude OCR and external client capture"]
+        return []
     if evidence.get("covered") is not False:
-        return ["external_client_not_covered must explicitly mark covered false"]
-    if evidence.get("ocrCovered") is not False or evidence.get("externalClientCaptureCovered") is not False:
-        return ["external_client_not_covered must exclude OCR and external client capture"]
+        return ["external_capture_not_covered must explicitly mark covered false"]
+    if evidence.get("externalWindowCaptureCovered") is not False or evidence.get("externalClientCaptureCovered") is not False:
+        return ["external_capture_not_covered must exclude external window/client capture"]
     return []
 
 
@@ -231,7 +252,33 @@ def build_evidence(raw_report: Any, *, endpoint: str | None, timeout_seconds: fl
     raw_failures = validate_raw_tauri_report(raw_report)
     if raw_failures:
         raise SmokeError("; ".join(raw_failures))
-    checks = [normalize_runtime_check(raw_report, name) for name in REQUIRED_CHECKS]
+    checks = [
+        normalize_runtime_check(raw_report, "runtime_started"),
+        normalize_runtime_check(raw_report, "sidecar_probe_ready"),
+        normalize_runtime_check(raw_report, "sidecar_probe_unavailable"),
+        normalize_runtime_check(raw_report, "protocol_line_sync"),
+        normalize_runtime_check(raw_report, "target_state_change_sync"),
+        {
+            "name": "arbitrary_ocr_not_covered",
+            "status": "pass",
+            "details": {
+                "covered": False,
+                "controlledImageImportCoveredBySeparateGate": True,
+                "fullOcrParity": False,
+                "message": "Arbitrary screenshot OCR is not covered by this runtime probe/protocol smoke; controlled image import is covered by docs/qa/readboard-image-import-smoke-macos.json.",
+            },
+        },
+        {
+            "name": "external_capture_not_covered",
+            "status": "pass",
+            "details": {
+                "covered": False,
+                "externalWindowCaptureCovered": False,
+                "externalClientCaptureCovered": False,
+                "scope": "Tauri runtime command boundary plus protocol-line DTO sync only; no external window/client capture.",
+            },
+        },
+    ]
     return {
         "schema": SCHEMA,
         "name": "readboard_tauri_runtime_smoke",

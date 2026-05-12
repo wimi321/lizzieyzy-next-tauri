@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -222,8 +223,34 @@ READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS = [
     "sidecar_probe_unavailable",
     "protocol_line_sync",
     "target_state_change_sync",
-    "unsupported_ocr_path",
-    "external_client_not_covered",
+    "arbitrary_ocr_not_covered",
+    "external_capture_not_covered",
+]
+READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE = "docs/qa/readboard-image-import-smoke-macos.json"
+READBOARD_IMAGE_IMPORT_SMOKE_SCHEMA = "lizzieyzy.readboard-image-import-smoke.v1"
+READBOARD_IMAGE_IMPORT_REQUIRED_CHECKS = [
+    "image_path_import",
+    "image_base64_import",
+    "invalid_image_rejected",
+    "non_board_image_rejected",
+    "snapshot_verified",
+    "protocol_regression",
+    "scope_boundaries",
+]
+READBOARD_IMAGE_IMPORT_REQUIRED_TRUE_FIELDS = [
+    "imagePathImportVerified",
+    "imageBase64ImportVerified",
+    "invalidImageRejected",
+    "nonBoardImageRejected",
+    "snapshotVerified",
+    "boardSizeVerified",
+    "stoneCountVerified",
+    "toPlayVerified",
+    "protocolRegressionVerified",
+]
+READBOARD_IMAGE_IMPORT_REQUIRED_FALSE_FIELDS = [
+    "fullOcrParity",
+    "externalCaptureCovered",
 ]
 PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
 PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
@@ -879,12 +906,17 @@ class UserFlowSmoke:
                     "legacy_import_capture_helper",
                     "legacyImportCaptureHelperFallback",
                     "recoverable_unsupported",
-                    "OCR/image helper",
                     "External window/client capture",
                     "imported: false",
                     "boardReplacement",
                     "No stale, guessed, or partial board replacement",
                 ],
+            ),
+            *missing_any_required_token(
+                api_text,
+                "provider API",
+                "controlled image/OCR helper",
+                ["OCR/image helper", "Controlled board image import MVP"],
             ),
             *missing_provider_api_invoke_command(
                 api_text,
@@ -905,7 +937,6 @@ class UserFlowSmoke:
                     "legacy-helper-no-board-replacement",
                     "SGF/payload helper",
                     "Protocol snapshot helper",
-                    "OCR/image helper",
                     "External window/client capture",
                     "recoverable unsupported",
                     "not imported",
@@ -915,6 +946,12 @@ class UserFlowSmoke:
                     "handleLegacyHelperStatus",
                     "legacyHelperResult",
                 ],
+            ),
+            *missing_any_required_token(
+                panel_text,
+                "ProviderPanel",
+                "controlled image/OCR helper",
+                ["OCR/image helper", "Controlled board image import"],
             ),
             *missing_required_tokens(
                 app_text,
@@ -942,6 +979,7 @@ class UserFlowSmoke:
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
+        self.check_readboard_image_import_smoke_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
@@ -1238,6 +1276,30 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_live_smoke",
             f"macOS scoped readboard Tauri runtime smoke evidence passes with {len(READBOARD_TAURI_RUNTIME_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_readboard_image_import_smoke_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_image_import_smoke",
+                f"TODO gate: record scoped controlled readboard image import MVP evidence at {READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_readboard_image_import_smoke_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "readboard_image_import_smoke",
+                f"{READBOARD_IMAGE_IMPORT_SMOKE_EVIDENCE} is present but not valid scoped controlled image import MVP PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_image_import_smoke",
+            "scoped controlled readboard image import MVP evidence passes with path/base64 import, rejection, snapshot, and boundary checks",
         )
 
     def check_provider_live_smoke_evidence(self) -> None:
@@ -2785,8 +2847,60 @@ def validate_readboard_tauri_runtime_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_readboard_probe_unavailable(check_by_name.get("sidecar_probe_unavailable")))
     failures.extend(validate_readboard_protocol_line_sync(check_by_name.get("protocol_line_sync")))
     failures.extend(validate_readboard_target_state_change_sync(check_by_name.get("target_state_change_sync")))
-    failures.extend(validate_readboard_unsupported_ocr_path(check_by_name.get("unsupported_ocr_path")))
-    failures.extend(validate_readboard_external_client_not_covered(check_by_name.get("external_client_not_covered")))
+    failures.extend(validate_readboard_arbitrary_ocr_not_covered(check_by_name.get("arbitrary_ocr_not_covered")))
+    failures.extend(validate_readboard_external_capture_not_covered(check_by_name.get("external_capture_not_covered")))
+    return failures
+
+
+def validate_readboard_image_import_smoke_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_IMAGE_IMPORT_SMOKE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_IMAGE_IMPORT_SMOKE_SCHEMA}")
+    if evidence.get("name") != "readboard_image_import_smoke":
+        failures.append("name must be readboard_image_import_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    collection_method = evidence.get("collectionMethod")
+    if collection_method not in {"controlled_fixture_image_import", "controlled_image_import_mvp"}:
+        failures.append("collectionMethod must be controlled_fixture_image_import")
+    for key in READBOARD_IMAGE_IMPORT_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in READBOARD_IMAGE_IMPORT_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in READBOARD_IMAGE_IMPORT_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in READBOARD_IMAGE_IMPORT_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_readboard_image_path_import(check_by_name.get("image_path_import"), root))
+    failures.extend(validate_readboard_image_base64_import(check_by_name.get("image_base64_import")))
+    failures.extend(validate_readboard_invalid_image_rejected(check_by_name.get("invalid_image_rejected")))
+    failures.extend(validate_readboard_non_board_image_rejected(check_by_name.get("non_board_image_rejected")))
+    failures.extend(validate_readboard_image_snapshot(check_by_name.get("snapshot_verified")))
+    failures.extend(validate_readboard_image_protocol_regression(check_by_name.get("protocol_regression")))
+    failures.extend(validate_readboard_image_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
     return failures
 
 
@@ -3180,36 +3294,192 @@ def validate_readboard_target_state_change_sync(check: Any) -> list[str]:
     return failures
 
 
-def validate_readboard_unsupported_ocr_path(check: Any) -> list[str]:
+def validate_readboard_arbitrary_ocr_not_covered(check: Any) -> list[str]:
     evidence = check_evidence(check)
     if evidence is None:
-        return ["unsupported_ocr_path evidence must be an object"]
+        return ["arbitrary_ocr_not_covered evidence must be an object"]
     failures: list[str] = []
-    if evidence.get("observed") is not True:
-        failures.append("unsupported_ocr_path.observed must be true")
-    if evidence.get("unsupported") is not True:
-        failures.append("unsupported_ocr_path.unsupported must be true")
-    if first_present(evidence, "messageIncludesBoundary", "message_includes_boundary") is not True:
-        failures.append("unsupported_ocr_path.messageIncludesBoundary must be true")
+    if evidence.get("covered") is not False:
+        failures.append("arbitrary_ocr_not_covered.covered must be false")
+    if evidence.get("controlledImageImportCoveredBySeparateGate") is not True:
+        failures.append("arbitrary_ocr_not_covered.controlledImageImportCoveredBySeparateGate must be true")
+    if evidence.get("fullOcrParity") is not False:
+        failures.append("arbitrary_ocr_not_covered.fullOcrParity must be false")
     message = evidence.get("message")
     if not isinstance(message, str) or not message:
-        failures.append("unsupported_ocr_path.message must be non-empty")
-    elif "image" not in message.lower() and "ocr" not in message.lower():
-        failures.append("unsupported_ocr_path.message must mention image or ocr")
+        failures.append("arbitrary_ocr_not_covered.message must be non-empty")
+    elif "arbitrary" not in message.lower() and "ocr" not in message.lower():
+        failures.append("arbitrary_ocr_not_covered.message must mention arbitrary OCR")
     return failures
 
 
-def validate_readboard_external_client_not_covered(check: Any) -> list[str]:
+def validate_readboard_external_capture_not_covered(check: Any) -> list[str]:
     evidence = check_evidence(check)
     if evidence is None:
-        return ["external_client_not_covered evidence must be an object"]
+        return ["external_capture_not_covered evidence must be an object"]
     failures: list[str] = []
     if evidence.get("covered") is not False:
-        failures.append("external_client_not_covered.covered must be false")
-    if evidence.get("ocrCovered") is not False:
-        failures.append("external_client_not_covered.ocrCovered must be false")
+        failures.append("external_capture_not_covered.covered must be false")
+    if evidence.get("externalWindowCaptureCovered") is not False:
+        failures.append("external_capture_not_covered.externalWindowCaptureCovered must be false")
     if evidence.get("externalClientCaptureCovered") is not False:
-        failures.append("external_client_not_covered.externalClientCaptureCovered must be false")
+        failures.append("external_capture_not_covered.externalClientCaptureCovered must be false")
+    return failures
+
+
+def validate_readboard_image_path_import(check: Any, root: Path) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["image_path_import evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("imagePathImportVerified") is not True:
+        failures.append("image_path_import.imagePathImportVerified must be true")
+    source = first_present(evidence, "source", "sourceKind")
+    if source not in {"path", "image_path", "file_path"}:
+        failures.append("image_path_import.source must be path")
+    image_path = first_present(evidence, "imagePath", "path")
+    if not isinstance(image_path, str) or not image_path:
+        failures.append("image_path_import.imagePath must be non-empty")
+    else:
+        failures.extend(validate_repo_relative_artifact(root, image_path, evidence, "image_path_import"))
+    failures.extend(validate_readboard_image_snapshot_fields(evidence, "image_path_import"))
+    return failures
+
+
+def validate_readboard_image_base64_import(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["image_base64_import evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("imageBase64ImportVerified") is not True:
+        failures.append("image_base64_import.imageBase64ImportVerified must be true")
+    source = first_present(evidence, "source", "sourceKind")
+    if source not in {"base64", "image_base64"}:
+        failures.append("image_base64_import.source must be base64")
+    if not positive_number(first_present(evidence, "base64Bytes", "decodedBytes", "decoded_bytes")):
+        failures.append("image_base64_import.base64Bytes must be positive")
+    failures.extend(validate_readboard_image_snapshot_fields(evidence, "image_base64_import"))
+    return failures
+
+
+def validate_readboard_invalid_image_rejected(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["invalid_image_rejected evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("invalidImageRejected") is not True:
+        failures.append("invalid_image_rejected.invalidImageRejected must be true")
+    if evidence.get("reportedAsSuccess") is not False:
+        failures.append("invalid_image_rejected.reportedAsSuccess must be false")
+    error_kind = first_present(evidence, "errorKind", "kind")
+    if not isinstance(error_kind, str) or not error_kind:
+        failures.append("invalid_image_rejected.errorKind must be non-empty")
+    message = evidence.get("message")
+    if not isinstance(message, str) or not message:
+        failures.append("invalid_image_rejected.message must be non-empty")
+    return failures
+
+
+def validate_readboard_non_board_image_rejected(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["non_board_image_rejected evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("nonBoardImageRejected") is not True:
+        failures.append("non_board_image_rejected.nonBoardImageRejected must be true")
+    if evidence.get("reportedAsSuccess") is not False:
+        failures.append("non_board_image_rejected.reportedAsSuccess must be false")
+    message = evidence.get("message")
+    if not isinstance(message, str) or not message:
+        failures.append("non_board_image_rejected.message must be non-empty")
+    elif "board" not in message.lower():
+        failures.append("non_board_image_rejected.message must mention board")
+    return failures
+
+
+def validate_readboard_image_snapshot(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["snapshot_verified evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("snapshotVerified") is not True:
+        failures.append("snapshot_verified.snapshotVerified must be true")
+    failures.extend(validate_readboard_image_snapshot_fields(evidence, "snapshot_verified"))
+    return failures
+
+
+def validate_readboard_image_protocol_regression(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["protocol_regression evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("protocolRegressionVerified") is not True:
+        failures.append("protocol_regression.protocolRegressionVerified must be true")
+    if evidence.get("protocolLineCompatible") is not True:
+        failures.append("protocol_regression.protocolLineCompatible must be true")
+    if evidence.get("snapshotMatchesProtocol") is not True:
+        failures.append("protocol_regression.snapshotMatchesProtocol must be true")
+    return failures
+
+
+def validate_readboard_image_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    for key in READBOARD_IMAGE_IMPORT_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    return failures
+
+
+def validate_readboard_image_snapshot_fields(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    snapshot_id = first_present(evidence, "snapshotId", "snapshot_id")
+    if not isinstance(snapshot_id, str) or not snapshot_id:
+        failures.append(f"{label}.snapshotId must be non-empty")
+    board_size = first_present(evidence, "boardSize", "board_size")
+    if not positive_number(board_size):
+        failures.append(f"{label}.boardSize must be positive")
+    elif board_size not in {9, 13, 19}:
+        failures.append(f"{label}.boardSize must be 9, 13, or 19")
+    if evidence.get("boardSizeVerified") is not True:
+        failures.append(f"{label}.boardSizeVerified must be true")
+    if evidence.get("stoneCountVerified") is not True:
+        failures.append(f"{label}.stoneCountVerified must be true")
+    stone_count = first_present(evidence, "stoneCount", "stone_count")
+    if not isinstance(stone_count, (int, float)) or stone_count < 0:
+        failures.append(f"{label}.stoneCount must be non-negative")
+    if evidence.get("toPlayVerified") is not True:
+        failures.append(f"{label}.toPlayVerified must be true")
+    to_play = first_present(evidence, "toPlay", "to_play")
+    if str(to_play).lower() not in {"black", "white"}:
+        failures.append(f"{label}.toPlay must be black or white")
+    return failures
+
+
+def validate_repo_relative_artifact(root: Path, path_value: str, evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    path = Path(path_value)
+    if path.is_absolute() or ".." in path.parts:
+        return [f"{label}.imagePath must be repo-relative"]
+    artifact = root / path
+    if not artifact.is_file():
+        return [f"{label}.imagePath does not exist: {path_value}"]
+    data = artifact.read_bytes()
+    expected_bytes = evidence.get("imageBytes")
+    if not isinstance(expected_bytes, int) or expected_bytes <= 0:
+        failures.append(f"{label}.imageBytes must be positive")
+    elif expected_bytes != len(data):
+        failures.append(f"{label}.imageBytes must match artifact size")
+    expected_sha = evidence.get("imageSha256")
+    actual_sha = hashlib.sha256(data).hexdigest()
+    if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha):
+        failures.append(f"{label}.imageSha256 must be a 64-character hex sha256")
+    elif expected_sha.lower() != actual_sha:
+        failures.append(f"{label}.imageSha256 must match artifact sha256")
     return failures
 
 
@@ -3649,6 +3919,12 @@ def normalize_json_value(value: Any) -> str:
 
 def missing_required_tokens(text: str, source_label: str, tokens: list[str]) -> list[str]:
     return [f"{source_label} missing {token}" for token in tokens if not re.search(r"\b" + re.escape(token) + r"\b", text)]
+
+
+def missing_any_required_token(text: str, source_label: str, requirement_label: str, tokens: list[str]) -> list[str]:
+    if any(re.search(r"\b" + re.escape(token) + r"\b", text) for token in tokens):
+        return []
+    return [f"{source_label} missing {requirement_label} ({' or '.join(tokens)})"]
 
 
 def has_tauri_command_function(text: str, command: str) -> bool:

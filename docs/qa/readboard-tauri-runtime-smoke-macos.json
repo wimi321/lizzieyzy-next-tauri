@@ -64,23 +64,22 @@
     },
     {
       "details": {
-        "boundary": "image OCR runtime unavailable",
-        "message": "readboard image OCR runtime is unavailable; provide sgf_text as an offline snapshot protocol line",
-        "messageIncludesBoundary": true,
-        "observed": true,
-        "unsupported": true
+        "controlledImageImportCoveredBySeparateGate": true,
+        "covered": false,
+        "fullOcrParity": false,
+        "message": "Arbitrary screenshot OCR is not covered by this runtime probe/protocol smoke; controlled image import is covered by docs/qa/readboard-image-import-smoke-macos.json."
       },
-      "name": "unsupported_ocr_path",
+      "name": "arbitrary_ocr_not_covered",
       "status": "pass"
     },
     {
       "details": {
         "covered": false,
+        "externalWindowCaptureCovered": false,
         "externalClientCaptureCovered": false,
-        "ocrCovered": false,
-        "scope": "Tauri runtime command boundary plus protocol-line DTO sync only"
+        "scope": "Tauri runtime command boundary plus protocol-line DTO sync only; no external window/client capture."
       },
-      "name": "external_client_not_covered",
+      "name": "external_capture_not_covered",
       "status": "pass"
     }
   ],

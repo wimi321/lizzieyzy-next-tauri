@@ -127,6 +127,7 @@ def create_release_candidate_fixture(
 ) -> None:
     omitted_commands = omitted_commands or set()
     write(root / "scripts/smoke_user_flows.py", (ROOT / "scripts/smoke_user_flows.py").read_text(encoding="utf-8"))
+    write(root / "scripts/validate_completion_audit.py", (ROOT / "scripts/validate_completion_audit.py").read_text(encoding="utf-8"))
     for rel in smoke_release_candidate.KEY_SCRIPTS:
         if rel != "scripts/smoke_user_flows.py":
             write(root / rel, "#!/usr/bin/env python3\n")
@@ -176,6 +177,9 @@ def create_user_flow_inputs(root: Path, *, omitted_commands: set[str]) -> None:
     )
     write_valid_windows_linux_installed_app_evidence(root, smoke_user_flows, "windows")
     write_valid_windows_linux_installed_app_evidence(root, smoke_user_flows, "linux")
+    write_valid_release_readiness_preflight_evidence(root, smoke_user_flows)
+    write_valid_completion_audit_gate_evidence(root, smoke_user_flows)
+    write_valid_completion_audit_doc(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -270,6 +274,151 @@ def write_valid_windows_linux_installed_app_evidence(root: Path, smoke_user_flow
                 "viteDevServerStarted": False,
             },
         },
+    )
+
+
+def write_valid_release_readiness_preflight_evidence(root: Path, smoke_user_flows) -> None:
+    write_json(
+        root / smoke_user_flows.RELEASE_READINESS_PREFLIGHT_EVIDENCE,
+        {
+            "schema": smoke_user_flows.RELEASE_READINESS_PREFLIGHT_SCHEMA,
+            "name": "release_readiness_preflight",
+            "status": "pass",
+            "smokeUserFlows": {
+                "passed": 54,
+                "failed": 0,
+                "pending": 0,
+                "baselineExcludes": ["release_readiness_preflight"],
+            },
+            "windowsLinuxUnsignedInstalledAppEvidence": {
+                "recorded": True,
+                "windows": {
+                    "recorded": True,
+                    "status": "pass",
+                    "path": smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE,
+                },
+                "linux": {
+                    "recorded": True,
+                    "status": "pass",
+                    "path": smoke_user_flows.LINUX_INSTALLED_APP_SMOKE_EVIDENCE,
+                },
+            },
+            "boundaries": {
+                "productionSigned": False,
+                "notarized": False,
+                "updaterReady": False,
+                "officialReleasePublished": False,
+                "fullProductionRelease": False,
+                "fullLegacyParity": False,
+                "providerParity": False,
+                "readboardParity": False,
+                "ocrParity": False,
+                "bundledLargeModel": False,
+            },
+            "externalReadiness": {
+                "signing": "external",
+                "notarization": "external",
+                "updater": "external",
+                "officialRelease": "external",
+                "fullProduction": "external",
+                "fullLegacy": "external",
+                "provider": "external",
+                "readboard": "external",
+                "ocr": "external",
+                "bundledLargeModel": "external",
+            },
+        },
+    )
+
+
+def write_valid_completion_audit_gate_evidence(root: Path, smoke_user_flows) -> None:
+    write_json(
+        root / smoke_user_flows.COMPLETION_AUDIT_GATE_EVIDENCE,
+        {
+            "schema": smoke_user_flows.COMPLETION_AUDIT_GATE_SCHEMA,
+            "name": "completion_audit_gate",
+            "status": "pass",
+            "auditCriteriaHonest": True,
+            "evidenceInventoryComplete": True,
+            "scopedEvidenceComplete": True,
+            "noFullCompletionClaim": True,
+            "claimsFullCompletion": False,
+            "boundariesRecorded": True,
+            "smokeUserFlows": {
+                "passed": 55,
+                "failed": 0,
+                "pending": 0,
+                "baselineExcludes": ["completion_audit_gate"],
+            },
+            "checks": [
+                {
+                    "name": "audit_criteria_honest",
+                    "status": "pass",
+                    "details": {"claim": "scoped evidence audit only", "notHundredPercent": True},
+                },
+                {
+                    "name": "evidence_inventory_complete",
+                    "status": "pass",
+                    "details": {"requiredArtifactsRecorded": True},
+                },
+                {
+                    "name": "central_smoke_baseline_recorded",
+                    "status": "pass",
+                    "details": {"selfExcludingBaseline": "55/0/0"},
+                },
+                {
+                    "name": "scope_boundaries_recorded",
+                    "status": "pass",
+                    "details": {"fullCompletionClaimed": False},
+                },
+            ],
+            "evidenceArtifacts": [
+                {"path": "docs/QA_REPORT.md", "status": "recorded"},
+                {"path": "docs/LEGACY_PARITY_MATRIX.md", "status": "recorded"},
+                {"path": "docs/RELEASE_CHECKLIST.md", "status": "recorded"},
+                {"path": "docs/RELEASE_PROCESS.md", "status": "recorded"},
+                {"path": "docs/qa/release-readiness-preflight.json", "status": "recorded"},
+            ],
+            "boundaries": {
+                "hundredPercentComplete": False,
+                "fullCompletionClaimed": False,
+                "releaseReady": False,
+                "fullProductionRelease": False,
+                "fullLegacyParity": False,
+                "fullProviderParity": False,
+                "fullReadboardParity": False,
+                "fullOcrParity": False,
+                "signedReleaseParity": False,
+                "notarizedReleaseParity": False,
+                "updaterParity": False,
+                "windowsLinuxProductionParity": False,
+                "bundledLargeModelParity": False,
+            },
+        },
+    )
+
+
+def write_valid_completion_audit_doc(root: Path) -> None:
+    write(
+        root / "docs/COMPLETION_AUDIT.md",
+        """
+        # Completion Audit
+
+        ## Completion Criteria
+
+        This audit records scoped completion criteria only. It does not claim full legacy parity,
+        official release publication, signing, notarization, updater readiness, bundled large model
+        completion, or provider/readboard full parity.
+
+        ## Evidence
+
+        - Scoped gate evidence: `docs/qa/completion-audit-gate.json`
+
+        ## Missing Blockers
+
+        - Remaining external blockers include signing, notarization, updater readiness,
+          provider/readboard parity, full OCR/readboard parity, and full legacy parity.
+        """,
     )
 
 

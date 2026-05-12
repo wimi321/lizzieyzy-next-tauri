@@ -72,6 +72,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("windows_linux_installed_app_smoke", pass_names)
             self.assertIn("release_readiness_preflight", pass_names)
+            self.assertIn("completion_audit_gate", pass_names)
             self.assertIn("installed_app_runtime_workflow", pending_names)
             self.assertIn("bundled_katago_installed_app_smoke", pending_names)
             self.assertIn("installed_app_sgf_workflow", pending_names)
@@ -154,6 +155,68 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("release_readiness_preflight", failures)
             self.assertIn("windowsLinuxUnsignedInstalledAppEvidence.recorded must be true", failures["release_readiness_preflight"])
             self.assertIn("windowsLinuxUnsignedInstalledAppEvidence.linux.status must be pass", failures["release_readiness_preflight"])
+
+    def test_completion_audit_gate_passes_central_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("completion_audit_gate", failures)
+            self.assertIn("completion_audit_gate", pass_names)
+
+    def test_completion_audit_gate_missing_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            (root / smoke_user_flows.COMPLETION_AUDIT_GATE_EVIDENCE).unlink()
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("completion_audit_gate", failures)
+            self.assertIn("required scoped completion audit gate evidence is missing", failures["completion_audit_gate"])
+
+    def test_completion_audit_gate_failed_evidence_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_completion_audit_gate_evidence()
+            evidence["status"] = "fail"
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["fullLegacyParity"] = True
+            write_json(root / smoke_user_flows.COMPLETION_AUDIT_GATE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("completion_audit_gate", failures)
+            self.assertIn("status must be pass", failures["completion_audit_gate"])
+            self.assertIn("boundaries.fullLegacyParity must be false", failures["completion_audit_gate"])
+
+    def test_completion_audit_gate_json_pass_but_audit_doc_invalid_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write(
+                root / "docs/COMPLETION_AUDIT.md",
+                """
+                # Completion Audit
+
+                This says the project is 100% complete.
+                """,
+            )
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("completion_audit_gate", failures)
+            self.assertIn("completion audit validator required_sections", failures["completion_audit_gate"])
+            self.assertIn("completion audit validator overclaims", failures["completion_audit_gate"])
 
     def test_valid_tauri_runtime_ui_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -4262,6 +4325,8 @@ def create_complete_smoke_fixture(
     write_valid_windows_linux_installed_app_evidence(root, "windows")
     write_valid_windows_linux_installed_app_evidence(root, "linux")
     write_valid_release_readiness_preflight_evidence(root)
+    write_valid_completion_audit_gate_evidence(root)
+    write_valid_completion_audit_doc(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -4397,6 +4462,37 @@ def write_valid_release_readiness_preflight_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.RELEASE_READINESS_PREFLIGHT_EVIDENCE,
         valid_release_readiness_preflight_evidence(),
+    )
+
+
+def write_valid_completion_audit_gate_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.COMPLETION_AUDIT_GATE_EVIDENCE,
+        valid_completion_audit_gate_evidence(),
+    )
+
+
+def write_valid_completion_audit_doc(root: Path) -> None:
+    write(
+        root / "docs/COMPLETION_AUDIT.md",
+        """
+        # Completion Audit
+
+        ## Completion Criteria
+
+        This audit records scoped completion criteria only. It does not claim full legacy parity,
+        official release publication, signing, notarization, updater readiness, bundled large model
+        completion, or provider/readboard full parity.
+
+        ## Evidence
+
+        - Scoped gate evidence: `docs/qa/completion-audit-gate.json`
+
+        ## Missing Blockers
+
+        - Remaining external blockers include signing, notarization, updater readiness,
+          provider/readboard parity, full OCR/readboard parity, and full legacy parity.
+        """,
     )
 
 
@@ -6927,6 +7023,70 @@ def valid_release_readiness_preflight_evidence() -> dict[str, object]:
             "readboard": "external",
             "ocr": "external",
             "bundledLargeModel": "external",
+        },
+    }
+
+
+def valid_completion_audit_gate_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.COMPLETION_AUDIT_GATE_SCHEMA,
+        "name": "completion_audit_gate",
+        "status": "pass",
+        "auditCriteriaHonest": True,
+        "evidenceInventoryComplete": True,
+        "scopedEvidenceComplete": True,
+        "noFullCompletionClaim": True,
+        "claimsFullCompletion": False,
+        "boundariesRecorded": True,
+        "smokeUserFlows": {
+            "passed": 55,
+            "failed": 0,
+            "pending": 0,
+            "baselineExcludes": ["completion_audit_gate"],
+        },
+        "checks": [
+            {
+                "name": "audit_criteria_honest",
+                "status": "pass",
+                "details": {"claim": "scoped evidence audit only", "notHundredPercent": True},
+            },
+            {
+                "name": "evidence_inventory_complete",
+                "status": "pass",
+                "details": {"requiredArtifactsRecorded": True},
+            },
+            {
+                "name": "central_smoke_baseline_recorded",
+                "status": "pass",
+                "details": {"selfExcludingBaseline": "55/0/0"},
+            },
+            {
+                "name": "scope_boundaries_recorded",
+                "status": "pass",
+                "details": {"fullCompletionClaimed": False},
+            },
+        ],
+        "evidenceArtifacts": [
+            {"path": "docs/QA_REPORT.md", "status": "recorded"},
+            {"path": "docs/LEGACY_PARITY_MATRIX.md", "status": "recorded"},
+            {"path": "docs/RELEASE_CHECKLIST.md", "status": "recorded"},
+            {"path": "docs/RELEASE_PROCESS.md", "status": "recorded"},
+            {"path": "docs/qa/release-readiness-preflight.json", "status": "recorded"},
+        ],
+        "boundaries": {
+            "hundredPercentComplete": False,
+            "fullCompletionClaimed": False,
+            "releaseReady": False,
+            "fullProductionRelease": False,
+            "fullLegacyParity": False,
+            "fullProviderParity": False,
+            "fullReadboardParity": False,
+            "fullOcrParity": False,
+            "signedReleaseParity": False,
+            "notarizedReleaseParity": False,
+            "updaterParity": False,
+            "windowsLinuxProductionParity": False,
+            "bundledLargeModelParity": False,
         },
     }
 

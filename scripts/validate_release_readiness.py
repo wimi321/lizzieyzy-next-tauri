@@ -18,8 +18,12 @@ REQUIRED_DOCS = (
     "docs/RELEASE_PROCESS.md",
 )
 RELEASE_READINESS_EVIDENCE = "docs/qa/release-readiness-preflight.json"
-CURRENT_CENTRAL_SMOKE_PASSED = 55
-SELF_EXCLUDING_BASELINE_PASSED = 54
+COMPLETION_AUDIT_EVIDENCE = "docs/qa/completion-audit-gate.json"
+CURRENT_CENTRAL_SMOKE_PASSED = 56
+SELF_EXCLUDING_BASELINES = {
+    RELEASE_READINESS_EVIDENCE: ("release_readiness_preflight", 54),
+    COMPLETION_AUDIT_EVIDENCE: ("completion_audit_gate", 55),
+}
 
 POLICY_TERMS = {
     "signing": ("signing", "signed", "unsigned", "codesign", "authenticode"),
@@ -158,46 +162,51 @@ class ReleaseReadinessValidator:
                 f"no stale current central smoke count found; current count is {CURRENT_CENTRAL_SMOKE_PASSED}/0/0 when stated",
             )
 
-    def check_release_readiness_evidence_baseline(self) -> None:
-        path = self.path(RELEASE_READINESS_EVIDENCE)
+    def check_self_excluding_evidence_baseline(self, evidence_path: str, gate_name: str, baseline_passed: int) -> None:
+        path = self.path(evidence_path)
         if not path.is_file():
-            self.pass_("release_readiness_baseline", "optional release readiness preflight evidence is not recorded")
+            self.pass_(f"{gate_name}_baseline", f"optional {gate_name} evidence is not recorded")
             return
         try:
             evidence = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            self.fail("release_readiness_baseline", f"{RELEASE_READINESS_EVIDENCE} invalid JSON at line {exc.lineno}: {exc.msg}")
+            self.fail(f"{gate_name}_baseline", f"{evidence_path} invalid JSON at line {exc.lineno}: {exc.msg}")
             return
 
         smoke = evidence.get("smokeUserFlows")
         if not isinstance(smoke, dict):
-            self.fail("release_readiness_baseline", f"{RELEASE_READINESS_EVIDENCE} missing smokeUserFlows object")
+            self.fail(f"{gate_name}_baseline", f"{evidence_path} missing smokeUserFlows object")
             return
         passed = smoke.get("passed")
         failed = smoke.get("failed")
         pending = smoke.get("pending")
         excludes = smoke.get("baselineExcludes")
         if (
-            passed == SELF_EXCLUDING_BASELINE_PASSED
+            passed == baseline_passed
             and failed == 0
             and pending == 0
             and isinstance(excludes, list)
-            and "release_readiness_preflight" in excludes
+            and gate_name in excludes
         ):
             self.pass_(
-                "release_readiness_baseline",
-                "release readiness preflight evidence records self-excluding 54/0/0 baseline",
+                f"{gate_name}_baseline",
+                f"{gate_name} evidence records self-excluding {baseline_passed}/0/0 baseline",
             )
             return
         if (passed, failed, pending) == (CURRENT_CENTRAL_SMOKE_PASSED, 0, 0):
-            self.pass_("release_readiness_baseline", "release readiness preflight evidence records current 55/0/0 baseline")
+            self.pass_(f"{gate_name}_baseline", f"{gate_name} evidence records current {CURRENT_CENTRAL_SMOKE_PASSED}/0/0 baseline")
             return
 
         self.fail(
-            "release_readiness_baseline",
-            f"{RELEASE_READINESS_EVIDENCE} smokeUserFlows must be 55/0/0 or self-excluding 54/0/0; "
+            f"{gate_name}_baseline",
+            f"{evidence_path} smokeUserFlows must be {CURRENT_CENTRAL_SMOKE_PASSED}/0/0 or "
+            f"self-excluding {baseline_passed}/0/0 for {gate_name}; "
             f"found {passed!r}/{failed!r}/{pending!r}",
         )
+
+    def check_self_excluding_evidence_baselines(self) -> None:
+        for evidence_path, (gate_name, baseline_passed) in SELF_EXCLUDING_BASELINES.items():
+            self.check_self_excluding_evidence_baseline(evidence_path, gate_name, baseline_passed)
 
     def check_release_overclaims(self) -> None:
         hits = []
@@ -253,7 +262,7 @@ class ReleaseReadinessValidator:
         self.load_required_docs()
         if self.texts:
             self.check_stale_smoke_counts()
-            self.check_release_readiness_evidence_baseline()
+            self.check_self_excluding_evidence_baselines()
             self.check_release_overclaims()
             self.check_policy_status()
             self.check_scoped_unsigned_posture()

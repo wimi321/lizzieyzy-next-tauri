@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import re
 import sys
@@ -306,6 +307,48 @@ RELEASE_READINESS_PREFLIGHT_OVERCLAIM_FIELDS = {
     "bundledLargeModelIncluded",
     "bundledLargeModelParity",
 }
+COMPLETION_AUDIT_GATE_EVIDENCE = "docs/qa/completion-audit-gate.json"
+COMPLETION_AUDIT_GATE_SCHEMA = "lizzieyzy.completion-audit-gate.v1"
+COMPLETION_AUDIT_GATE_BASELINE_COUNTS = {
+    "passed": 55,
+    "failed": 0,
+    "pending": 0,
+}
+COMPLETION_AUDIT_GATE_REQUIRED_TRUE_FIELDS = [
+    "auditCriteriaHonest",
+    "evidenceInventoryComplete",
+    "scopedEvidenceComplete",
+    "noFullCompletionClaim",
+    "boundariesRecorded",
+]
+COMPLETION_AUDIT_GATE_REQUIRED_FALSE_FIELDS = [
+    "hundredPercentComplete",
+    "fullCompletionClaimed",
+    "releaseReady",
+    "fullProductionRelease",
+    "fullLegacyParity",
+    "fullProviderParity",
+    "fullReadboardParity",
+    "fullOcrParity",
+    "signedReleaseParity",
+    "notarizedReleaseParity",
+    "updaterParity",
+    "windowsLinuxProductionParity",
+    "bundledLargeModelParity",
+]
+COMPLETION_AUDIT_GATE_REQUIRED_CHECKS = [
+    "audit_criteria_honest",
+    "evidence_inventory_complete",
+    "central_smoke_baseline_recorded",
+    "scope_boundaries_recorded",
+]
+COMPLETION_AUDIT_GATE_REQUIRED_ARTIFACTS = [
+    "docs/QA_REPORT.md",
+    "docs/LEGACY_PARITY_MATRIX.md",
+    "docs/RELEASE_CHECKLIST.md",
+    "docs/RELEASE_PROCESS.md",
+    "docs/qa/release-readiness-preflight.json",
+]
 WINDOWS_LINUX_INSTALLED_APP_FAKE_COMMAND_BODIES = {
     "echo",
     "cmd",
@@ -1538,6 +1581,7 @@ class UserFlowSmoke:
         self.check_installed_macos_app_smoke_evidence()
         self.check_windows_linux_installed_app_smoke_evidence()
         self.check_release_readiness_preflight_evidence()
+        self.check_completion_audit_gate_evidence()
         self.check_installed_app_runtime_workflow_evidence()
         self.check_bundled_katago_installed_app_smoke_evidence()
         self.check_installed_app_sgf_workflow_evidence()
@@ -1901,6 +1945,30 @@ class UserFlowSmoke:
         self.pass_(
             "release_readiness_preflight",
             "scoped release readiness preflight records the 54/0/0 central smoke baseline, Windows/Linux unsigned installed-app evidence, and false/external release parity boundaries",
+        )
+
+    def check_completion_audit_gate_evidence(self) -> None:
+        evidence_path = self.path(COMPLETION_AUDIT_GATE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.fail(
+                "completion_audit_gate",
+                f"required scoped completion audit gate evidence is missing at {COMPLETION_AUDIT_GATE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(COMPLETION_AUDIT_GATE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_completion_audit_gate_evidence(evidence, self.root)
+        if failures:
+            self.fail(
+                "completion_audit_gate",
+                f"{COMPLETION_AUDIT_GATE_EVIDENCE} is present but not valid scoped completion audit gate evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "completion_audit_gate",
+            "scoped completion audit gate records honest completion-audit criteria, evidence inventory, self-excluding smoke baseline, and false full-completion boundaries",
         )
 
     def check_installed_app_runtime_workflow_evidence(self) -> None:
@@ -4360,6 +4428,130 @@ def release_readiness_value_is_false_or_external(value: Any) -> bool:
             "pending_external",
         }
     return False
+
+
+def validate_completion_audit_gate_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != COMPLETION_AUDIT_GATE_SCHEMA:
+        failures.append(f"schema must be {COMPLETION_AUDIT_GATE_SCHEMA}")
+    if str(evidence.get("name", "")) != "completion_audit_gate":
+        failures.append("name must be completion_audit_gate")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    if evidence.get("claimsFullCompletion") is True:
+        failures.append("claimsFullCompletion must not be true")
+    for key in COMPLETION_AUDIT_GATE_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    failures.extend(validate_completion_audit_smoke_counts(evidence.get("smokeUserFlows")))
+    failures.extend(validate_completion_audit_checks(evidence.get("checks")))
+    failures.extend(validate_completion_audit_artifacts(evidence.get("evidenceArtifacts")))
+    failures.extend(validate_completion_audit_boundaries(evidence.get("boundaries")))
+    failures.extend(validate_completion_audit_overclaims(evidence))
+    failures.extend(validate_completion_audit_document_with_validator(root))
+    return failures
+
+
+def validate_completion_audit_smoke_counts(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["smokeUserFlows must be an object"]
+    failures: list[str] = []
+    for key, expected in COMPLETION_AUDIT_GATE_BASELINE_COUNTS.items():
+        if value.get(key) != expected:
+            failures.append(f"smokeUserFlows.{key} must be {expected}")
+    excludes = value.get("baselineExcludes")
+    if not isinstance(excludes, list) or "completion_audit_gate" not in excludes:
+        failures.append("smokeUserFlows.baselineExcludes must include completion_audit_gate")
+    return failures
+
+
+def validate_completion_audit_checks(value: Any) -> list[str]:
+    if not isinstance(value, list) or not value:
+        return ["checks must include completion audit gate checks"]
+    failures: list[str] = []
+    by_name = {str(check.get("name", "")): check for check in value if isinstance(check, dict)}
+    for name in COMPLETION_AUDIT_GATE_REQUIRED_CHECKS:
+        check = by_name.get(name)
+        if not isinstance(check, dict):
+            failures.append(f"checks must include {name}")
+            continue
+        if str(check.get("status", "")).lower() not in {"pass", "passed"}:
+            failures.append(f"{name}.status must be pass")
+        if not isinstance(check.get("details"), dict):
+            failures.append(f"{name}.details must be an object")
+    return failures
+
+
+def validate_completion_audit_artifacts(value: Any) -> list[str]:
+    if not isinstance(value, list) or not value:
+        return ["evidenceArtifacts must be a non-empty list"]
+    failures: list[str] = []
+    observed: set[str] = set()
+    for index, artifact in enumerate(value):
+        label = f"evidenceArtifacts[{index}]"
+        if not isinstance(artifact, dict):
+            failures.append(f"{label} must be an object")
+            continue
+        path = artifact.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"{label}.path must be non-empty")
+            continue
+        if path.startswith("/") or path.startswith("~") or path.startswith("/tmp/") or "/Users/" in path:
+            failures.append(f"{label}.path must be repo-relative and sanitized")
+        observed.add(path)
+        if str(artifact.get("status", "")).lower() not in {"recorded", "pass", "present"}:
+            failures.append(f"{label}.status must be recorded/pass/present")
+    for required in COMPLETION_AUDIT_GATE_REQUIRED_ARTIFACTS:
+        if required not in observed:
+            failures.append(f"evidenceArtifacts must include {required}")
+    return failures
+
+
+def validate_completion_audit_boundaries(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["boundaries must be an object"]
+    failures: list[str] = []
+    for key in COMPLETION_AUDIT_GATE_REQUIRED_FALSE_FIELDS:
+        if value.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_completion_audit_overclaims(value: Any, path: str = "") -> list[str]:
+    failures: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child_path = f"{path}.{key}" if path else key
+            if key in COMPLETION_AUDIT_GATE_REQUIRED_FALSE_FIELDS and item is not False:
+                failures.append(f"{child_path} must be false")
+            failures.extend(validate_completion_audit_overclaims(item, child_path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            failures.extend(validate_completion_audit_overclaims(item, f"{path}[{index}]"))
+    return failures
+
+
+def validate_completion_audit_document_with_validator(root: Path) -> list[str]:
+    validator_path = ROOT / "scripts" / "validate_completion_audit.py"
+    if not validator_path.is_file():
+        return ["scripts/validate_completion_audit.py must exist for completion audit cross-check"]
+    spec = importlib.util.spec_from_file_location("validate_completion_audit_for_smoke", validator_path)
+    if spec is None or spec.loader is None:
+        return ["scripts/validate_completion_audit.py could not be loaded"]
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    validate = getattr(module, "validate", None)
+    if not callable(validate):
+        return ["scripts/validate_completion_audit.py must expose validate(root)"]
+    results = validate(root)
+    failures: list[str] = []
+    for result in results:
+        if not getattr(result, "ok", False):
+            failures.append(f"completion audit validator {getattr(result, 'name', 'unknown')}: {getattr(result, 'detail', '')}")
+    return failures
 
 
 def validate_installed_app_runtime_workflow_evidence(evidence: Any) -> list[str]:

@@ -58,8 +58,26 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
 
             failures = {result.name: result.detail for result in results if not result.ok}
             self.assertIn("stale_smoke_counts", failures)
-            self.assertIn("55 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("56 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
             self.assertIn("54 passed", failures["stale_smoke_counts"])
+
+    def test_rejects_current_central_smoke_count_55(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_readiness_docs(
+                root,
+                qa_extra=(
+                    "The central smoke gate currently reports "
+                    "`55 passed, 0 failed, 0 pending`."
+                ),
+            )
+
+            results = validate_release_readiness.validate(root)
+
+            failures = {result.name: result.detail for result in results if not result.ok}
+            self.assertIn("stale_smoke_counts", failures)
+            self.assertIn("56 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("55 passed", failures["stale_smoke_counts"])
 
     def test_allows_self_excluding_baseline_54_evidence(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -80,8 +98,30 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
             results = validate_release_readiness.validate(root)
 
             failures = {result.name: result.detail for result in results if not result.ok}
-            self.assertIn("release_readiness_baseline", failures)
-            self.assertIn("self-excluding 54/0/0", failures["release_readiness_baseline"])
+            self.assertIn("release_readiness_preflight_baseline", failures)
+            self.assertIn("self-excluding 54/0/0", failures["release_readiness_preflight_baseline"])
+
+    def test_allows_completion_audit_self_excluding_baseline_55_evidence(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_readiness_docs(root)
+            write_completion_audit_evidence(root, passed=55, baseline_excludes=["completion_audit_gate"])
+
+            results = validate_release_readiness.validate(root)
+
+            self.assertEqual([], [result for result in results if not result.ok])
+
+    def test_rejects_completion_audit_baseline_55_without_self_exclusion(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_readiness_docs(root)
+            write_completion_audit_evidence(root, passed=55, baseline_excludes=[])
+
+            results = validate_release_readiness.validate(root)
+
+            failures = {result.name: result.detail for result in results if not result.ok}
+            self.assertIn("completion_audit_gate_baseline", failures)
+            self.assertIn("self-excluding 55/0/0", failures["completion_audit_gate_baseline"])
 
     def test_rejects_full_legacy_parity_overclaim(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -188,13 +228,32 @@ def create_readiness_docs(
 
 
 def write_release_readiness_evidence(root: Path, *, passed: int, baseline_excludes: list[str]) -> None:
-    path = root / "docs/qa/release-readiness-preflight.json"
+    write_gate_evidence(
+        root / "docs/qa/release-readiness-preflight.json",
+        schema="lizzieyzy.release-readiness-preflight.v1",
+        name="release_readiness_preflight",
+        passed=passed,
+        baseline_excludes=baseline_excludes,
+    )
+
+
+def write_completion_audit_evidence(root: Path, *, passed: int, baseline_excludes: list[str]) -> None:
+    write_gate_evidence(
+        root / "docs/qa/completion-audit-gate.json",
+        schema="lizzieyzy.completion-audit-gate.v1",
+        name="completion_audit_gate",
+        passed=passed,
+        baseline_excludes=baseline_excludes,
+    )
+
+
+def write_gate_evidence(path: Path, *, schema: str, name: str, passed: int, baseline_excludes: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
-                "schema": "lizzieyzy.release-readiness-preflight.v1",
-                "name": "release_readiness_preflight",
+                "schema": schema,
+                "name": name,
                 "status": "pass",
                 "smokeUserFlows": {
                     "passed": passed,

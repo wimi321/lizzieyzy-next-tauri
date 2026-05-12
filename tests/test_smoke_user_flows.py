@@ -51,6 +51,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("ui_tauri_runtime_smoke", pending_names)
             self.assertIn("desktop_sgf_editing_ux_smoke", pending_names)
             self.assertIn("desktop_ui_click_smoke", pending_names)
+            self.assertIn("tauri_window_runtime_smoke", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
@@ -231,6 +232,87 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("desktop_ui_click_smoke", failures)
             self.assertIn("desktop_ui_click_smoke", pending)
             self.assertIn(expected_detail, pending["desktop_ui_click_smoke"])
+
+    def test_valid_tauri_window_runtime_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_tauri_window_runtime_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("tauri_window_runtime_smoke", pass_names)
+            self.assertNotIn("tauri_window_runtime_smoke", pending_names)
+
+    def test_tauri_window_runtime_evidence_requires_screenshot(self) -> None:
+        self.assert_invalid_tauri_window_runtime_evidence_pending(
+            lambda evidence: evidence.__setitem__("screenshots", []),
+            "screenshots must include at least one Tauri window screenshot",
+        )
+
+    def test_tauri_window_runtime_evidence_rejects_local_absolute_screenshot_path(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            first = screenshots[0]
+            assert isinstance(first, dict)
+            first["path"] = "/tmp/tauri-window-runtime.png"
+
+        self.assert_invalid_tauri_window_runtime_evidence_pending(
+            mutate,
+            "screenshots[0].path must not be a local absolute path",
+        )
+
+    def test_tauri_window_runtime_evidence_rejects_native_dialog_claim(self) -> None:
+        self.assert_invalid_tauri_window_runtime_evidence_pending(
+            lambda evidence: evidence.__setitem__("nativeDialogClickCovered", True),
+            "nativeDialogClickCovered must be false",
+        )
+
+    def test_tauri_window_runtime_evidence_rejects_browser_fallback(self) -> None:
+        self.assert_invalid_tauri_window_runtime_evidence_pending(
+            lambda evidence: evidence.__setitem__("browserFallbackUsed", True),
+            "browserFallbackUsed must be false",
+        )
+
+    def test_tauri_window_runtime_evidence_rejects_webview_dom_click_claim(self) -> None:
+        self.assert_invalid_tauri_window_runtime_evidence_pending(
+            lambda evidence: evidence.__setitem__("webviewDomClickCovered", True),
+            "webviewDomClickCovered must be false",
+        )
+
+    def test_tauri_window_runtime_evidence_rejects_boundary_misclaims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["browserFallbackUsed"] = True
+            boundaries["webviewDomClickCovered"] = True
+            boundaries["nativeDialogClickCovered"] = True
+
+        self.assert_invalid_tauri_window_runtime_evidence_pending(
+            mutate,
+            "boundaries.browserFallbackUsed must be false",
+        )
+
+    def assert_invalid_tauri_window_runtime_evidence_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_tauri_window_runtime_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("tauri_window_runtime_smoke", failures)
+            self.assertIn("tauri_window_runtime_smoke", pending)
+            self.assertIn(expected_detail, pending["tauri_window_runtime_smoke"])
 
     def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1112,6 +1194,13 @@ def write_valid_desktop_ui_click_evidence(root: Path) -> None:
     )
 
 
+def write_valid_tauri_window_runtime_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE,
+        valid_tauri_window_runtime_evidence(),
+    )
+
+
 def write_valid_katago_live_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, valid_katago_live_evidence())
 
@@ -1494,7 +1583,7 @@ def valid_tauri_runtime_ui_evidence() -> dict[str, object]:
         "status": "pass",
         "platform": "macos",
         "firstLaunch": {"phase": "edit-save", "stopped": True, "pid": 111},
-        "secondLaunch": {"phase": "reopen-verify", "stopped": True, "pid": 222},
+        "secondLaunch": {"phase": "reopen-verify", "stopped": True, "pid": 222, "status": "pass"},
         "saveReopenProof": {
             "sameSgfPath": True,
             "distinctProcesses": True,
@@ -1659,6 +1748,55 @@ def valid_desktop_ui_click_evidence() -> dict[str, object]:
             "tauriWebviewDomObserved": False,
             "fullNativeDialogProof": False,
             "fullLegacyParityCovered": False,
+        },
+    }
+
+
+def valid_tauri_window_runtime_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA,
+        "name": "tauri_window_runtime_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "tauriRuntimeObserved": True,
+        "tauriWindowScreenshotObserved": True,
+        "browserFallbackUsed": False,
+        "webviewDomClickCovered": False,
+        "nativeDialogClickCovered": False,
+        "boundaries": {
+            "browserFallbackUsed": False,
+            "webviewDomClickCovered": False,
+            "nativeDialogClickCovered": False,
+            "nativeFileDialogCovered": False,
+        },
+        "screenshots": [
+            {
+                "label": "tauri-window-after-reopen",
+                "path": "docs/qa/screenshots/tauri-window-runtime-after-reopen.png",
+                "sha256": "c" * 64,
+            }
+        ],
+        "sourceRuntimeEvidence": {
+            "path": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_EVIDENCE,
+            "schema": smoke_user_flows.TAURI_RUNTIME_UI_SMOKE_SCHEMA,
+            "status": "pass",
+            "valid": True,
+        },
+        "firstLaunch": {"phase": "edit-save", "stopped": True, "pid": 111},
+        "secondLaunch": {"phase": "reopen-verify", "stopped": True, "pid": 222, "status": "pass"},
+        "saveReopenProof": {
+            "sameSgfPath": True,
+            "distinctProcesses": True,
+            "firstStoppedBeforeSecondStarted": True,
+        },
+        "reopen": {"path": "<tmp>/runtime-smoke.sgf", "status": "pass", "matchesSaved": True},
+        "afterReopen": {
+            "treeOrderVerified": True,
+            "commentsVerified": True,
+            "propertiesVerified": True,
+            "annotationsVerified": True,
+            "moveCountVerified": True,
+            "boardStateVerified": True,
         },
     }
 

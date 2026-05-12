@@ -57,6 +57,8 @@ DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS = [
 ]
 DESKTOP_UI_CLICK_SMOKE_EVIDENCE = "docs/qa/desktop-ui-click-smoke-macos.json"
 DESKTOP_UI_CLICK_SMOKE_SCHEMA = "lizzieyzy.desktop-ui-click-smoke.v1"
+TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE = "docs/qa/tauri-window-runtime-smoke-macos.json"
+TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.tauri-window-runtime-smoke.v1"
 KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
 KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
 KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -643,6 +645,7 @@ class UserFlowSmoke:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_desktop_sgf_editing_ux_smoke_evidence()
         self.check_desktop_ui_click_smoke_evidence()
+        self.check_tauri_window_runtime_smoke_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
@@ -718,6 +721,30 @@ class UserFlowSmoke:
         self.pass_(
             "desktop_ui_click_smoke",
             "scoped browser-rendered desktop UI click smoke evidence passes with DOM, click, screenshot, and boundary checks",
+        )
+
+    def check_tauri_window_runtime_smoke_evidence(self) -> None:
+        evidence_path = self.path(TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "tauri_window_runtime_smoke",
+                f"TODO gate: run Worker-1 Tauri desktop window/runtime screenshot smoke and record {TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_tauri_window_runtime_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "tauri_window_runtime_smoke",
+                f"{TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE} is present but not valid scoped Tauri runtime/window screenshot PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "tauri_window_runtime_smoke",
+            "scoped Tauri desktop window/runtime screenshot smoke evidence passes with source runtime save/reopen proof and boundary checks",
         )
 
     def check_katago_live_smoke_evidence(self) -> None:
@@ -1145,6 +1172,108 @@ def validate_desktop_ui_click_boundaries(value: Any) -> list[str]:
     if not non_empty_proof(proof_detail):
         failures.append("boundaries.tauriWebview proof detail must be non-empty when tauriWebviewDomObserved is true")
     return failures
+
+
+def validate_tauri_window_runtime_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA:
+        failures.append(f"schema must be {TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("tauriRuntimeObserved") is not True:
+        failures.append("tauriRuntimeObserved must be true")
+    if evidence.get("tauriWindowScreenshotObserved") is not True:
+        failures.append("tauriWindowScreenshotObserved must be true")
+    if evidence.get("browserFallbackUsed") is not False:
+        failures.append("browserFallbackUsed must be false")
+    if evidence.get("webviewDomClickCovered") is not False:
+        failures.append("webviewDomClickCovered must be false")
+    if evidence.get("nativeDialogClickCovered") is not False:
+        failures.append("nativeDialogClickCovered must be false")
+    failures.extend(validate_tauri_window_runtime_boundaries(evidence.get("boundaries")))
+    failures.extend(validate_tauri_window_runtime_screenshots(evidence))
+    failures.extend(validate_tauri_window_runtime_source_evidence(evidence.get("sourceRuntimeEvidence")))
+    failures.extend(validate_tauri_window_runtime_save_reopen_proof(evidence))
+    return failures
+
+
+def validate_tauri_window_runtime_boundaries(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        return ["boundaries must be an object when present"]
+    failures: list[str] = []
+    for key in ("browserFallbackUsed", "webviewDomClickCovered", "nativeDialogClickCovered"):
+        if value.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    if "nativeFileDialogCovered" in value and value.get("nativeFileDialogCovered") is not False:
+        failures.append("boundaries.nativeFileDialogCovered must be false when present")
+    return failures
+
+
+def validate_tauri_window_runtime_screenshots(evidence: dict[str, Any]) -> list[str]:
+    screenshots = first_present(evidence, "screenshots", "windowScreenshots", "tauriWindowScreenshots")
+    if screenshots is None and isinstance(evidence.get("screenshot"), dict):
+        screenshots = [evidence["screenshot"]]
+    if not isinstance(screenshots, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not screenshots:
+        failures.append("screenshots must include at least one Tauri window screenshot")
+    for index, screenshot in enumerate(screenshots):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        sha256 = screenshot.get("sha256")
+        if not is_sha256_hex(sha256):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        label = first_present(screenshot, "label", "name", "step")
+        if not isinstance(label, str) or not label.strip():
+            failures.append(f"screenshots[{index}] must include label/name/step")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be a stable repo-relative or non-local path")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+    return failures
+
+
+def validate_tauri_window_runtime_source_evidence(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["sourceRuntimeEvidence must be an object"]
+    failures: list[str] = []
+    if value.get("schema") != TAURI_RUNTIME_UI_SMOKE_SCHEMA:
+        failures.append(f"sourceRuntimeEvidence.schema must be {TAURI_RUNTIME_UI_SMOKE_SCHEMA}")
+    if str(value.get("status", "")).lower() != "pass":
+        failures.append("sourceRuntimeEvidence.status must be pass")
+    if "valid" in value and value.get("valid") is not True:
+        failures.append("sourceRuntimeEvidence.valid must be true when present")
+    return failures
+
+
+def validate_tauri_window_runtime_save_reopen_proof(evidence: dict[str, Any]) -> list[str]:
+    candidates: list[dict[str, Any]] = []
+    for candidate in (
+        evidence,
+        evidence.get("saveReopenSemanticProof"),
+        evidence.get("saveReopenRuntimeProof"),
+        evidence.get("sourceRuntimeEvidence"),
+    ):
+        if isinstance(candidate, dict):
+            candidates.append(candidate)
+    for candidate in candidates:
+        top_level_failures = validate_top_level_save_reopen_proof(candidate)
+        semantic_failures = validate_two_launch_save_reopen_evidence(candidate)
+        if not top_level_failures and not semantic_failures:
+            return []
+    return [
+        "save/reopen semantic proof must include valid firstLaunch, secondLaunch, saveReopenProof, reopen, and afterReopen fields"
+    ]
 
 
 def validate_katago_live_smoke_evidence(evidence: Any) -> list[str]:

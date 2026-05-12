@@ -16,6 +16,7 @@ Implemented in the Next workspace:
 - KataGo one-position analysis and full-game batch analysis through analysis JSONL.
 - Analysis progress events, cancellation, candidate moves, ownership, policy, and winrate/progress overlays.
 - Engine path/model/config pickers, asset checks, and multiple engine profiles persisted in app data.
+- Bundled/runtime asset layout status display in Engine setup, while preserving local KataGo engine/model/config configuration.
 - SQLite analysis cache with cache key computation, lookup, save, and delete commands.
 - Scaffold validation, Rust tests, and frontend build checks wired for local and CI use.
 - Release preflight validation for Tauri metadata and the safe dry-run workflow.
@@ -29,6 +30,7 @@ Not yet claimed as complete in the Next workspace:
 - readboard live sidecar integration in a real target environment.
 - Production signing/notarization for macOS and Windows unless maintainer secrets are configured.
 - End-to-end clean-machine installer smoke coverage across all target platforms.
+- Bundling large KataGo models, installed-app bundled engine launch validation, and release artifact inclusion for bundled runtime assets.
 - Complete migration of every legacy setting, layout preference, and analysis workflow.
 
 Provider and readboard work in this batch should be treated as offline contract/domain-command coverage until the owning implementation has live environment evidence. Do not describe live provider login, external network capture, or readboard sidecar operation as shipped from this repository alone.
@@ -102,7 +104,7 @@ cd apps/desktop
 npm run dev
 ```
 
-The browser preview can exercise UI fallback paths, local SGF parsing fallback, fake review frames, and browser-local cache. Real KataGo execution, native file open/save, asset inspection, and app-data profile persistence require the Tauri desktop runtime.
+The browser preview can exercise UI fallback paths, local SGF parsing fallback, fake review frames, and browser-local cache. Real KataGo execution, native file open/save, runtime asset inspection, local asset inspection, and app-data profile persistence require the Tauri desktop runtime.
 
 ## Local Smoke Flow
 
@@ -112,7 +114,7 @@ Use `docs/DEVELOPMENT.md` for the full checklist. The short acceptance path is:
 2. Start `npm run tauri:dev` in `apps/desktop`.
 3. Open an SGF file or paste one from `tests/golden`.
 4. Configure a KataGo engine profile with engine, model, config, optional working directory, and max visits.
-5. Run `Check assets` and confirm required assets are present.
+5. Review bundled/runtime asset status, then run `Check assets` and confirm required local assets are present.
 6. Run one-position KataGo analysis.
 7. Run full-game analysis, observe progress, and cancel a second run to verify cancellation.
 8. Reopen or reparse the same SGF and confirm analysis cache hit status.
@@ -131,7 +133,7 @@ CI should be read as scaffold and regression coverage for the Next workspace, no
 
 Provider contract tests and readboard domain tests are accepted through the Rust workspace test gate when those modules land; the handoff should name the exact package or test filter and must not count a zero-test filter as evidence. Release dry-run acceptance is `.github/workflows/release-dry-run.yml` plus `python3 scripts/validate_release_assets.py --verbose`; the workflow uploads diagnostic artifacts and must not create a GitHub release.
 
-Passing CI means the current Tauri/Rust/TypeScript baseline is structurally healthy. It does not mean live Fox/Yike/readboard integrations, platform signing, notarization, or clean-machine installer smoke checks have completed.
+Passing CI means the current Tauri/Rust/TypeScript baseline is structurally healthy. It does not mean live Fox/Yike/readboard integrations, bundled large KataGo model distribution, installed-app bundled engine launch, platform signing, notarization, release inclusion, or clean-machine installer smoke checks have completed.
 
 ## Releases
 

@@ -1,0 +1,36 @@
+{
+  "schema": "lizzieyzy.readboard-external-capture-mvp.v1",
+  "name": "readboard_external_capture_mvp",
+  "status": "pending",
+  "platform": "macos",
+  "collectionMethod": "runtime_backend_external_capture_mvp_pending",
+  "pendingReason": "Runtime-backed readboard_external_capture evidence has not been captured yet; static fixture evidence is not accepted as PASS.",
+  "runtimeObserved": false,
+  "backendCommandInvoked": false,
+  "backendCommand": "readboard_external_capture",
+  "operatorInitiated": false,
+  "userSelectionRequired": true,
+  "previewOnlyBeforeConfirmation": true,
+  "boardReplacedOnlyAfterConfirmation": false,
+  "sourceStaticOnly": false,
+  "fullOcrParity": false,
+  "fullReadboardParity": false,
+  "externalClientCaptureCovered": false,
+  "targetClientDiscoveryCovered": false,
+  "realClientParity": false,
+  "windowsLinuxCaptureCovered": false,
+  "releaseParity": false,
+  "rawBackendResult": {
+    "status": "unsupported_platform",
+    "message": "No runtime-backed external capture report has been committed for this batch."
+  },
+  "boundaries": {
+    "fullOcrParity": false,
+    "fullReadboardParity": false,
+    "externalClientCaptureCovered": false,
+    "targetClientDiscoveryCovered": false,
+    "realClientParity": false,
+    "windowsLinuxCaptureCovered": false,
+    "releaseParity": false
+  }
+}

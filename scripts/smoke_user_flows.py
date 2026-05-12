@@ -505,6 +505,41 @@ READBOARD_IMAGE_OCR_CORPUS_REQUIRED_FALSE_FIELDS = [
     "realClientCaptureCovered",
     "fullReadboardParity",
 ]
+READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE = "docs/qa/readboard-external-capture-mvp-macos.json"
+READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA = "lizzieyzy.readboard-external-capture-mvp.v1"
+READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_CHECKS = [
+    "capture_source_selected",
+    "capture_artifact_recorded",
+    "decode_summary",
+    "preview_confirmation",
+    "structured_result",
+    "scope_boundaries",
+]
+READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_TRUE_FIELDS = [
+    "runtimeObserved",
+    "backendCommandInvoked",
+    "operatorInitiated",
+    "userSelectionRequired",
+    "previewOnlyBeforeConfirmation",
+    "boardReplacedOnlyAfterConfirmation",
+]
+READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_FALSE_FIELDS = [
+    "fullOcrParity",
+    "fullReadboardParity",
+    "externalClientCaptureCovered",
+    "targetClientDiscoveryCovered",
+    "realClientParity",
+    "windowsLinuxCaptureCovered",
+    "releaseParity",
+]
+READBOARD_EXTERNAL_CAPTURE_MVP_RAW_STATUSES = {
+    "captured",
+    "cancelled",
+    "permission_denied",
+    "timeout",
+    "unsupported_platform",
+    "decode_error",
+}
 PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
 PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
 PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -1242,6 +1277,7 @@ class UserFlowSmoke:
         self.check_readboard_live_smoke_evidence()
         self.check_readboard_image_import_smoke_evidence()
         self.check_readboard_image_ocr_corpus_smoke_evidence()
+        self.check_readboard_external_capture_mvp_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
@@ -1783,6 +1819,42 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_image_ocr_corpus_smoke",
             "scoped controlled readboard image OCR corpus evidence passes with manifest, path/base64 equivalence, rejection, coverage, hash, and unsupported external-capture boundary checks",
+        )
+
+    def check_readboard_external_capture_mvp_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_external_capture_mvp",
+                f"TODO gate: record scoped readboard external capture MVP evidence at {READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE)
+        if evidence is None:
+            return
+        if str(evidence.get("status", "")).lower() in {"pending", "unavailable"}:
+            failures = validate_readboard_external_capture_mvp_unavailable_evidence(evidence, self.root)
+            if failures:
+                self.pending(
+                    "readboard_external_capture_mvp",
+                    f"{READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE} is present but not valid scoped external capture MVP pending/unavailable evidence: "
+                    + "; ".join(failures),
+                )
+                return
+            reason = evidence.get("pendingReason") or evidence.get("reason") or "runtime-backed readboard external capture MVP evidence has not been captured yet"
+            self.pending("readboard_external_capture_mvp", str(reason))
+            return
+        failures = validate_readboard_external_capture_mvp_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "readboard_external_capture_mvp",
+                f"{READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE} is present but not valid scoped external capture MVP PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_external_capture_mvp",
+            "scoped readboard external capture MVP evidence passes with operator selection, sanitized artifact, decode summary, confirmation boundary, and parity limits",
         )
 
     def check_provider_live_smoke_evidence(self) -> None:
@@ -5176,6 +5248,142 @@ def validate_readboard_image_ocr_corpus_smoke_evidence(evidence: Any, root: Path
     return failures
 
 
+def validate_readboard_external_capture_mvp_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA:
+        failures.append(f"schema must be {READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA}")
+    if evidence.get("name") != "readboard_external_capture_mvp":
+        failures.append("name must be readboard_external_capture_mvp")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    collection_method = str(evidence.get("collectionMethod", ""))
+    if collection_method != "runtime_backend_external_capture_mvp":
+        failures.append("collectionMethod must be runtime_backend_external_capture_mvp")
+    if "static" in collection_method or "committed" in collection_method or evidence.get("sourceStaticOnly") is True:
+        failures.append("static/committed fixture evidence is not accepted for PASS")
+    for key in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    if evidence.get("backendCommand") != "readboard_external_capture":
+        failures.append("backendCommand must be readboard_external_capture")
+    raw_result = evidence.get("rawBackendResult")
+    failures.extend(validate_readboard_external_capture_raw_result(raw_result, require_captured=True))
+    capture_source = evidence.get("captureSource")
+    if not isinstance(capture_source, dict):
+        failures.append("captureSource must be an object")
+    else:
+        failures.extend(validate_readboard_external_capture_source(capture_source, "captureSource"))
+    structured_result = evidence.get("structuredResult")
+    if not isinstance(structured_result, dict):
+        failures.append("structuredResult must be an object")
+    else:
+        failures.extend(validate_readboard_external_capture_structured_result(structured_result, "structuredResult"))
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_readboard_external_capture_source_check(check_by_name.get("capture_source_selected")))
+    failures.extend(validate_readboard_external_capture_artifact(check_by_name.get("capture_artifact_recorded"), root))
+    failures.extend(validate_readboard_external_capture_decode_summary(check_by_name.get("decode_summary")))
+    failures.extend(validate_readboard_external_capture_preview_confirmation(check_by_name.get("preview_confirmation")))
+    failures.extend(validate_readboard_external_capture_structured_result_check(check_by_name.get("structured_result")))
+    failures.extend(validate_readboard_external_capture_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
+    return failures
+
+
+def validate_readboard_external_capture_mvp_unavailable_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA:
+        failures.append(f"schema must be {READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA}")
+    if evidence.get("name") != "readboard_external_capture_mvp":
+        failures.append("name must be readboard_external_capture_mvp")
+    if str(evidence.get("status", "")).lower() not in {"pending", "unavailable"}:
+        failures.append("status must be pending/unavailable for non-success evidence")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    for key in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    if evidence.get("boardReplacedOnlyAfterConfirmation") is True:
+        failures.append("pending/unavailable evidence must not claim board replacement")
+    raw_result = evidence.get("rawBackendResult")
+    if isinstance(raw_result, dict):
+        failures.extend(validate_readboard_external_capture_raw_result(raw_result, require_captured=False))
+        if raw_result.get("status") == "captured":
+            failures.append("pending/unavailable evidence must not include captured rawBackendResult")
+    return failures
+
+
+def validate_readboard_external_capture_raw_result(value: Any, *, require_captured: bool) -> list[str]:
+    if not isinstance(value, dict):
+        return ["rawBackendResult must be an object"]
+    failures: list[str] = []
+    status = value.get("status")
+    if status not in READBOARD_EXTERNAL_CAPTURE_MVP_RAW_STATUSES:
+        failures.append("rawBackendResult.status must be captured/cancelled/permission_denied/timeout/unsupported_platform/decode_error")
+    if require_captured and status != "captured":
+        failures.append("rawBackendResult.status must be captured for PASS evidence")
+    if status == "captured":
+        position = value.get("position")
+        if not isinstance(position, dict):
+            failures.append("rawBackendResult.position must be an object for captured result")
+        else:
+            failures.extend(validate_readboard_external_capture_raw_position(position))
+        snapshot_id = first_present(value, "snapshotId", "snapshot_id")
+        if not isinstance(snapshot_id, str) or not snapshot_id:
+            failures.append("rawBackendResult.snapshotId must be present for captured result")
+        decode = value.get("decode")
+        if not isinstance(decode, dict):
+            failures.append("rawBackendResult.decode must be an object for captured result")
+        else:
+            decode_status = str(decode.get("status", "")).lower()
+            if decode_status != "success" and not isinstance(position, dict):
+                failures.append("rawBackendResult.decode.status must be success when position is absent")
+    return failures
+
+
+def validate_readboard_external_capture_raw_position(position: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    board_size = first_present(position, "board_size", "boardSize")
+    if board_size not in {9, 13, 19}:
+        failures.append("rawBackendResult.position.board_size must be 9, 13, or 19")
+    if not isinstance(first_present(position, "move_number", "moveNumber"), (int, float)):
+        failures.append("rawBackendResult.position.move_number must be numeric")
+    if str(first_present(position, "to_play", "toPlay")).lower() not in {"black", "white", "b", "w"}:
+        failures.append("rawBackendResult.position.to_play must be black or white")
+    stones = position.get("stones")
+    if not isinstance(stones, list):
+        failures.append("rawBackendResult.position.stones must be a list")
+    return failures
+
+
 def validate_provider_live_smoke_evidence(evidence: Any) -> list[str]:
     if not isinstance(evidence, dict):
         return ["evidence root must be an object"]
@@ -5911,6 +6119,144 @@ def validate_readboard_ocr_scope_boundaries(check: Any, root_evidence: dict[str,
             failures.append(f"scope_boundaries.{key} must be false")
         if root_evidence.get(key) is not False:
             failures.append(f"{key} must be false")
+    return failures
+
+
+def validate_readboard_external_capture_source_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["capture_source_selected evidence must be an object"]
+    return validate_readboard_external_capture_source(evidence, "capture_source_selected")
+
+
+def validate_readboard_external_capture_source(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("operatorInitiated") is not True:
+        failures.append(f"{label}.operatorInitiated must be true")
+    if evidence.get("userSelectionRequired") is not True:
+        failures.append(f"{label}.userSelectionRequired must be true")
+    source_kind = first_present(evidence, "sourceKind", "kind", "captureSource")
+    if source_kind not in {"external_screen_region", "selected_screen_region", "external_window_region"}:
+        failures.append(f"{label}.sourceKind must be selected external region")
+    if evidence.get("targetClientDiscoveryCovered") is not False:
+        failures.append(f"{label}.targetClientDiscoveryCovered must be false")
+    if evidence.get("externalClientCaptureCovered") is not False:
+        failures.append(f"{label}.externalClientCaptureCovered must be false")
+    selection = evidence.get("selection")
+    if not isinstance(selection, dict):
+        failures.append(f"{label}.selection must be an object")
+    else:
+        for key in ("x", "y", "width", "height"):
+            if not positive_number(selection.get(key)):
+                failures.append(f"{label}.selection.{key} must be positive")
+    return failures
+
+
+def validate_readboard_external_capture_artifact(check: Any, root: Path) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["capture_artifact_recorded evidence must be an object"]
+    failures: list[str] = []
+    artifact_path = first_present(evidence, "path", "capturePath", "imagePath")
+    if not isinstance(artifact_path, str) or not artifact_path.strip():
+        failures.append("capture_artifact_recorded.path must be non-empty")
+    else:
+        failures.extend(
+            validate_repo_relative_path_artifact(
+                root,
+                artifact_path,
+                {
+                    "sizeBytes": first_present(evidence, "sizeBytes", "imageBytes", "bytes"),
+                    "sha256": first_present(evidence, "sha256", "imageSha256"),
+                },
+                "capture_artifact_recorded",
+            )
+        )
+    if evidence.get("sanitized") is not True:
+        failures.append("capture_artifact_recorded.sanitized must be true")
+    return failures
+
+
+def validate_readboard_external_capture_decode_summary(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["decode_summary evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("decodeAttempted") is not True:
+        failures.append("decode_summary.decodeAttempted must be true")
+    if evidence.get("decodeSucceeded") is not True:
+        failures.append("decode_summary.decodeSucceeded must be true")
+    if not positive_number(first_present(evidence, "boardSize", "board_size")):
+        failures.append("decode_summary.boardSize must be positive")
+    if not isinstance(first_present(evidence, "stoneCount", "stone_count"), (int, float)):
+        failures.append("decode_summary.stoneCount must be numeric")
+    confidence = first_present(evidence, "confidence", "confidenceScore")
+    if evidence.get("confidenceReported") is False:
+        if confidence is not None:
+            failures.append("decode_summary.confidence must be absent when confidenceReported is false")
+    elif not isinstance(confidence, (int, float)) or confidence <= 0:
+        failures.append("decode_summary.confidence must be positive when confidenceReported is true/absent")
+    if evidence.get("structuredResultProduced") is not True:
+        failures.append("decode_summary.structuredResultProduced must be true")
+    return failures
+
+
+def validate_readboard_external_capture_preview_confirmation(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["preview_confirmation evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("previewOnlyBeforeConfirmation") is not True:
+        failures.append("preview_confirmation.previewOnlyBeforeConfirmation must be true")
+    if evidence.get("boardReplacedBeforeConfirmation") is not False:
+        failures.append("preview_confirmation.boardReplacedBeforeConfirmation must be false")
+    if evidence.get("userConfirmed") is not True:
+        failures.append("preview_confirmation.userConfirmed must be true")
+    if evidence.get("boardReplacedOnlyAfterConfirmation") is not True:
+        failures.append("preview_confirmation.boardReplacedOnlyAfterConfirmation must be true")
+    return failures
+
+
+def validate_readboard_external_capture_structured_result_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["structured_result evidence must be an object"]
+    return validate_readboard_external_capture_structured_result(evidence, "structured_result")
+
+
+def validate_readboard_external_capture_structured_result(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("structuredResultVerified") is not True:
+        failures.append(f"{label}.structuredResultVerified must be true")
+    snapshot_id = first_present(evidence, "snapshotId", "snapshot_id")
+    if not isinstance(snapshot_id, str) or not snapshot_id:
+        failures.append(f"{label}.snapshotId must be non-empty")
+    board_size = first_present(evidence, "boardSize", "board_size")
+    if board_size not in {9, 13, 19}:
+        failures.append(f"{label}.boardSize must be 9, 13, or 19")
+    stone_count = first_present(evidence, "stoneCount", "stone_count")
+    if not isinstance(stone_count, (int, float)) or stone_count < 0:
+        failures.append(f"{label}.stoneCount must be non-negative")
+    if str(first_present(evidence, "toPlay", "to_play")).lower() not in {"black", "white"}:
+        failures.append(f"{label}.toPlay must be black or white")
+    if evidence.get("boardReplaced") is not True:
+        failures.append(f"{label}.boardReplaced must be true")
+    if evidence.get("replacementConfirmed") is not True:
+        failures.append(f"{label}.replacementConfirmed must be true")
+    return failures
+
+
+def validate_readboard_external_capture_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
+    for key in READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_FALSE_FIELDS:
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
     return failures
 
 

@@ -69,6 +69,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("readboard_image_import_smoke", pending_names)
             self.assertIn("readboard_image_ocr_corpus_smoke", pending_names)
+            self.assertIn("readboard_external_capture_mvp", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
 
@@ -2302,6 +2303,135 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("boardSize must be absent", detail)
             self.assertIn("stoneCount must be absent", detail)
 
+    def test_valid_readboard_external_capture_mvp_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_readboard_external_capture_mvp_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_external_capture_mvp", pass_names)
+            self.assertNotIn("readboard_external_capture_mvp", pending_names)
+
+    def test_readboard_external_capture_mvp_rejects_static_committed_evidence(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["collectionMethod"] = "committed_external_capture_mvp_evidence"
+            evidence["sourceStaticOnly"] = True
+            evidence.pop("rawBackendResult", None)
+
+        self.assert_invalid_readboard_external_capture_mvp_pending(
+            mutate,
+            "collectionMethod must be runtime_backend_external_capture_mvp",
+        )
+
+    def test_readboard_external_capture_mvp_unavailable_is_pending_not_pass(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_external_capture_mvp_unavailable_evidence()
+            write_json(root / smoke_user_flows.READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("readboard_external_capture_mvp", failures)
+            self.assertNotIn("readboard_external_capture_mvp", pass_names)
+            self.assertIn("readboard_external_capture_mvp", pending)
+            self.assertIn("permission denied by operator", pending["readboard_external_capture_mvp"])
+
+    def test_readboard_external_capture_mvp_rejects_overclaims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullOcrParity"] = True
+            evidence["fullReadboardParity"] = True
+            evidence["externalClientCaptureCovered"] = True
+            evidence["targetClientDiscoveryCovered"] = True
+            evidence["realClientParity"] = True
+            evidence["windowsLinuxCaptureCovered"] = True
+            evidence["releaseParity"] = True
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            for key in smoke_user_flows.READBOARD_EXTERNAL_CAPTURE_MVP_REQUIRED_FALSE_FIELDS:
+                boundaries[key] = True
+
+        self.assert_invalid_readboard_external_capture_mvp_pending(
+            mutate,
+            "fullOcrParity must be false",
+        )
+
+    def test_readboard_external_capture_mvp_requires_operator_selection(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["operatorInitiated"] = False
+            evidence["userSelectionRequired"] = False
+            source = evidence["captureSource"]
+            assert isinstance(source, dict)
+            source["operatorInitiated"] = False
+            source["userSelectionRequired"] = False
+
+        self.assert_invalid_readboard_external_capture_mvp_pending(
+            mutate,
+            "operatorInitiated must be true",
+        )
+
+    def test_readboard_external_capture_mvp_requires_artifact_hash_and_size(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            artifact = find_evidence_check(evidence, "capture_artifact_recorded")["details"]
+            artifact["sha256"] = "0" * 64
+            artifact["sizeBytes"] = 1
+
+        self.assert_invalid_readboard_external_capture_mvp_pending(
+            mutate,
+            "capture_artifact_recorded.sizeBytes must match artifact size",
+        )
+
+    def test_readboard_external_capture_mvp_requires_preview_confirmation(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["previewOnlyBeforeConfirmation"] = False
+            evidence["boardReplacedOnlyAfterConfirmation"] = False
+            preview = find_evidence_check(evidence, "preview_confirmation")["details"]
+            preview["previewOnlyBeforeConfirmation"] = False
+            preview["boardReplacedBeforeConfirmation"] = True
+            preview["boardReplacedOnlyAfterConfirmation"] = False
+
+        self.assert_invalid_readboard_external_capture_mvp_pending(
+            mutate,
+            "previewOnlyBeforeConfirmation must be true",
+        )
+
+    def test_readboard_external_capture_mvp_requires_structured_result(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            result = find_evidence_check(evidence, "structured_result")["details"]
+            result["toPlay"] = "unknown"
+            result["boardReplaced"] = False
+
+        self.assert_invalid_readboard_external_capture_mvp_pending(
+            mutate,
+            "structured_result.toPlay must be black or white",
+        )
+
+    def assert_invalid_readboard_external_capture_mvp_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            create_readboard_controlled_board_fixture(root)
+            evidence = valid_readboard_external_capture_mvp_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_external_capture_mvp", failures)
+            self.assertIn("readboard_external_capture_mvp", pending)
+            self.assertIn(expected_detail, pending["readboard_external_capture_mvp"])
+
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3496,6 +3626,14 @@ def write_valid_readboard_image_ocr_corpus_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_external_capture_mvp_evidence(root: Path) -> None:
+    create_readboard_controlled_board_fixture(root)
+    write_json(
+        root / smoke_user_flows.READBOARD_EXTERNAL_CAPTURE_MVP_EVIDENCE,
+        valid_readboard_external_capture_mvp_evidence(),
+    )
+
+
 def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
@@ -4565,6 +4703,140 @@ def valid_readboard_image_ocr_corpus_evidence() -> dict[str, object]:
                 },
             },
         ],
+    }
+
+
+def valid_readboard_external_capture_mvp_evidence() -> dict[str, object]:
+    boundaries = {
+        "fullOcrParity": False,
+        "fullReadboardParity": False,
+        "externalClientCaptureCovered": False,
+        "targetClientDiscoveryCovered": False,
+        "realClientParity": False,
+        "windowsLinuxCaptureCovered": False,
+        "releaseParity": False,
+    }
+    capture_source = {
+        "operatorInitiated": True,
+        "userSelectionRequired": True,
+        "sourceKind": "external_screen_region",
+        "selection": {"x": 12, "y": 18, "width": 640, "height": 640},
+        "targetClientDiscoveryCovered": False,
+        "externalClientCaptureCovered": False,
+    }
+    artifact = {
+        "path": "docs/qa/fixtures/readboard-controlled-board.png",
+        "sizeBytes": 522,
+        "sha256": "70cfecf5b5d5235e66a051c5208c2974fde34f0a28aaef5be33fcd8bc0f63d96",
+        "sanitized": True,
+    }
+    decode = {
+        "decodeAttempted": True,
+        "decodeSucceeded": True,
+        "boardSize": 19,
+        "stoneCount": 3,
+        "confidence": 0.99,
+        "structuredResultProduced": True,
+    }
+    preview = {
+        "previewOnlyBeforeConfirmation": True,
+        "boardReplacedBeforeConfirmation": False,
+        "userConfirmed": True,
+        "boardReplacedOnlyAfterConfirmation": True,
+    }
+    structured = {
+        "structuredResultVerified": True,
+        "snapshotId": "readboard-external-capture-mvp-001",
+        "boardSize": 19,
+        "stoneCount": 3,
+        "toPlay": "black",
+        "boardReplaced": True,
+        "replacementConfirmed": True,
+    }
+    return {
+        "schema": smoke_user_flows.READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA,
+        "name": "readboard_external_capture_mvp",
+        "status": "pass",
+        "platform": "macos",
+        "collectionMethod": "runtime_backend_external_capture_mvp",
+        "runtimeObserved": True,
+        "backendCommandInvoked": True,
+        "backendCommand": "readboard_external_capture",
+        "operatorInitiated": True,
+        "userSelectionRequired": True,
+        "previewOnlyBeforeConfirmation": True,
+        "boardReplacedOnlyAfterConfirmation": True,
+        "sourceStaticOnly": False,
+        **boundaries,
+        "captureSource": capture_source,
+        "structuredResult": structured,
+        "captureArtifact": artifact,
+        "decodeSummary": decode,
+        "rawBackendResult": {
+            "status": "captured",
+            "snapshotId": "readboard-external-capture-mvp-001",
+            "position": {
+                "board_size": 19,
+                "move_number": 0,
+                "to_play": "black",
+                "stones": [
+                    {"color": "black", "point": "dd"},
+                    {"color": "white", "point": "pq"},
+                    {"color": "black", "point": "dp"},
+                ],
+            },
+            "decode": {
+                "attempted": True,
+                "status": "success",
+                "board_size": 19,
+                "stone_count": 3,
+                "blackStones": [{"point": "dd"}, {"point": "dp"}],
+                "whiteStones": [{"point": "pq"}],
+            },
+        },
+        "checks": [
+            {"name": "capture_source_selected", "status": "pass", "details": capture_source},
+            {"name": "capture_artifact_recorded", "status": "pass", "details": artifact},
+            {"name": "decode_summary", "status": "pass", "details": decode},
+            {"name": "preview_confirmation", "status": "pass", "details": preview},
+            {"name": "structured_result", "status": "pass", "details": structured},
+            {"name": "scope_boundaries", "status": "pass", "details": {"boundaries": boundaries}},
+        ],
+        "boundaries": boundaries,
+    }
+
+
+def valid_readboard_external_capture_mvp_unavailable_evidence() -> dict[str, object]:
+    boundaries = {
+        "fullOcrParity": False,
+        "fullReadboardParity": False,
+        "externalClientCaptureCovered": False,
+        "targetClientDiscoveryCovered": False,
+        "realClientParity": False,
+        "windowsLinuxCaptureCovered": False,
+        "releaseParity": False,
+    }
+    return {
+        "schema": smoke_user_flows.READBOARD_EXTERNAL_CAPTURE_MVP_SCHEMA,
+        "name": "readboard_external_capture_mvp",
+        "status": "unavailable",
+        "platform": "macos",
+        "collectionMethod": "runtime_backend_external_capture_mvp",
+        "pendingReason": "permission denied by operator",
+        "runtimeObserved": True,
+        "backendCommandInvoked": True,
+        "backendCommand": "readboard_external_capture",
+        "operatorInitiated": True,
+        "userSelectionRequired": True,
+        "previewOnlyBeforeConfirmation": True,
+        "boardReplacedOnlyAfterConfirmation": False,
+        "sourceStaticOnly": False,
+        **boundaries,
+        "rawBackendResult": {
+            "status": "permission_denied",
+            "message": "permission denied by operator",
+        },
+        "boundaries": boundaries,
     }
 
 

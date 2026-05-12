@@ -279,6 +279,10 @@ export function App() {
     try {
       const result = await applyLegacyConfigMigration(path);
       setLegacyConfigApplyResult(result);
+      if (result.status === "failed") {
+        setLegacyConfigStatus(`Apply failed: ${legacyConfigApplyFailureSummary(result)}`);
+        return;
+      }
       setLegacyConfigPreview({
         sourcePath: result.sourcePath,
         preferences: null,
@@ -290,7 +294,7 @@ export function App() {
       setPreferences(loadedPreferences);
       await loadEngineProfilesSettings();
       setPreferencesStatus("Preferences loaded after legacy migration.");
-      setLegacyConfigStatus(`Applied legacy config migration: ${result.migratedFields.length} migrated fields.`);
+      setLegacyConfigStatus(`Applied legacy config migration: ${result.migratedFields.length} migrated fields. ${legacyConfigApplySuccessSummary(result)}`);
     } catch (error) {
       setLegacyConfigStatus(`Apply failed: ${errorMessage(error)}`);
     } finally {
@@ -1740,6 +1744,24 @@ function colorLabel(color: PlayerColor): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function legacyConfigApplyFailureSummary(result: backendApi.LegacyConfigMigrationApplyDto): string {
+  const reason = result.errorMessage?.trim() || "legacy config migration failed";
+  const noWrite = result.noWriteOnError ? "no writes performed on error" : "write state may require inspection";
+  const rollback = result.rollbackPerformed
+    ? result.rollbackSucceeded
+      ? "rollback succeeded"
+      : "rollback failed"
+    : "rollback not needed";
+  return `${reason}; ${noWrite}; ${rollback}.`;
+}
+
+function legacyConfigApplySuccessSummary(result: backendApi.LegacyConfigMigrationApplyDto): string {
+  const transactional = result.transactional ? "transactional apply" : "non-transactional apply";
+  const writtenCount = result.writtenPathLabels.length;
+  const written = writtenCount === 1 ? "1 target written" : `${writtenCount} targets written`;
+  return `${transactional}; ${written}.`;
 }
 
 function cacheEngineLabel(engineKind: CacheEngineKind): string {

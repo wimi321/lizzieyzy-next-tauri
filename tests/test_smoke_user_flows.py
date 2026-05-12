@@ -1381,6 +1381,17 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_config_migration_surface", failures)
             self.assertIn("PreferencesPanel missing legacyConfigPath", failures["legacy_config_migration_surface"])
 
+    def test_legacy_config_migration_surface_missing_safety_ui_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, preferences_migration_safety_ui=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_config_migration_surface", failures)
+            self.assertIn("PreferencesPanel missing legacy-config-safety-status", failures["legacy_config_migration_surface"])
+
     def test_sgf_annotation_surface_passes_with_frontend_wiring(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1566,6 +1577,7 @@ def create_complete_smoke_fixture(
     omitted_commands: set[str] | None = None,
     app_edit_handler: bool = True,
     preferences_migration_ui: bool = True,
+    preferences_migration_safety_ui: bool = True,
     runtime_asset_ui: bool = True,
 ) -> None:
     omitted_commands = omitted_commands or set()
@@ -1641,7 +1653,7 @@ def create_complete_smoke_fixture(
     create_sgf_tree_panel_fixture(root)
     create_sgf_annotation_panel_fixture(root)
     create_runtime_smoke_fixture(root)
-    create_preferences_panel_fixture(root, migration_ui=preferences_migration_ui)
+    create_preferences_panel_fixture(root, migration_ui=preferences_migration_ui, migration_safety_ui=preferences_migration_safety_ui)
     create_engine_setup_panel_fixture(root, runtime_asset_ui=runtime_asset_ui)
 
 
@@ -2675,8 +2687,17 @@ def create_backend_fixture(root: Path, *, read_back_after_save: bool = True) -> 
 
         export type LegacyConfigMigrationApplyDto = {{
           sourcePath: string;
+          status: string;
+          errorMessage: string | null;
           preferencesWritten: boolean;
           engineProfilesWritten: boolean;
+          writtenPathLabels: string[];
+          transactional: boolean;
+          noWriteOnError: boolean;
+          rollbackPerformed: boolean;
+          rollbackSucceeded: boolean;
+          rollbackPaths: string[];
+          rollbackErrors: string[];
           writtenPaths: string[];
           migratedFields: string[];
           warnings: string[];
@@ -2783,9 +2804,20 @@ def create_app_fixture(
           }}
           async function handleApplyLegacyConfigMigration() {{
             const result = await applyLegacyConfigMigration(legacyConfigPath);
+            if (result.status === "failed") {{
+              const summary = legacyConfigApplyFailureSummary(result);
+              return summary;
+            }}
+            const summary = legacyConfigApplySuccessSummary(result);
             await loadAppPreferences();
             await loadEngineProfilesSettings();
-            return result;
+            return summary;
+          }}
+          function legacyConfigApplyFailureSummary(result) {{
+            return `${{result.errorMessage}} ${{result.noWriteOnError}} ${{result.rollbackPerformed}} ${{result.rollbackSucceeded}}`;
+          }}
+          function legacyConfigApplySuccessSummary(result) {{
+            return `${{result.transactional}} ${{result.writtenPathLabels.length}}`;
           }}
           async function handleSaveAnnotations(nodeId, updates) {{
             try {{
@@ -2891,17 +2923,41 @@ def create_runtime_smoke_fixture(root: Path) -> None:
     )
 
 
-def create_preferences_panel_fixture(root: Path, *, migration_ui: bool = True) -> None:
+def create_preferences_panel_fixture(root: Path, *, migration_ui: bool = True, migration_safety_ui: bool = True) -> None:
     if migration_ui:
+        safety_body = """
+              <strong>Migration safety</strong>
+              <div data-testid="legacy-config-safety-status">{migrationSafetySummary(legacyConfigApplyResult)}</div>
+              <div data-testid="legacy-config-written-path-labels">{legacyConfigApplyResult?.writtenPathLabels}</div>
+              <div data-testid="legacy-config-rollback-paths">{legacyConfigApplyResult?.rollbackPaths}</div>
+              <div data-testid="legacy-config-rollback-errors">{legacyConfigApplyResult?.rollbackErrors}</div>
+        """ if migration_safety_ui else ""
         body = """
         type Props = {
           legacyConfigPath: string;
           legacyConfigStatus: string;
           legacyConfigPreview: { migratedFields: string[]; warnings: string[] } | null;
-          legacyConfigApplyResult: { migratedFields: string[]; warnings: string[] } | null;
+          legacyConfigApplyResult: { status: string; migratedFields: string[]; warnings: string[]; writtenPathLabels: string[]; transactional: boolean; noWriteOnError: boolean; rollbackPerformed: boolean; rollbackSucceeded: boolean; rollbackPaths: string[]; rollbackErrors: string[] } | null;
           onPreviewLegacyConfigMigration: () => void;
           onApplyLegacyConfigMigration: () => void;
         };
+
+        function migrationSafetySummary(result) {
+          return `${result?.status} ${result?.transactional} error protection enabled ${result?.rollbackPerformed} ${result?.rollbackSucceeded}`;
+        }
+
+        function migrationWriteStatus(result, writeTouched) {
+          if (result?.status !== "failed") {
+            return writeTouched ? "written" : "unchanged";
+          }
+          if (!writeTouched) {
+            return "unchanged";
+          }
+          if (result.rollbackPerformed && result.rollbackSucceeded) {
+            return "written then rolled back";
+          }
+          return result.rollbackPerformed ? "write attempted; rollback failed" : "write attempted";
+        }
 
         export function PreferencesPanel({
           legacyConfigPath,
@@ -2919,12 +2975,14 @@ def create_preferences_panel_fixture(root: Path, *, migration_ui: bool = True) -
               <button onClick={onApplyLegacyConfigMigration}>Apply</button>
               <strong>Migrated fields</strong>
               <strong>Warnings</strong>
+              <span>{migrationWriteStatus(legacyConfigApplyResult, Boolean(legacyConfigApplyResult?.writtenPathLabels.length))}</span>
+              __SAFETY_BODY__
               {legacyConfigPreview}
               {legacyConfigApplyResult}
             </section>
           );
         }
-        """
+        """.replace("__SAFETY_BODY__", safety_body)
     else:
         body = """
         export function PreferencesPanel() {

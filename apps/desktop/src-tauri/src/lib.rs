@@ -326,10 +326,19 @@ struct LegacyConfigMigrationPreviewDto {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LegacyConfigMigrationApplyDto {
+    status: String,
     source_path: String,
     preferences_written: bool,
     engine_profiles_written: bool,
     written_paths: Vec<String>,
+    written_path_labels: Vec<String>,
+    transactional: bool,
+    no_write_on_error: bool,
+    rollback_performed: bool,
+    rollback_succeeded: bool,
+    rollback_paths: Vec<String>,
+    rollback_errors: Vec<String>,
+    error_message: Option<String>,
     migrated_fields: Vec<String>,
     warnings: Vec<String>,
 }
@@ -838,37 +847,20 @@ fn apply_legacy_config_migration(
     path: String,
 ) -> Result<LegacyConfigMigrationApplyDto, String> {
     let source_path = non_empty_path(path)?;
-    let preview = preview_legacy_config_migration_from_path(&source_path)?;
-    let mut written_paths = Vec::new();
-    let preferences_written = if let Some(preferences) = preview.preferences.clone() {
-        let preferences_path = app_preferences_path(&app_handle)?;
-        let existing = load_app_preferences_at_path(&preferences_path)?;
-        let merged = merge_migrated_preferences(existing, preferences, &preview.migrated_fields);
-        save_app_preferences_at_path(&preferences_path, merged)?;
-        written_paths.push(preferences_path.display().to_string());
-        true
-    } else {
-        false
+    let source_path_display = source_path.display().to_string();
+    let preview = match preview_legacy_config_migration_from_path(&source_path) {
+        Ok(preview) => preview,
+        Err(err) => return Ok(legacy_migration_parse_failure_dto(source_path_display, err)),
     };
-    let engine_profiles_written = if let Some(engine_profiles) = preview.engine_profiles.clone() {
-        let engine_profiles_path = engine_profile_path(&app_handle)?;
-        let existing = load_engine_profiles_settings_at_path(&engine_profiles_path)?;
-        let merged = merge_migrated_engine_profiles(existing, engine_profiles, &preview.migrated_fields);
-        save_engine_profiles_settings_at_path(&engine_profiles_path, merged)?;
-        written_paths.push(engine_profiles_path.display().to_string());
-        true
-    } else {
-        false
+    let preferences_path = match app_preferences_path(&app_handle) {
+        Ok(path) => path,
+        Err(err) => return Ok(legacy_migration_preflight_failure_dto(&preview, err)),
     };
-
-    Ok(LegacyConfigMigrationApplyDto {
-        source_path: preview.source_path,
-        preferences_written,
-        engine_profiles_written,
-        written_paths,
-        migrated_fields: preview.migrated_fields,
-        warnings: preview.warnings,
-    })
+    let engine_profiles_path = match engine_profile_path(&app_handle) {
+        Ok(path) => path,
+        Err(err) => return Ok(legacy_migration_preflight_failure_dto(&preview, err)),
+    };
+    apply_legacy_config_migration_preview_to_paths(preview, &preferences_path, &engine_profiles_path)
 }
 
 #[tauri::command]
@@ -1399,41 +1391,355 @@ fn load_app_preferences_at_path(path: &Path) -> Result<AppPreferencesDto, String
     }
 }
 
+#[derive(Clone)]
+struct LegacyMigrationTarget {
+    path: PathBuf,
+    kind: LegacyMigrationTargetKind,
+    contents: String,
+    previous_contents: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LegacyMigrationTargetKind {
+    Preferences,
+    EngineProfiles,
+}
+
+fn apply_legacy_config_migration_preview_to_paths(
+    preview: LegacyConfigMigrationPreviewDto,
+    preferences_path: &Path,
+    engine_profiles_path: &Path,
+) -> Result<LegacyConfigMigrationApplyDto, String> {
+    apply_legacy_config_migration_preview_to_paths_with_writer(
+        preview,
+        preferences_path,
+        engine_profiles_path,
+        |path, contents| {
+            fs::write(path, contents).map_err(|err| format!("failed to write {}: {err}", path.display()))
+        },
+    )
+}
+
+fn apply_legacy_config_migration_preview_to_paths_with_writer(
+    preview: LegacyConfigMigrationPreviewDto,
+    preferences_path: &Path,
+    engine_profiles_path: &Path,
+    mut writer: impl FnMut(&Path, &str) -> Result<(), String>,
+) -> Result<LegacyConfigMigrationApplyDto, String> {
+    let targets =
+        match prepare_legacy_config_migration_targets(&preview, preferences_path, engine_profiles_path) {
+            Ok(targets) => targets,
+            Err(err) => return Ok(legacy_migration_preflight_failure_dto(&preview, err)),
+        };
+    let mut written_targets: Vec<LegacyMigrationTarget> = Vec::new();
+
+    for target in &targets {
+        if let Some(parent) = target.path.parent() {
+            if let Err(err) = fs::create_dir_all(parent) {
+                return Ok(legacy_migration_transaction_failure_dto(
+                    &preview,
+                    target.kind,
+                    format!("failed to create target directory {}: {err}", parent.display()),
+                    &written_targets,
+                ));
+            }
+        }
+
+        if let Err(err) = writer(&target.path, &target.contents) {
+            return Ok(legacy_migration_transaction_failure_dto(
+                &preview,
+                target.kind,
+                err,
+                &written_targets,
+            ));
+        }
+        written_targets.push(target.clone());
+    }
+
+    let written_paths = targets
+        .iter()
+        .map(|target| target.path.display().to_string())
+        .collect::<Vec<_>>();
+    Ok(LegacyConfigMigrationApplyDto {
+        status: "applied".to_string(),
+        source_path: preview.source_path,
+        preferences_written: targets
+            .iter()
+            .any(|target| target.kind == LegacyMigrationTargetKind::Preferences),
+        engine_profiles_written: targets
+            .iter()
+            .any(|target| target.kind == LegacyMigrationTargetKind::EngineProfiles),
+        written_paths,
+        written_path_labels: targets
+            .iter()
+            .map(|target| legacy_migration_target_label(target.kind).to_string())
+            .collect(),
+        transactional: true,
+        no_write_on_error: true,
+        rollback_performed: false,
+        rollback_succeeded: true,
+        rollback_paths: Vec::new(),
+        rollback_errors: Vec::new(),
+        error_message: None,
+        migrated_fields: preview.migrated_fields,
+        warnings: preview.warnings,
+    })
+}
+
+fn prepare_legacy_config_migration_targets(
+    preview: &LegacyConfigMigrationPreviewDto,
+    preferences_path: &Path,
+    engine_profiles_path: &Path,
+) -> Result<Vec<LegacyMigrationTarget>, String> {
+    let mut targets = Vec::new();
+    if let Some(preferences) = preview.preferences.clone() {
+        let existing = load_app_preferences_at_path(preferences_path)?;
+        let merged = merge_migrated_preferences(existing, preferences, &preview.migrated_fields);
+        targets.push(LegacyMigrationTarget {
+            path: preferences_path.to_path_buf(),
+            kind: LegacyMigrationTargetKind::Preferences,
+            contents: serialize_app_preferences(merged)?,
+            previous_contents: read_existing_migration_target(preferences_path)?,
+        });
+    }
+    if let Some(engine_profiles) = preview.engine_profiles.clone() {
+        let existing = load_engine_profiles_settings_at_path(engine_profiles_path)?;
+        let merged = merge_migrated_engine_profiles(existing, engine_profiles, &preview.migrated_fields);
+        targets.push(LegacyMigrationTarget {
+            path: engine_profiles_path.to_path_buf(),
+            kind: LegacyMigrationTargetKind::EngineProfiles,
+            contents: serialize_engine_profiles_settings(merged)?,
+            previous_contents: read_existing_migration_target(engine_profiles_path)?,
+        });
+    }
+    Ok(targets)
+}
+
+fn read_existing_migration_target(path: &Path) -> Result<Option<String>, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!(
+            "legacy config migration no-write-on-error: failed to snapshot existing target {} before writes: {err}",
+            path.display()
+        )),
+    }
+}
+
+fn serialize_app_preferences(preferences: AppPreferencesDto) -> Result<String, String> {
+    serde_json::to_string_pretty(&normalize_app_preferences(preferences))
+        .map_err(|err| format!("failed to serialize app preferences: {err}"))
+}
+
+fn serialize_engine_profiles_settings(settings: EngineProfilesSettingsDto) -> Result<String, String> {
+    let settings = normalize_engine_profiles_settings(settings)?;
+    serde_json::to_string_pretty(&settings)
+        .map_err(|err| format!("failed to serialize engine profiles: {err}"))
+}
+
+fn legacy_migration_parse_failure_dto(
+    source_path: String,
+    error_message: String,
+) -> LegacyConfigMigrationApplyDto {
+    legacy_migration_failed_apply_dto(LegacyMigrationFailedApply {
+        source_path,
+        migrated_fields: Vec::new(),
+        warnings: Vec::new(),
+        error_message: format!(
+            "legacy config migration parse/preflight failed with no writes: {error_message}"
+        ),
+        no_write_on_error: true,
+        rollback_performed: false,
+        rollback_succeeded: true,
+        rollback_paths: Vec::new(),
+        rollback_errors: Vec::new(),
+        written_targets: &[],
+    })
+}
+
+fn legacy_migration_preflight_failure_dto(
+    preview: &LegacyConfigMigrationPreviewDto,
+    error_message: String,
+) -> LegacyConfigMigrationApplyDto {
+    legacy_migration_failed_apply_dto(LegacyMigrationFailedApply {
+        source_path: preview.source_path.clone(),
+        migrated_fields: preview.migrated_fields.clone(),
+        warnings: preview.warnings.clone(),
+        error_message: format!(
+            "legacy config migration parse/preflight failed with no writes: {error_message}"
+        ),
+        no_write_on_error: true,
+        rollback_performed: false,
+        rollback_succeeded: true,
+        rollback_paths: Vec::new(),
+        rollback_errors: Vec::new(),
+        written_targets: &[],
+    })
+}
+
+fn legacy_migration_transaction_failure_dto(
+    preview: &LegacyConfigMigrationPreviewDto,
+    target_kind: LegacyMigrationTargetKind,
+    cause: String,
+    written_targets: &[LegacyMigrationTarget],
+) -> LegacyConfigMigrationApplyDto {
+    let (rollback_succeeded, rollback_paths, rollback_errors) =
+        rollback_legacy_migration_targets(written_targets);
+    let rollback_performed = !written_targets.is_empty();
+    let no_write_on_error = !rollback_performed;
+    let rollback_note = if rollback_performed {
+        format!(
+            "rollback performed for [{}]; rollback_succeeded={rollback_succeeded}",
+            rollback_paths.join(", ")
+        )
+    } else {
+        "rollback not required because no migration targets were written".to_string()
+    };
+    let rollback_error_note = if rollback_errors.is_empty() {
+        String::new()
+    } else {
+        format!("; rollback errors: {}", rollback_errors.join("; "))
+    };
+    let error_message = format!(
+        "legacy config migration transactional write failed for {}; no-write-on-error={no_write_on_error}; {rollback_note}{rollback_error_note}; cause: {cause}",
+        legacy_migration_target_label(target_kind)
+    );
+    legacy_migration_failed_apply_dto(LegacyMigrationFailedApply {
+        source_path: preview.source_path.clone(),
+        migrated_fields: preview.migrated_fields.clone(),
+        warnings: preview.warnings.clone(),
+        error_message,
+        no_write_on_error,
+        rollback_performed,
+        rollback_succeeded: if rollback_performed {
+            rollback_succeeded
+        } else {
+            true
+        },
+        rollback_paths,
+        rollback_errors,
+        written_targets,
+    })
+}
+
+fn rollback_legacy_migration_targets(targets: &[LegacyMigrationTarget]) -> (bool, Vec<String>, Vec<String>) {
+    let mut rollback_paths = Vec::new();
+    let mut rollback_errors = Vec::new();
+    for target in targets.iter().rev() {
+        let result = if let Some(contents) = &target.previous_contents {
+            fs::write(&target.path, contents)
+        } else {
+            match fs::remove_file(&target.path) {
+                Ok(()) => Ok(()),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+                Err(err) => Err(err),
+            }
+        };
+        let label = legacy_migration_target_label(target.kind).to_string();
+        rollback_paths.push(label.clone());
+        if let Err(err) = result {
+            rollback_errors.push(format!("{label}: {err}"));
+        }
+    }
+    (rollback_errors.is_empty(), rollback_paths, rollback_errors)
+}
+
+struct LegacyMigrationFailedApply<'a> {
+    source_path: String,
+    migrated_fields: Vec<String>,
+    warnings: Vec<String>,
+    error_message: String,
+    no_write_on_error: bool,
+    rollback_performed: bool,
+    rollback_succeeded: bool,
+    rollback_paths: Vec<String>,
+    rollback_errors: Vec<String>,
+    written_targets: &'a [LegacyMigrationTarget],
+}
+
+fn legacy_migration_failed_apply_dto(
+    failure: LegacyMigrationFailedApply<'_>,
+) -> LegacyConfigMigrationApplyDto {
+    LegacyConfigMigrationApplyDto {
+        status: "failed".to_string(),
+        source_path: failure.source_path,
+        preferences_written: failure
+            .written_targets
+            .iter()
+            .any(|target| target.kind == LegacyMigrationTargetKind::Preferences),
+        engine_profiles_written: failure
+            .written_targets
+            .iter()
+            .any(|target| target.kind == LegacyMigrationTargetKind::EngineProfiles),
+        written_paths: failure
+            .written_targets
+            .iter()
+            .map(|target| target.path.display().to_string())
+            .collect(),
+        written_path_labels: failure
+            .written_targets
+            .iter()
+            .map(|target| legacy_migration_target_label(target.kind).to_string())
+            .collect(),
+        transactional: true,
+        no_write_on_error: failure.no_write_on_error,
+        rollback_performed: failure.rollback_performed,
+        rollback_succeeded: failure.rollback_succeeded,
+        rollback_paths: failure.rollback_paths,
+        rollback_errors: failure.rollback_errors,
+        error_message: Some(failure.error_message),
+        migrated_fields: failure.migrated_fields,
+        warnings: failure.warnings,
+    }
+}
+
+fn legacy_migration_target_label(kind: LegacyMigrationTargetKind) -> &'static str {
+    match kind {
+        LegacyMigrationTargetKind::Preferences => "preferences",
+        LegacyMigrationTargetKind::EngineProfiles => "engineProfiles",
+    }
+}
+
 #[cfg(test)]
 fn apply_legacy_config_migration_to_paths(
     source_path: &Path,
     preferences_path: &Path,
     engine_profiles_path: &Path,
 ) -> Result<LegacyConfigMigrationApplyDto, String> {
-    let preview = preview_legacy_config_migration_from_path(source_path)?;
-    let mut written_paths = Vec::new();
-    let preferences_written = if let Some(preferences) = preview.preferences.clone() {
-        let existing = load_app_preferences_at_path(preferences_path)?;
-        let merged = merge_migrated_preferences(existing, preferences, &preview.migrated_fields);
-        save_app_preferences_at_path(preferences_path, merged)?;
-        written_paths.push(preferences_path.display().to_string());
-        true
-    } else {
-        false
+    let preview = match preview_legacy_config_migration_from_path(source_path) {
+        Ok(preview) => preview,
+        Err(err) => {
+            return Ok(legacy_migration_parse_failure_dto(
+                source_path.display().to_string(),
+                err,
+            ))
+        }
     };
-    let engine_profiles_written = if let Some(engine_profiles) = preview.engine_profiles.clone() {
-        let existing = load_engine_profiles_settings_at_path(engine_profiles_path)?;
-        let merged = merge_migrated_engine_profiles(existing, engine_profiles, &preview.migrated_fields);
-        save_engine_profiles_settings_at_path(engine_profiles_path, merged)?;
-        written_paths.push(engine_profiles_path.display().to_string());
-        true
-    } else {
-        false
-    };
+    apply_legacy_config_migration_preview_to_paths(preview, preferences_path, engine_profiles_path)
+}
 
-    Ok(LegacyConfigMigrationApplyDto {
-        source_path: preview.source_path,
-        preferences_written,
-        engine_profiles_written,
-        written_paths,
-        migrated_fields: preview.migrated_fields,
-        warnings: preview.warnings,
-    })
+#[cfg(test)]
+fn apply_legacy_config_migration_to_paths_with_writer(
+    source_path: &Path,
+    preferences_path: &Path,
+    engine_profiles_path: &Path,
+    writer: impl FnMut(&Path, &str) -> Result<(), String>,
+) -> Result<LegacyConfigMigrationApplyDto, String> {
+    let preview = match preview_legacy_config_migration_from_path(source_path) {
+        Ok(preview) => preview,
+        Err(err) => {
+            return Ok(legacy_migration_parse_failure_dto(
+                source_path.display().to_string(),
+                err,
+            ))
+        }
+    };
+    apply_legacy_config_migration_preview_to_paths_with_writer(
+        preview,
+        preferences_path,
+        engine_profiles_path,
+        writer,
+    )
 }
 
 fn merge_migrated_preferences(
@@ -3628,8 +3934,17 @@ mod tests {
                 .unwrap();
 
         let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "applied");
         assert!(applied.preferences_written);
         assert!(applied.engine_profiles_written);
+        assert!(applied.transactional);
+        assert!(applied.no_write_on_error);
+        assert!(!applied.rollback_performed);
+        assert!(applied.rollback_succeeded);
+        assert!(applied.rollback_paths.is_empty());
+        assert!(applied.rollback_errors.is_empty());
+        assert!(applied.error_message.is_none());
+        assert_eq!(applied.written_path_labels, vec!["preferences", "engineProfiles"]);
         assert_eq!(preferences.candidate_limit, 20);
         assert_eq!(preferences.default_max_visits, 1200);
         assert_eq!(preferences.board_theme, "classic");
@@ -3682,6 +3997,97 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("unsupportedLegacyKey")));
+    }
+
+    #[test]
+    fn legacy_config_properties_duplicate_entries_use_later_value() {
+        let dir = native_config_temp_dir("legacy-properties-duplicates");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("lizzie.properties");
+        fs::write(
+            &legacy_path,
+            r#"
+                preferences.candidateLimit=4
+                preferences.candidateLimit=13
+                katago.command=/first/katago
+                katago.command=/second/katago
+            "#,
+        )
+        .unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(preview.preferences.unwrap().candidate_limit, 13);
+        assert_eq!(
+            preview.engine_profiles.unwrap().profiles[0].profile.engine_path,
+            "/second/katago"
+        );
+    }
+
+    #[test]
+    fn legacy_config_properties_preserve_windows_unicode_and_space_paths() {
+        let dir = native_config_temp_dir("legacy-properties-windows-unicode");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("lizzie.properties");
+        fs::write(
+            &legacy_path,
+            r#"
+                katago.command=C:\\Program Files\\KataGo Unicode\\katago.exe
+                katago.model=D:\\模型 目录\\kata go model.bin.gz
+                katago.config=D:\\配置 目录\\analysis config.cfg
+            "#,
+        )
+        .unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        let profile = &preview.engine_profiles.unwrap().profiles[0].profile;
+        assert_eq!(
+            profile.engine_path,
+            "C:\\Program Files\\KataGo Unicode\\katago.exe"
+        );
+        assert_eq!(
+            profile.model_path.as_deref(),
+            Some("D:\\模型 目录\\kata go model.bin.gz")
+        );
+        assert_eq!(
+            profile.config_path.as_deref(),
+            Some("D:\\配置 目录\\analysis config.cfg")
+        );
+    }
+
+    #[test]
+    fn legacy_config_partial_invalid_values_warn_but_valid_fields_migrate() {
+        let dir = native_config_temp_dir("legacy-partial-invalid");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("lizzie.properties");
+        fs::write(
+            &legacy_path,
+            r#"
+                preferences.showCandidates=maybe
+                preferences.candidateLimit=9
+                preferences.showPolicy=false
+                katago.command=/valid/katago
+            "#,
+        )
+        .unwrap();
+
+        let preview = preview_legacy_config_migration_from_path(&legacy_path).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        let preferences = preview.preferences.unwrap();
+        assert_eq!(preferences.candidate_limit, 9);
+        assert!(!preferences.show_policy);
+        assert_eq!(
+            preview.engine_profiles.unwrap().profiles[0].profile.engine_path,
+            "/valid/katago"
+        );
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("showCandidates value was not a boolean")));
     }
 
     #[test]
@@ -3793,8 +4199,11 @@ mod tests {
             .unwrap();
 
         let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "applied");
         assert!(applied.preferences_written);
         assert!(applied.engine_profiles_written);
+        assert!(applied.transactional);
+        assert!(applied.no_write_on_error);
         assert_eq!(preferences.candidate_limit, 6);
         assert!(!preferences.auto_load_cache);
         assert_eq!(preferences.review_mode, "deep");
@@ -3848,15 +4257,193 @@ mod tests {
         )
         .unwrap();
 
-        let error = apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path)
-            .unwrap_err();
+        let applied =
+            apply_legacy_config_migration_to_paths(&legacy_path, &preferences_path, &profiles_path).unwrap();
         let after_preferences = fs::read_to_string(&preferences_path).unwrap();
         let after_profiles = fs::read_to_string(&profiles_path).unwrap();
 
         let _ = fs::remove_dir_all(&dir);
-        assert!(error.contains("failed to parse legacy config"));
+        assert_eq!(applied.status, "failed");
+        assert!(applied
+            .error_message
+            .unwrap()
+            .contains("failed to parse legacy config"));
+        assert!(applied.no_write_on_error);
+        assert!(!applied.rollback_performed);
+        assert!(applied.rollback_succeeded);
+        assert!(applied.rollback_paths.is_empty());
+        assert!(applied.rollback_errors.is_empty());
         assert_eq!(after_preferences, before_preferences);
         assert_eq!(after_profiles, before_profiles);
+    }
+
+    #[test]
+    fn legacy_config_profile_write_failure_rolls_back_new_preferences_file() {
+        let dir = native_config_temp_dir("legacy-rollback-new-preferences");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        fs::write(
+            &legacy_path,
+            r#"{
+                "candidateLimit": 7,
+                "enginePath": "/rollback/katago"
+            }"#,
+        )
+        .unwrap();
+
+        let applied = apply_legacy_config_migration_to_paths_with_writer(
+            &legacy_path,
+            &preferences_path,
+            &profiles_path,
+            |path, contents| {
+                if path == profiles_path {
+                    Err("injected profile write failure".to_string())
+                } else {
+                    fs::write(path, contents)
+                        .map_err(|err| format!("failed to write {}: {err}", path.display()))
+                }
+            },
+        )
+        .unwrap();
+        let preferences_exists = preferences_path.exists();
+        let profiles_exists = profiles_path.exists();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "failed");
+        assert_eq!(applied.written_path_labels, vec!["preferences"]);
+        assert!(!applied.no_write_on_error);
+        assert!(applied.rollback_performed);
+        assert!(applied.rollback_succeeded);
+        assert_eq!(applied.rollback_paths, vec!["preferences"]);
+        assert!(applied.rollback_errors.is_empty());
+        let error = applied.error_message.unwrap();
+        assert!(error.contains("transactional write failed"));
+        assert!(error.contains("no-write-on-error=false"));
+        assert!(error.contains("rollback performed"));
+        assert!(!preferences_exists);
+        assert!(!profiles_exists);
+    }
+
+    #[test]
+    fn legacy_config_profile_write_failure_restores_existing_preferences_file() {
+        let dir = native_config_temp_dir("legacy-rollback-existing-preferences");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        save_app_preferences_at_path(
+            &preferences_path,
+            AppPreferencesDto {
+                show_candidates: false,
+                candidate_limit: 3,
+                auto_load_cache: false,
+                review_mode: "deep".to_string(),
+                ..default_app_preferences()
+            },
+        )
+        .unwrap();
+        let before_preferences = fs::read_to_string(&preferences_path).unwrap();
+        fs::write(
+            &legacy_path,
+            r#"{
+                "candidateLimit": 11,
+                "enginePath": "/rollback/katago"
+            }"#,
+        )
+        .unwrap();
+
+        let applied = apply_legacy_config_migration_to_paths_with_writer(
+            &legacy_path,
+            &preferences_path,
+            &profiles_path,
+            |path, contents| {
+                if path == profiles_path {
+                    Err("injected profile write failure".to_string())
+                } else {
+                    fs::write(path, contents)
+                        .map_err(|err| format!("failed to write {}: {err}", path.display()))
+                }
+            },
+        )
+        .unwrap();
+        let after_preferences = fs::read_to_string(&preferences_path).unwrap();
+        let profiles_exists = profiles_path.exists();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "failed");
+        assert_eq!(applied.written_path_labels, vec!["preferences"]);
+        assert!(!applied.no_write_on_error);
+        assert!(applied.rollback_performed);
+        assert!(applied.rollback_succeeded);
+        assert_eq!(applied.rollback_paths, vec!["preferences"]);
+        assert!(applied.rollback_errors.is_empty());
+        assert!(applied.error_message.unwrap().contains("rollback_succeeded=true"));
+        assert_eq!(after_preferences, before_preferences);
+        assert!(!profiles_exists);
+    }
+
+    #[test]
+    fn legacy_config_rollback_failure_is_visible() {
+        let dir = native_config_temp_dir("legacy-rollback-visible-failure");
+        fs::create_dir_all(&dir).unwrap();
+        let legacy_path = dir.join("config.json");
+        let preferences_path = dir.join("prefs").join(APP_PREFERENCES_FILE);
+        let profiles_path = dir.join("profiles").join(ENGINE_PROFILE_FILE);
+        save_app_preferences_at_path(
+            &preferences_path,
+            AppPreferencesDto {
+                candidate_limit: 3,
+                ..default_app_preferences()
+            },
+        )
+        .unwrap();
+        fs::write(
+            &legacy_path,
+            r#"{
+                "candidateLimit": 11,
+                "enginePath": "/rollback/katago"
+            }"#,
+        )
+        .unwrap();
+
+        let applied = apply_legacy_config_migration_to_paths_with_writer(
+            &legacy_path,
+            &preferences_path,
+            &profiles_path,
+            |path, contents| {
+                if path == preferences_path {
+                    fs::write(path, contents).map_err(|err| format!("failed to write preferences: {err}"))?;
+                    fs::remove_file(path)
+                        .map_err(|err| format!("failed to remove preferences fixture: {err}"))?;
+                    fs::create_dir(path)
+                        .map_err(|err| format!("failed to create preferences directory fixture: {err}"))?;
+                    Ok(())
+                } else if path == profiles_path {
+                    Err("injected profile write failure".to_string())
+                } else {
+                    fs::write(path, contents).map_err(|err| format!("failed to write target: {err}"))
+                }
+            },
+        )
+        .unwrap();
+        let preferences_is_dir = preferences_path.is_dir();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(applied.status, "failed");
+        assert_eq!(applied.written_path_labels, vec!["preferences"]);
+        assert!(!applied.no_write_on_error);
+        assert!(applied.rollback_performed);
+        assert!(!applied.rollback_succeeded);
+        assert_eq!(applied.rollback_paths, vec!["preferences"]);
+        assert_eq!(applied.rollback_errors.len(), 1);
+        assert!(applied.rollback_errors[0].contains("preferences"));
+        assert!(applied
+            .error_message
+            .unwrap()
+            .contains("rollback_succeeded=false"));
+        assert!(preferences_is_dir);
     }
 
     #[test]

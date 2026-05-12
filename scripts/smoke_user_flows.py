@@ -187,6 +187,58 @@ LEGACY_SHORTCUT_LAYOUT_REQUIRED_FALSE_FIELDS = [
 LEGACY_ACTION_LAYOUT_REQUIRED_GROUPS = ["File", "Game", "Analysis", "View", "Engine", "Tools", "Help"]
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
 INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
+INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE = "docs/qa/installed-app-runtime-workflow-macos.json"
+INSTALLED_APP_RUNTIME_WORKFLOW_SCHEMA = "lizzieyzy.installed-app-runtime-workflow.v1"
+INSTALLED_APP_RUNTIME_PROOF_SCHEMA = "lizzieyzy.installed-app-runtime-proof.v1"
+INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_CHECKS = [
+    "app_bundle_verified",
+    "installed_app_launched",
+    "runtime_process_observed",
+    "window_observed",
+    "workflow_action_executed",
+    "backend_runtime_proof_observed",
+    "screenshot_recorded",
+    "dev_server_absent",
+    "quit_or_terminate_observed",
+    "scope_boundaries_recorded",
+]
+INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_TRUE_FIELDS = [
+    "runtimeObserved",
+    "installedAppLaunched",
+    "runtimeProcessObserved",
+    "windowObserved",
+    "workflowExecuted",
+    "screenshotObserved",
+    "devServerAbsent",
+]
+INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_FALSE_FIELDS = [
+    "browserFallbackUsed",
+    "sourceStaticOnly",
+    "artifactOnly",
+    "runnerStartedDevServer",
+    "runnerStartedViteDevServer",
+    "productionSigned",
+    "signed",
+    "notarized",
+    "updaterReady",
+    "updaterCovered",
+    "releasePublished",
+    "windowsInstalledAppCovered",
+    "linuxInstalledAppCovered",
+    "windowsLinuxInstalledAppCovered",
+    "fullInstalledAppParity",
+    "fullLegacyParity",
+    "fullShortcutParity",
+    "fullLayoutParity",
+    "providerReadboardOcrParity",
+    "providerReadboardOCRParity",
+]
+INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_ACTIONS = [
+    "launch_installed_app",
+    "observe_main_window",
+    "execute_runtime_action",
+    "terminate_installed_app",
+]
 NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE = "docs/qa/native-desktop-sgf-workflow-macos.json"
 NATIVE_DESKTOP_SGF_WORKFLOW_SCHEMA = "lizzieyzy.native-desktop-sgf-workflow.v1"
 NATIVE_DESKTOP_SGF_WORKFLOW_COLLECTION_METHODS = {
@@ -1116,6 +1168,7 @@ class UserFlowSmoke:
         self.check_legacy_layout_parity_smoke_evidence()
         self.check_legacy_shortcut_layout_evidence()
         self.check_installed_macos_app_smoke_evidence()
+        self.check_installed_app_runtime_workflow_evidence()
         self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_katago_review_workflow_ux_smoke_evidence()
@@ -1368,6 +1421,30 @@ class UserFlowSmoke:
         self.pass_(
             "installed_macos_app_smoke",
             "scoped installed macOS .app launch smoke evidence passes with app bundle, window, screenshot, dev-server, and release-boundary checks",
+        )
+
+    def check_installed_app_runtime_workflow_evidence(self) -> None:
+        evidence_path = self.path(INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "installed_app_runtime_workflow",
+                f"TODO gate: record scoped installed app runtime workflow evidence at {INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_installed_app_runtime_workflow_evidence(evidence)
+        if failures:
+            self.pending(
+                "installed_app_runtime_workflow",
+                f"{INSTALLED_APP_RUNTIME_WORKFLOW_EVIDENCE} is present but not valid scoped installed app runtime workflow PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "installed_app_runtime_workflow",
+            "scoped installed app runtime workflow evidence passes with runtime actions, process/window/screenshot proof, dev-server exclusion, and release-boundary checks",
         )
 
     def check_native_desktop_sgf_workflow_evidence(self) -> None:
@@ -2994,6 +3071,361 @@ def validate_installed_macos_app_termination(evidence: dict[str, Any]) -> list[s
     if first_present(evidence, "terminated", "terminateSuccess", "exitSuccess", "exited") is True:
         return []
     return ["exit/terminate success must be recorded"]
+
+
+def validate_installed_app_runtime_workflow_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != INSTALLED_APP_RUNTIME_WORKFLOW_SCHEMA:
+        failures.append(f"schema must be {INSTALLED_APP_RUNTIME_WORKFLOW_SCHEMA}")
+    if str(evidence.get("name", "installed_app_runtime_workflow")) != "installed_app_runtime_workflow":
+        failures.append("name must be installed_app_runtime_workflow")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+
+    collection_method = str(evidence.get("collectionMethod", "")).lower()
+    if not collection_method.strip():
+        failures.append("collectionMethod must be recorded")
+    if "static" in collection_method and "runtime" not in collection_method:
+        failures.append("collectionMethod must not be static-only")
+    if "artifact" in collection_method and "runtime" not in collection_method:
+        failures.append("collectionMethod must not be artifact-only")
+
+    for key in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    failures.extend(validate_installed_app_runtime_workflow_false_boundaries(evidence))
+    failures.extend(validate_installed_macos_app_bundle(evidence.get("appBundle"), evidence))
+    failures.extend(validate_installed_macos_app_artifact_paths(evidence))
+    failures.extend(validate_installed_app_runtime_workflow_process(evidence.get("runtimeProcess")))
+    failures.extend(validate_installed_app_runtime_workflow_actions(evidence))
+    failures.extend(validate_installed_app_runtime_workflow_screenshots(evidence))
+    failures.extend(validate_installed_app_backend_runtime_proof(evidence.get("backendRuntimeProof")))
+    failures.extend(validate_installed_macos_app_dev_server_boundaries(evidence))
+    failures.extend(validate_installed_macos_app_termination(evidence))
+
+    check_by_name = installed_app_runtime_workflow_check_by_name(evidence)
+    missing = [name for name in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_CHECKS if name not in check_by_name]
+    not_pass = [
+        name
+        for name in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_CHECKS
+        if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+    ]
+    if missing:
+        failures.append("missing required checks: " + ", ".join(missing))
+    if not_pass:
+        failures.append("required checks not pass: " + ", ".join(not_pass))
+    failures.extend(validate_installed_app_runtime_workflow_check_details(check_by_name))
+    return failures
+
+
+def validate_installed_app_runtime_workflow_false_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, dict):
+        return ["boundaries must be an object"]
+    for key in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_installed_app_runtime_workflow_process(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["runtimeProcess must be an object"]
+    failures: list[str] = []
+    if first_present(value, "observed", "runtimeProcessObserved", "processObserved") is not True:
+        failures.append("runtimeProcess.observed must be true")
+    name = first_present(value, "name", "processName", "binaryName")
+    if not isinstance(name, str) or not name.strip():
+        failures.append("runtimeProcess must include process name")
+    pid = first_present(value, "pid", "pidObserved", "processId")
+    if pid is not None and not positive_number(pid):
+        failures.append("runtimeProcess.pid must be positive when present")
+    return failures
+
+
+def validate_installed_app_runtime_workflow_actions(evidence: dict[str, Any]) -> list[str]:
+    actions = first_present(evidence, "workflowActions", "runtimeActions", "actions")
+    if not isinstance(actions, list):
+        return ["workflowActions must be a list"]
+    failures: list[str] = []
+    if len(actions) < len(INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_ACTIONS):
+        failures.append("workflowActions must include launch, window, runtime action, and termination records")
+    seen_action_ids: list[str] = []
+    for index, action in enumerate(actions):
+        if not isinstance(action, dict):
+            failures.append(f"workflowActions[{index}] must be an object")
+            continue
+        action_id = first_present(action, "actionId", "id", "name")
+        if not isinstance(action_id, str) or not action_id.strip():
+            failures.append(f"workflowActions[{index}] must include actionId/id/name")
+        else:
+            seen_action_ids.append(action_id)
+        if str(first_present(action, "status", "result") or "").lower() != "pass":
+            failures.append(f"workflowActions[{index}].status must be pass")
+        if first_present(action, "runtimeObserved", "observed", "verified") is not True:
+            failures.append(f"workflowActions[{index}].runtimeObserved must be true")
+        evidence_detail = first_present(action, "evidence", "details", "assertions")
+        if not non_empty_proof(evidence_detail):
+            failures.append(f"workflowActions[{index}] must include evidence/details")
+        elif action_id == "execute_runtime_action" and isinstance(evidence_detail, dict):
+            backend_command = first_present(evidence_detail, "backendCommand", "command")
+            proof_schema = first_present(evidence_detail, "proofSchema", "schema")
+            if backend_command != "installed_app_runtime_proof":
+                failures.append("workflowActions execute_runtime_action must cite installed_app_runtime_proof backend command")
+            if proof_schema != INSTALLED_APP_RUNTIME_PROOF_SCHEMA:
+                failures.append(f"workflowActions execute_runtime_action proofSchema must be {INSTALLED_APP_RUNTIME_PROOF_SCHEMA}")
+    missing_actions = [
+        required
+        for required in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_ACTIONS
+        if required not in seen_action_ids
+    ]
+    if missing_actions:
+        failures.append("workflowActions missing: " + ", ".join(missing_actions))
+    return failures
+
+
+def validate_installed_app_runtime_workflow_screenshots(evidence: dict[str, Any]) -> list[str]:
+    screenshots = first_present(evidence, "screenshots", "windowScreenshots", "appScreenshots")
+    if screenshots is None and isinstance(evidence.get("screenshot"), dict):
+        screenshots = [evidence["screenshot"]]
+    if not isinstance(screenshots, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not screenshots:
+        failures.append("screenshots must include at least one installed app runtime screenshot")
+    for index, screenshot in enumerate(screenshots):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        sha256 = screenshot.get("sha256")
+        if not is_sha256_hex(sha256):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        size = first_present(screenshot, "sizeBytes", "bytes")
+        if not positive_number(size):
+            failures.append(f"screenshots[{index}].sizeBytes must be positive")
+        label = first_present(screenshot, "label", "name", "step")
+        if not isinstance(label, str) or not label.strip():
+            failures.append(f"screenshots[{index}] must include label/name/step")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be a stable repo-relative or non-local path")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+        source = first_present(screenshot, "source", "captureSource")
+        if source not in {"installed_app_runtime", "tauri_installed_app_runtime", "macos_installed_app"}:
+            failures.append(f"screenshots[{index}].source must be installed app runtime")
+        captured_after = first_present(screenshot, "capturedAfterActionId", "afterActionId")
+        if captured_after not in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_ACTIONS:
+            failures.append(f"screenshots[{index}].capturedAfterActionId must reference a required runtime action")
+    return failures
+
+
+def validate_installed_app_backend_runtime_proof(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["backendRuntimeProof must be an object"]
+    failures: list[str] = []
+    if value.get("schema") != INSTALLED_APP_RUNTIME_PROOF_SCHEMA:
+        failures.append(f"backendRuntimeProof.schema must be {INSTALLED_APP_RUNTIME_PROOF_SCHEMA}")
+    status = str(value.get("status", "")).lower()
+    if status not in {"ok", "pass", "passed", "observed"}:
+        failures.append("backendRuntimeProof.status must be ok/pass/observed")
+
+    runtime = value.get("runtime")
+    if not isinstance(runtime, dict):
+        failures.append("backendRuntimeProof.runtime must be an object")
+    else:
+        runtime_source = first_present(runtime, "source", "runtimeSource")
+        if not isinstance(runtime_source, str) or not runtime_source.strip():
+            failures.append("backendRuntimeProof.runtime.source must be recorded")
+        elif "browser" in runtime_source.lower() or "static" in runtime_source.lower():
+            failures.append("backendRuntimeProof.runtime.source must be a Tauri runtime source")
+        if first_present(runtime, "tauriRuntimeObserved", "tauri_runtime_observed") is not True:
+            failures.append("backendRuntimeProof.runtime.tauriRuntimeObserved must be true")
+        if first_present(runtime, "devServerRequired", "dev_server_required") is not False:
+            failures.append("backendRuntimeProof.runtime.devServerRequired must be false")
+        resource_dir = first_present(runtime, "resourceDir", "resource_dir")
+        app_data_dir = first_present(runtime, "appDataDir", "app_data_dir")
+        if not isinstance(resource_dir, str) or not resource_dir.strip():
+            failures.append("backendRuntimeProof.runtime.resourceDir must be recorded")
+        if not isinstance(app_data_dir, str) or not app_data_dir.strip():
+            failures.append("backendRuntimeProof.runtime.appDataDir must be recorded")
+
+    bundle = value.get("bundle")
+    if not isinstance(bundle, dict):
+        failures.append("backendRuntimeProof.bundle must be an object")
+    else:
+        if first_present(bundle, "appBundleExists", "app_bundle_exists", "exists") is not True:
+            failures.append("backendRuntimeProof.bundle.appBundleExists must be true")
+        if first_present(bundle, "executableExists", "executable_exists") is not True:
+            failures.append("backendRuntimeProof.bundle.executableExists must be true")
+        if first_present(bundle, "resourceDirExists", "resource_dir_exists") is not True:
+            failures.append("backendRuntimeProof.bundle.resourceDirExists must be true")
+        bundle_path = first_present(bundle, "appBundlePath", "app_bundle_path", "path")
+        if isinstance(bundle_path, str) and bundle_path.strip() and not is_stable_or_sanitized_path(bundle_path):
+            failures.append("backendRuntimeProof.bundle.appBundlePath must be sanitized or repo-relative")
+
+    failures.extend(validate_installed_app_backend_asset_validation(value.get("assets")))
+    failures.extend(validate_installed_app_backend_profile_status(value.get("profileStatus")))
+    failures.extend(validate_installed_app_backend_engine_launch_attempt(value.get("engineLaunchAttempt")))
+
+    boundaries = value.get("boundaries")
+    if not isinstance(boundaries, dict):
+        failures.append("backendRuntimeProof.boundaries must be an object")
+    else:
+        for key in ("browserFallbackUsed", "devServerStarted", "realReleasePublished", "productionSigned", "notarized", "fullLegacyParity"):
+            if boundaries.get(key) is not False:
+                failures.append(f"backendRuntimeProof.boundaries.{key} must be false")
+    return failures
+
+
+def validate_installed_app_backend_asset_validation(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["backendRuntimeProof.assets must be an object"]
+    failures: list[str] = []
+    status = str(value.get("status", "")).lower()
+    missing_count = installed_app_asset_count(value, "missing")
+    placeholder_count = installed_app_asset_count(value, "placeholders")
+    observed_count = installed_app_asset_count(value, "checks") + installed_app_asset_count(value, "exists")
+    if status in {"ready", "ok", "pass", "passed", "success", "available"} and (missing_count > 0 or placeholder_count > 0):
+        failures.append("backendRuntimeProof.assets must not be ready when missing/placeholders are present")
+    if observed_count <= 0 and missing_count <= 0 and placeholder_count <= 0:
+        failures.append("backendRuntimeProof.assets must include observed checks/exists entries")
+    return failures
+
+
+def installed_app_asset_count(value: dict[str, Any], key: str) -> int:
+    field = value.get(key)
+    if isinstance(field, list):
+        return len(field)
+    if isinstance(field, (int, float)):
+        return int(field)
+    return 0
+
+
+def validate_installed_app_backend_profile_status(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["backendRuntimeProof.profileStatus must be an object"]
+    failures: list[str] = []
+    status = str(value.get("status", "")).lower()
+    if not status:
+        failures.append("backendRuntimeProof.profileStatus.status must be recorded")
+    if status in {"error", "failed", "invalid"}:
+        failures.append("backendRuntimeProof.profileStatus must not be error for pass evidence")
+    profile_count = first_present(value, "profileCount", "profile_count")
+    if profile_count is not None and not positive_number(profile_count):
+        failures.append("backendRuntimeProof.profileStatus.profileCount must be positive when present")
+    if value.get("loaded") is False and status == "loaded":
+        failures.append("backendRuntimeProof.profileStatus.loaded cannot be false when status is loaded")
+    return failures
+
+
+def validate_installed_app_backend_engine_launch_attempt(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["backendRuntimeProof.engineLaunchAttempt must be an object"]
+    failures: list[str] = []
+    status = str(first_present(value, "status", "result", "outcome") or "").lower()
+    if not status:
+        failures.append("backendRuntimeProof.engineLaunchAttempt.status must be recorded")
+    if first_present(value, "attempted", "launchAttempted") is not True:
+        failures.append("backendRuntimeProof.engineLaunchAttempt.attempted must be true")
+    success_claim = first_present(value, "success", "launched", "engineAvailable")
+    unavailable = bool(re.search(r"unavailable|missing|not[_ -]?found|not[_ -]?configured|skipped", status))
+    problem = bool(re.search(r"error|fail|problem|invalid", status))
+    if (unavailable or problem) and success_claim is True:
+        failures.append("backendRuntimeProof.engineLaunchAttempt unavailable/problem status must not be counted as success")
+    if status in {"success", "launched", "available", "ok"} and success_claim is False:
+        failures.append("backendRuntimeProof.engineLaunchAttempt success status cannot have success=false")
+    return failures
+
+
+def is_stable_or_sanitized_path(value: str) -> bool:
+    path = value.strip()
+    if path.startswith(("<repo>/", "<home>/", "<app-data>/", "<resource>/")):
+        return True
+    return is_stable_artifact_path(path)
+
+
+def installed_app_runtime_workflow_check_by_name(evidence: dict[str, Any]) -> dict[str, Any]:
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        return {}
+    return {
+        check.get("name"): check
+        for check in checks
+        if isinstance(check, dict) and isinstance(check.get("name"), str)
+    }
+
+
+def validate_installed_app_runtime_workflow_check_details(check_by_name: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+
+    def require_detail(name: str) -> dict[str, Any] | None:
+        detail = check_evidence(check_by_name.get(name))
+        if detail is None:
+            failures.append(f"{name} evidence must be an object")
+            return None
+        return detail
+
+    bundle = require_detail("app_bundle_verified")
+    if bundle is not None:
+        failures.extend(validate_installed_macos_app_bundle(bundle.get("appBundle", bundle), bundle))
+    launch = require_detail("installed_app_launched")
+    if launch is not None and first_present(launch, "installedAppLaunched", "launched") is not True:
+        failures.append("installed_app_launched.installedAppLaunched must be true")
+    process = require_detail("runtime_process_observed")
+    if process is not None:
+        failures.extend(validate_installed_app_runtime_workflow_process(process.get("runtimeProcess", process)))
+    window = require_detail("window_observed")
+    if window is not None and first_present(window, "windowObserved", "observed") is not True:
+        failures.append("window_observed.windowObserved must be true")
+    workflow = require_detail("workflow_action_executed")
+    if workflow is not None:
+        if first_present(workflow, "workflowExecuted", "runtimeActionObserved") is not True:
+            failures.append("workflow_action_executed.workflowExecuted must be true")
+        action_id = first_present(workflow, "actionId", "runtimeActionId")
+        if action_id == "launch_installed_app":
+            failures.append("workflow_action_executed must record a non-launch runtime action")
+        backend_command = first_present(workflow, "backendCommand", "command")
+        proof_schema = first_present(workflow, "proofSchema", "schema")
+        if backend_command != "installed_app_runtime_proof":
+            failures.append("workflow_action_executed must cite installed_app_runtime_proof backend command")
+        if proof_schema != INSTALLED_APP_RUNTIME_PROOF_SCHEMA:
+            failures.append(f"workflow_action_executed proofSchema must be {INSTALLED_APP_RUNTIME_PROOF_SCHEMA}")
+    backend = require_detail("backend_runtime_proof_observed")
+    if backend is not None:
+        proof = first_present(backend, "backendRuntimeProof", "runtimeProof", "proof")
+        if proof is None:
+            proof = backend
+        failures.extend(validate_installed_app_backend_runtime_proof(proof))
+    screenshot = require_detail("screenshot_recorded")
+    if screenshot is not None:
+        screenshot_records = first_present(screenshot, "screenshots", "windowScreenshots")
+        if not isinstance(screenshot_records, list) or not screenshot_records:
+            failures.append("screenshot_recorded must include screenshot records")
+    dev_server = require_detail("dev_server_absent")
+    if dev_server is not None and first_present(dev_server, "devServerAbsent", "absent") is not True:
+        failures.append("dev_server_absent.devServerAbsent must be true")
+    termination = require_detail("quit_or_terminate_observed")
+    if termination is not None:
+        failures.extend(validate_installed_macos_app_termination({"termination": termination}))
+    boundaries = require_detail("scope_boundaries_recorded")
+    if boundaries is not None:
+        boundary_detail = boundaries.get("boundaries", boundaries)
+        if not isinstance(boundary_detail, dict):
+            failures.append("scope_boundaries_recorded.boundaries must be an object")
+        else:
+            for key in INSTALLED_APP_RUNTIME_WORKFLOW_REQUIRED_FALSE_FIELDS:
+                if boundary_detail.get(key) is not False:
+                    failures.append(f"scope_boundaries_recorded.boundaries.{key} must be false")
+    return failures
 
 
 def validate_native_desktop_sgf_workflow_evidence(evidence: Any) -> list[str]:

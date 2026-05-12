@@ -11,6 +11,7 @@ import type {
   EngineProfilesSettingsDto,
   EngineProfileSettingsDto,
   GameDto,
+  InstalledAppBundledKataGoProofDto,
   KataGoLiveSmokeConfigDto,
   MoveDto,
   MoveVertex,
@@ -156,9 +157,13 @@ export type InstalledAppRuntimeAssetsDto = {
 export type InstalledAppRuntimeProofDto = {
   schema: string;
   status: string;
+  platform?: string;
   runtime: InstalledAppRuntimeInfoDto;
   bundle: Record<string, unknown>;
   assets: InstalledAppRuntimeAssetsDto;
+  bundledKatago?: InstalledAppBundledKataGoProofDto | null;
+  bundledKataGo?: InstalledAppBundledKataGoProofDto | null;
+  bundled_katago?: InstalledAppBundledKataGoProofDto | null;
   profileStatus: Record<string, unknown>;
   engineLaunchAttempt: Record<string, unknown>;
   boundaries: Record<string, unknown>;

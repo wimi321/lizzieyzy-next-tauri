@@ -40,6 +40,34 @@ export type EngineProfileSettingsDto = { profile: EngineProfileDto; max_visits: 
 export type EngineProfileRecordDto = { id: string; profile: EngineProfileDto; max_visits: number };
 export type EngineProfilesSettingsDto = { selected_profile_id: string; profiles: EngineProfileRecordDto[] };
 export type AssetCheckDto = { path: string; exists: boolean; required: boolean; label: string };
+export type InstalledAppBundledKataGoAssetProofDto = {
+  label?: string;
+  kind?: string;
+  source?: string;
+  status?: string;
+  required?: boolean;
+  sanitizedPath?: string | null;
+  sanitized_path?: string | null;
+  size?: number | null;
+  sha256?: string | null;
+  message?: string;
+};
+export type InstalledAppBundledKataGoProofDto = {
+  status?: string;
+  source?: string;
+  sourceKind?: string | null;
+  source_kind?: string | null;
+  root?: string | null;
+  profile?: EngineProfileDto | null;
+  engine?: InstalledAppBundledKataGoAssetProofDto | null;
+  model?: InstalledAppBundledKataGoAssetProofDto | null;
+  config?: InstalledAppBundledKataGoAssetProofDto | null;
+  warnings?: string[];
+  largeModelBundled?: boolean;
+  large_model_bundled?: boolean;
+  releaseParity?: boolean;
+  release_parity?: boolean;
+};
 export type AppHealthDto = { app: string; architecture: string; rust_backend_ready: boolean; notes: string[] };
 export type KataGoLiveSmokeConfigDto = {
   profile?: EngineProfileDto | null;

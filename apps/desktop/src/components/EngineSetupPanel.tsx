@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { checkEngineAssets, installedAppRuntimeProof, loadEngineProfilesSettings, saveEngineProfilesSettings, validateRuntimeAssetLayout } from "../api/backend";
 import type { InstalledAppRuntimeProofDto, RuntimeAssetValidationDto } from "../api/backend";
-import type { AssetCheckDto, EngineProfileDto, EngineProfileRecordDto } from "../domain/types";
+import type { AssetCheckDto, EngineProfileDto, EngineProfileRecordDto, InstalledAppBundledKataGoProofDto } from "../domain/types";
 
 type Props = {
   disabled?: boolean;
@@ -83,6 +83,14 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       : "checking";
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? null;
   const installedRuntimeSummary = installedRuntimeProof ? summarizeInstalledRuntimeProof(installedRuntimeProof) : null;
+  const bundledProfileProof = installedRuntimeProof ? extractBundledKataGoProof(installedRuntimeProof) : null;
+  const bundledProfile = bundledProfileProof ? validBundledProfile(bundledProfileProof.profile) : null;
+  const canUseBundledProfile = !disabled && bundledProfile !== null;
+  const bundledProfileStatus = bundledProfile
+    ? "Bundled KataGo profile available."
+    : bundledProfileProof
+      ? "Bundled KataGo profile unavailable; configure local KataGo assets below."
+      : "Bundled KataGo profile unavailable; installed runtime assets were not reported.";
   const installedProofStatus = installedRuntimeSummary?.proofStatus
     ?? (installedRuntimeProofStatus.startsWith("Checking") ? "checking" : classifyInstalledProofMessage(installedRuntimeProofStatus));
 
@@ -293,6 +301,32 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
     }
   }
 
+  async function handleUseBundledProfile() {
+    if (!bundledProfile) {
+      setProfileStatus("Bundled KataGo profile unavailable. Configure local KataGo assets below.");
+      return;
+    }
+    const adoptedVisits = Number.isFinite(visits) && visits > 0 ? Math.floor(visits) : 800;
+    const record: EngineProfileRecordDto = {
+      id: "bundled-katago",
+      profile: {
+        ...bundledProfile,
+        name: bundledProfile.name.trim() || "Bundled KataGo",
+        backend: "kata_go_analysis"
+      },
+      max_visits: adoptedVisits
+    };
+    const nextProfiles = profiles.some((profile) => profile.id === record.id)
+      ? profiles.map((profile) => profile.id === record.id ? record : profile)
+      : [...profiles, record];
+    try {
+      await persistProfiles(nextProfiles, record.id, "Bundled KataGo profile saved and selected.");
+      setAssetChecks([]);
+    } catch (error) {
+      setProfileStatus(`Bundled profile adoption failed: ${errorMessage(error)}`);
+    }
+  }
+
   async function refreshInstalledRuntimeProof(shouldApply: () => boolean = () => true) {
     if (!shouldApply()) return;
     setInstalledRuntimeProofStatus("Checking installed app launch proof...");
@@ -325,6 +359,7 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
       data-runtime-asset-candidate-count={runtimeAssetValidation?.layout.candidates.length ?? 0}
       data-runtime-asset-missing-count={runtimeAssetValidation?.missing.length ?? 0}
       data-runtime-asset-placeholder-count={runtimeAssetValidation?.placeholders.length ?? 0}
+      data-bundled-profile-available={String(bundledProfile !== null)}
     >
       <div
         className="engine-run-row"
@@ -425,6 +460,8 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
         data-local-profile-fallback={String(installedRuntimeSummary?.localProfileFallback ?? true)}
         data-release-parity="false"
         data-large-model-bundled="false"
+        data-bundled-profile-available={String(bundledProfile !== null)}
+        data-bundled-profile-status={bundledProfileProof?.status ?? "unavailable"}
       >
         <div className="engine-run-row">
           <strong>Installed app launch proof</strong>
@@ -451,6 +488,27 @@ export function EngineSetupPanel({ disabled = false, onRun, onAnalyzeGame, onCan
             Profile: {installedRuntimeSummary.profileStatus} via {installedRuntimeSummary.profileSource}. Bundle: {installedRuntimeSummary.bundleStatus}. This is scoped installed-app runtime evidence, not signing, notarization, release, or large-model bundling proof.
           </p>
         )}
+        <div
+          className="engine-run-row"
+          aria-label="Bundled KataGo profile adoption"
+          data-testid="engine-bundled-profile-adoption"
+          data-bundled-profile-available={String(bundledProfile !== null)}
+          data-bundled-profile-status={bundledProfileProof?.status ?? "unavailable"}
+        >
+          <strong>Bundled KataGo profile</strong>
+          <span data-testid="engine-bundled-profile-status">
+            {bundledProfileStatus}
+          </span>
+          <button
+            type="button"
+            data-testid="engine-use-bundled-profile"
+            onClick={() => void handleUseBundledProfile()}
+            disabled={!canUseBundledProfile}
+            title={bundledProfile ? "Save and select bundled-katago profile" : "Bundled runtime assets are unavailable; configure local KataGo assets"}
+          >
+            Use bundled profile
+          </button>
+        </div>
       </section>
       <p className="message">
         Large KataGo models are not bundled by this repository. Keep using the local asset configuration below unless an installed app package supplies runtime assets.
@@ -599,6 +657,19 @@ function runtimeAssetMessages(validation: RuntimeAssetValidationDto): string[] {
     ...validation.placeholders.map((placeholder) => placeholder.message)
   ];
   return Array.from(new Set(messages.filter((message) => message.trim().length > 0)));
+}
+
+function extractBundledKataGoProof(proof: InstalledAppRuntimeProofDto): InstalledAppBundledKataGoProofDto | null {
+  return proof.bundledKatago ?? proof.bundledKataGo ?? proof.bundled_katago ?? null;
+}
+
+function validBundledProfile(profile: InstalledAppBundledKataGoProofDto["profile"]): EngineProfileDto | null {
+  if (!profile) return null;
+  if (profile.backend !== "kata_go_analysis") return null;
+  if (profile.engine_path.trim().length === 0) return null;
+  if (!profile.model_path || profile.model_path.trim().length === 0) return null;
+  if (!profile.config_path || profile.config_path.trim().length === 0) return null;
+  return profile;
 }
 
 type InstalledRuntimeSummary = {

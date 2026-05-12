@@ -167,6 +167,15 @@ button:disabled {
   min-width: 0;
 }
 
+.legacy-menu-action-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .legacy-toolbar {
   display: flex;
   gap: 6px;

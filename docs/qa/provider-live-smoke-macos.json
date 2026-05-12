@@ -1,0 +1,148 @@
+{
+  "baseUrl": "http://127.0.0.1:58752",
+  "checks": [
+    {
+      "details": {
+        "platform": "MacIntel",
+        "tauriInternals": true,
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+      },
+      "name": "runtime_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "fixtureParserOnly": false,
+        "httpStatus": 200,
+        "networkMode": "controlled_network",
+        "payloadValidated": true,
+        "provider": "yike",
+        "resultCount": 1
+      },
+      "name": "yike_controlled_fetch",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "directHttpWarning": true,
+        "httpStatus": 200,
+        "moveCount": 2,
+        "networkMode": "controlled_network",
+        "payloadImported": true,
+        "provider": "fox"
+      },
+      "name": "fox_controlled_fetch",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "errorKind": "invalid_payload",
+        "message": "failed to parse Yike live list JSON: EOF while parsing an object at line 1 column 1",
+        "observed": true,
+        "reportedAsSuccess": false,
+        "typedProviderError": true
+      },
+      "name": "provider_failure_modes",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "controlledHttpServer": true,
+        "failureRequestObserved": true,
+        "foxRequestObserved": true,
+        "requestCount": 3,
+        "requests": [
+          {
+            "bodyBytes": 0,
+            "headerNames": [
+              "accept",
+              "accept-language",
+              "accesstoken",
+              "appkey",
+              "checksum",
+              "content-type",
+              "curtime",
+              "host",
+              "nonce",
+              "platform",
+              "timestamp",
+              "usertoken",
+              "uuid",
+              "version"
+            ],
+            "method": "GET",
+            "path": "/v2/golive/list",
+            "query": "p=1&since=0&official=&version=2"
+          },
+          {
+            "bodyBytes": 0,
+            "headerNames": [
+              "accept",
+              "host",
+              "user-agent"
+            ],
+            "method": "GET",
+            "path": "/fox/direct-sgf",
+            "query": ""
+          },
+          {
+            "bodyBytes": 0,
+            "headerNames": [
+              "accept",
+              "accept-language",
+              "accesstoken",
+              "appkey",
+              "checksum",
+              "content-type",
+              "curtime",
+              "host",
+              "nonce",
+              "platform",
+              "timestamp",
+              "usertoken",
+              "uuid",
+              "version"
+            ],
+            "method": "GET",
+            "path": "/v2/golive/list",
+            "query": "mode=bad_payload"
+          }
+        ],
+        "yikeSignedHeadersObserved": true
+      },
+      "name": "controlled_network_observed",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "controlledHttpServer": true,
+        "externalProviderServiceCovered": false,
+        "offlineParserOnly": false
+      },
+      "name": "offline_not_counted_as_external_live",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "antiBotStabilityCovered": false,
+        "realAccountLoginStateCovered": false,
+        "serviceSchemaDriftCovered": false
+      },
+      "name": "external_account_scope",
+      "status": "pass"
+    }
+  ],
+  "name": "provider_live_smoke",
+  "phase": "provider-live",
+  "platform": "macos",
+  "runtimeReport": {
+    "finishedAt": "2026-05-11T23:53:48.077Z",
+    "phase": "provider-live",
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "startedAt": "2026-05-11T23:53:48.056Z",
+    "status": "pass"
+  },
+  "schema": "lizzieyzy.provider-live-smoke.v1",
+  "status": "pass",
+  "timeoutSeconds": 180.0
+}

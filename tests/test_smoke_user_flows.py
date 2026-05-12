@@ -193,6 +193,109 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_live_smoke", pending)
             self.assertIn("scripts/smoke_tauri_readboard_live.py", pending["readboard_live_smoke"])
 
+    def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_provider_live_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("provider_live_smoke", pass_names)
+            self.assertNotIn("provider_live_smoke", pending_names)
+
+    def test_missing_provider_controlled_network_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("provider_live_smoke", failures)
+            self.assertIn("provider_live_smoke", pending)
+            self.assertIn("scripts/smoke_tauri_provider_live.py", pending["provider_live_smoke"])
+
+    def test_invalid_provider_controlled_network_evidence_remains_pending(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_provider_live_evidence()
+            find_evidence_check(evidence, "fox_controlled_fetch")["details"]["moveCount"] = 0
+            write_json(root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("provider_live_smoke", failures)
+            self.assertIn("provider_live_smoke", pending)
+            self.assertIn("fox_controlled_fetch.moveCount must be positive", pending["provider_live_smoke"])
+
+    def test_provider_evidence_claiming_external_or_fixture_only_does_not_pass(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_provider_live_evidence()
+            find_evidence_check(evidence, "yike_controlled_fetch")["details"]["fixtureParserOnly"] = True
+            find_evidence_check(evidence, "offline_not_counted_as_external_live")["details"][
+                "externalProviderServiceCovered"
+            ] = True
+            write_json(root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("provider_live_smoke", failures)
+            self.assertIn("provider_live_smoke", pending)
+            self.assertIn("yike_controlled_fetch.fixtureParserOnly must be false", pending["provider_live_smoke"])
+            self.assertIn(
+                "offline_not_counted_as_external_live.externalProviderServiceCovered must be false",
+                pending["provider_live_smoke"],
+            )
+
+    def test_provider_evidence_rejects_legacy_runner_field_names(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_provider_live_evidence()
+            fox_details = find_evidence_check(evidence, "fox_controlled_fetch")["details"]
+            fox_details.pop("directHttpWarning")
+            fox_details["warningIncludesDirectHttp"] = True
+            failure_details = find_evidence_check(evidence, "provider_failure_modes")["details"]
+            failure_details.pop("errorKind")
+            failure_details["kind"] = "invalidPayload"
+            network_details = find_evidence_check(evidence, "controlled_network_observed")["details"]
+            network_details.pop("failureRequestObserved")
+            network_details["badPayloadRequestObserved"] = True
+            offline_details = find_evidence_check(evidence, "offline_not_counted_as_external_live")["details"]
+            offline_details.pop("offlineParserOnly")
+            offline_details["offlineFixtureOnly"] = False
+            write_json(root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("provider_live_smoke", failures)
+            self.assertIn("provider_live_smoke", pending)
+            self.assertIn("fox_controlled_fetch.directHttpWarning must be true", pending["provider_live_smoke"])
+            self.assertIn("provider_failure_modes.errorKind must be non-empty", pending["provider_live_smoke"])
+            self.assertIn(
+                "controlled_network_observed.failureRequestObserved must be true",
+                pending["provider_live_smoke"],
+            )
+            self.assertIn(
+                "offline_not_counted_as_external_live.offlineParserOnly must be false",
+                pending["provider_live_smoke"],
+            )
+
     def test_invalid_tauri_runtime_ui_evidence_remains_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -542,6 +645,13 @@ def write_valid_readboard_tauri_runtime_evidence(root: Path) -> None:
     )
 
 
+def write_valid_provider_live_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
+        valid_provider_live_evidence(),
+    )
+
+
 def valid_katago_live_evidence() -> dict[str, object]:
     return {
         "schema": smoke_user_flows.KATAGO_LIVE_SMOKE_SCHEMA,
@@ -718,6 +828,86 @@ def valid_readboard_tauri_runtime_evidence() -> dict[str, object]:
                     "ocrCovered": False,
                     "externalClientCaptureCovered": False,
                     "reason": "controlled protocol probe only; no real external client/window capture",
+                },
+            },
+        ],
+    }
+
+
+def valid_provider_live_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.PROVIDER_LIVE_SMOKE_SCHEMA,
+        "name": "provider_live_smoke",
+        "status": "pass",
+        "platform": "macos",
+        "checks": [
+            {
+                "name": "runtime_started",
+                "status": "pass",
+                "details": {"tauriInternals": True, "platform": "MacIntel"},
+            },
+            {
+                "name": "yike_controlled_fetch",
+                "status": "pass",
+                "details": {
+                    "provider": "yike",
+                    "networkMode": "controlled_network",
+                    "httpStatus": 200,
+                    "payloadValidated": True,
+                    "resultCount": 1,
+                    "fixtureParserOnly": False,
+                },
+            },
+            {
+                "name": "fox_controlled_fetch",
+                "status": "pass",
+                "details": {
+                    "provider": "fox",
+                    "networkMode": "controlled_network",
+                    "httpStatus": 302,
+                    "payloadImported": True,
+                    "moveCount": 42,
+                    "directHttpWarning": True,
+                },
+            },
+            {
+                "name": "provider_failure_modes",
+                "status": "pass",
+                "details": {
+                    "observed": True,
+                    "typedProviderError": True,
+                    "errorKind": "network",
+                    "message": "controlled provider failure returned typed ProviderError",
+                    "reportedAsSuccess": False,
+                },
+            },
+            {
+                "name": "controlled_network_observed",
+                "status": "pass",
+                "details": {
+                    "controlledHttpServer": True,
+                    "requestCount": 3,
+                    "yikeSignedHeadersObserved": True,
+                    "foxRequestObserved": True,
+                    "failureRequestObserved": True,
+                },
+            },
+            {
+                "name": "offline_not_counted_as_external_live",
+                "status": "pass",
+                "details": {
+                    "offlineParserOnly": False,
+                    "controlledHttpServer": True,
+                    "externalProviderServiceCovered": False,
+                },
+            },
+            {
+                "name": "external_account_scope",
+                "status": "pass",
+                "details": {
+                    "realAccountLoginStateCovered": False,
+                    "antiBotStabilityCovered": False,
+                    "serviceSchemaDriftCovered": False,
                 },
             },
         ],

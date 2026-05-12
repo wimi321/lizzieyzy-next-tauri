@@ -71,6 +71,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("legacy_ui_gap_closure", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
             self.assertIn("windows_linux_installed_app_smoke", pass_names)
+            self.assertIn("release_readiness_preflight", pass_names)
             self.assertIn("installed_app_runtime_workflow", pending_names)
             self.assertIn("bundled_katago_installed_app_smoke", pending_names)
             self.assertIn("installed_app_sgf_workflow", pending_names)
@@ -88,6 +89,71 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_operator_capture", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
+
+    def test_release_readiness_preflight_passes_central_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("release_readiness_preflight", failures)
+            self.assertIn("release_readiness_preflight", pass_names)
+
+    def test_release_readiness_preflight_rejects_stale_smoke_counts(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_release_readiness_preflight_evidence()
+            smoke_counts = evidence["smokeUserFlows"]
+            assert isinstance(smoke_counts, dict)
+            smoke_counts["passed"] = 53
+            write_json(root / smoke_user_flows.RELEASE_READINESS_PREFLIGHT_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("release_readiness_preflight", failures)
+            self.assertIn("smokeUserFlows.passed must be 54", failures["release_readiness_preflight"])
+
+    def test_release_readiness_preflight_rejects_release_overclaim(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_release_readiness_preflight_evidence()
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["productionSigned"] = True
+            write_json(root / smoke_user_flows.RELEASE_READINESS_PREFLIGHT_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("release_readiness_preflight", failures)
+            self.assertIn("boundaries.productionSigned must be false", failures["release_readiness_preflight"])
+            self.assertIn("boundaries.productionSigned must be false/external", failures["release_readiness_preflight"])
+
+    def test_release_readiness_preflight_requires_windows_linux_recorded(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_release_readiness_preflight_evidence()
+            installed = evidence["windowsLinuxUnsignedInstalledAppEvidence"]
+            assert isinstance(installed, dict)
+            installed["recorded"] = False
+            linux = installed["linux"]
+            assert isinstance(linux, dict)
+            linux["status"] = "pending"
+            write_json(root / smoke_user_flows.RELEASE_READINESS_PREFLIGHT_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("release_readiness_preflight", failures)
+            self.assertIn("windowsLinuxUnsignedInstalledAppEvidence.recorded must be true", failures["release_readiness_preflight"])
+            self.assertIn("windowsLinuxUnsignedInstalledAppEvidence.linux.status must be pass", failures["release_readiness_preflight"])
 
     def test_valid_tauri_runtime_ui_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -4010,6 +4076,7 @@ def create_complete_smoke_fixture(
     )
     write_valid_windows_linux_installed_app_evidence(root, "windows")
     write_valid_windows_linux_installed_app_evidence(root, "linux")
+    write_valid_release_readiness_preflight_evidence(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -4139,6 +4206,13 @@ def write_valid_installed_macos_app_evidence(root: Path) -> None:
 def write_valid_windows_linux_installed_app_evidence(root: Path, platform: str) -> None:
     evidence_path = smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE if platform == "windows" else smoke_user_flows.LINUX_INSTALLED_APP_SMOKE_EVIDENCE
     write_json(root / evidence_path, valid_windows_linux_installed_app_evidence(platform))
+
+
+def write_valid_release_readiness_preflight_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.RELEASE_READINESS_PREFLIGHT_EVIDENCE,
+        valid_release_readiness_preflight_evidence(),
+    )
 
 
 def write_valid_installed_app_runtime_workflow_evidence(root: Path) -> None:
@@ -6616,6 +6690,58 @@ def valid_windows_linux_installed_app_evidence(platform: str) -> dict[str, objec
         "boundaries": {
             **{key: False for key in smoke_user_flows.WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS},
             "viteDevServerStarted": False,
+        },
+    }
+
+
+def valid_release_readiness_preflight_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.RELEASE_READINESS_PREFLIGHT_SCHEMA,
+        "name": "release_readiness_preflight",
+        "status": "pass",
+        "generatedFrom": "python3 scripts/smoke_user_flows.py --verbose",
+        "smokeUserFlows": {
+            "passed": 54,
+            "failed": 0,
+            "pending": 0,
+            "baselineExcludes": ["release_readiness_preflight"],
+        },
+        "windowsLinuxUnsignedInstalledAppEvidence": {
+            "recorded": True,
+            "windows": {
+                "recorded": True,
+                "status": "pass",
+                "path": smoke_user_flows.WINDOWS_INSTALLED_APP_SMOKE_EVIDENCE,
+            },
+            "linux": {
+                "recorded": True,
+                "status": "pass",
+                "path": smoke_user_flows.LINUX_INSTALLED_APP_SMOKE_EVIDENCE,
+            },
+        },
+        "boundaries": {
+            "productionSigned": False,
+            "notarized": False,
+            "updaterReady": False,
+            "officialReleasePublished": False,
+            "fullProductionRelease": False,
+            "fullLegacyParity": False,
+            "providerParity": False,
+            "readboardParity": False,
+            "ocrParity": False,
+            "bundledLargeModel": False,
+        },
+        "externalReadiness": {
+            "signing": "external",
+            "notarization": "external",
+            "updater": "external",
+            "officialRelease": "external",
+            "fullProduction": "external",
+            "fullLegacy": "external",
+            "provider": "external",
+            "readboard": "external",
+            "ocr": "external",
+            "bundledLargeModel": "external",
         },
     }
 

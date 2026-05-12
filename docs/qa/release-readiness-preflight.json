@@ -1,0 +1,51 @@
+{
+  "schema": "lizzieyzy.release-readiness-preflight.v1",
+  "name": "release_readiness_preflight",
+  "status": "pass",
+  "generatedFrom": "python3 scripts/smoke_user_flows.py --verbose",
+  "smokeUserFlows": {
+    "passed": 54,
+    "failed": 0,
+    "pending": 0,
+    "baselineExcludes": [
+      "release_readiness_preflight"
+    ]
+  },
+  "windowsLinuxUnsignedInstalledAppEvidence": {
+    "recorded": true,
+    "windows": {
+      "recorded": true,
+      "status": "pass",
+      "path": "docs/qa/windows-unsigned-installed-app-smoke.json"
+    },
+    "linux": {
+      "recorded": true,
+      "status": "pass",
+      "path": "docs/qa/linux-unsigned-installed-app-smoke.json"
+    }
+  },
+  "boundaries": {
+    "productionSigned": false,
+    "notarized": false,
+    "updaterReady": false,
+    "officialReleasePublished": false,
+    "fullProductionRelease": false,
+    "fullLegacyParity": false,
+    "providerParity": false,
+    "readboardParity": false,
+    "ocrParity": false,
+    "bundledLargeModel": false
+  },
+  "externalReadiness": {
+    "signing": "external",
+    "notarization": "external",
+    "updater": "external",
+    "officialRelease": "external",
+    "fullProduction": "external",
+    "fullLegacy": "external",
+    "provider": "external",
+    "readboard": "external",
+    "ocr": "external",
+    "bundledLargeModel": "external"
+  }
+}

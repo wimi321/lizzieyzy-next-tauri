@@ -237,6 +237,65 @@ WINDOWS_LINUX_INSTALLED_APP_SMOKE_OVERCLAIM_FIELDS = [
     "updaterCovered",
     "fullParity",
 ]
+RELEASE_READINESS_PREFLIGHT_EVIDENCE = "docs/qa/release-readiness-preflight.json"
+RELEASE_READINESS_PREFLIGHT_SCHEMA = "lizzieyzy.release-readiness-preflight.v1"
+RELEASE_READINESS_PREFLIGHT_BASELINE_COUNTS = {
+    "passed": 54,
+    "failed": 0,
+    "pending": 0,
+}
+RELEASE_READINESS_PREFLIGHT_FALSE_FIELDS = [
+    "productionSigned",
+    "notarized",
+    "updaterReady",
+    "officialReleasePublished",
+    "fullProductionRelease",
+    "fullLegacyParity",
+    "providerParity",
+    "readboardParity",
+    "ocrParity",
+    "bundledLargeModel",
+]
+RELEASE_READINESS_PREFLIGHT_EXTERNAL_FIELDS = [
+    "signing",
+    "notarization",
+    "updater",
+    "officialRelease",
+    "fullProduction",
+    "fullLegacy",
+    "provider",
+    "readboard",
+    "ocr",
+    "bundledLargeModel",
+]
+RELEASE_READINESS_PREFLIGHT_OVERCLAIM_FIELDS = {
+    "signing",
+    "productionSigned",
+    "signed",
+    "signedRelease",
+    "releaseSigned",
+    "notarization",
+    "notarized",
+    "updater",
+    "updaterReady",
+    "updaterParity",
+    "officialRelease",
+    "officialReleasePublished",
+    "releasePublished",
+    "fullProduction",
+    "fullProductionRelease",
+    "fullLegacy",
+    "fullLegacyParity",
+    "provider",
+    "providerParity",
+    "readboard",
+    "readboardParity",
+    "ocr",
+    "ocrParity",
+    "bundledLargeModel",
+    "bundledLargeModelIncluded",
+    "bundledLargeModelParity",
+}
 WINDOWS_LINUX_INSTALLED_APP_FAKE_COMMAND_BODIES = {
     "echo",
     "cmd",
@@ -1430,6 +1489,7 @@ class UserFlowSmoke:
         self.check_legacy_ui_gap_closure_evidence()
         self.check_installed_macos_app_smoke_evidence()
         self.check_windows_linux_installed_app_smoke_evidence()
+        self.check_release_readiness_preflight_evidence()
         self.check_installed_app_runtime_workflow_evidence()
         self.check_bundled_katago_installed_app_smoke_evidence()
         self.check_installed_app_sgf_workflow_evidence()
@@ -1769,6 +1829,30 @@ class UserFlowSmoke:
         self.pass_(
             "windows_linux_installed_app_smoke",
             "scoped unsigned Windows and Linux installed-app smoke evidence passes with artifact metadata, process/window observation, dev-server exclusion, termination, and release-boundary checks",
+        )
+
+    def check_release_readiness_preflight_evidence(self) -> None:
+        evidence_path = self.path(RELEASE_READINESS_PREFLIGHT_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "release_readiness_preflight",
+                f"TODO gate: record scoped release readiness preflight evidence at {RELEASE_READINESS_PREFLIGHT_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(RELEASE_READINESS_PREFLIGHT_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_release_readiness_preflight_evidence(evidence)
+        if failures:
+            self.fail(
+                "release_readiness_preflight",
+                f"{RELEASE_READINESS_PREFLIGHT_EVIDENCE} is present but not valid scoped release readiness preflight evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "release_readiness_preflight",
+            "scoped release readiness preflight records the 54/0/0 central smoke baseline, Windows/Linux unsigned installed-app evidence, and false/external release parity boundaries",
         )
 
     def check_installed_app_runtime_workflow_evidence(self) -> None:
@@ -4090,6 +4174,104 @@ def validate_windows_linux_installed_app_boundaries(evidence: dict[str, Any]) ->
         if boundaries.get(key) is not False:
             failures.append(f"boundaries.{key} must be false")
     return failures
+
+
+def validate_release_readiness_preflight_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != RELEASE_READINESS_PREFLIGHT_SCHEMA:
+        failures.append(f"schema must be {RELEASE_READINESS_PREFLIGHT_SCHEMA}")
+    if str(evidence.get("name", "")) != "release_readiness_preflight":
+        failures.append("name must be release_readiness_preflight")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    failures.extend(validate_release_readiness_smoke_counts(evidence.get("smokeUserFlows")))
+    failures.extend(validate_release_readiness_windows_linux_record(evidence.get("windowsLinuxUnsignedInstalledAppEvidence")))
+    failures.extend(validate_release_readiness_boundaries(evidence))
+    failures.extend(validate_release_readiness_overclaims(evidence))
+    return failures
+
+
+def validate_release_readiness_smoke_counts(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["smokeUserFlows must be an object"]
+    failures: list[str] = []
+    for key, expected in RELEASE_READINESS_PREFLIGHT_BASELINE_COUNTS.items():
+        if value.get(key) != expected:
+            failures.append(f"smokeUserFlows.{key} must be {expected}")
+    excludes = value.get("baselineExcludes")
+    if not isinstance(excludes, list) or "release_readiness_preflight" not in excludes:
+        failures.append("smokeUserFlows.baselineExcludes must include release_readiness_preflight")
+    return failures
+
+
+def validate_release_readiness_windows_linux_record(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["windowsLinuxUnsignedInstalledAppEvidence must be an object"]
+    failures: list[str] = []
+    if value.get("recorded") is not True:
+        failures.append("windowsLinuxUnsignedInstalledAppEvidence.recorded must be true")
+    for platform in ("windows", "linux"):
+        platform_value = value.get(platform)
+        if not isinstance(platform_value, dict):
+            failures.append(f"windowsLinuxUnsignedInstalledAppEvidence.{platform} must be an object")
+            continue
+        if platform_value.get("recorded") is not True:
+            failures.append(f"windowsLinuxUnsignedInstalledAppEvidence.{platform}.recorded must be true")
+        if str(platform_value.get("status", "")).lower() != "pass":
+            failures.append(f"windowsLinuxUnsignedInstalledAppEvidence.{platform}.status must be pass")
+    return failures
+
+
+def validate_release_readiness_boundaries(evidence: dict[str, Any]) -> list[str]:
+    boundaries = evidence.get("boundaries")
+    external = evidence.get("externalReadiness")
+    failures: list[str] = []
+    if not isinstance(boundaries, dict):
+        failures.append("boundaries must be an object")
+    else:
+        for key in RELEASE_READINESS_PREFLIGHT_FALSE_FIELDS:
+            if boundaries.get(key) is not False:
+                failures.append(f"boundaries.{key} must be false")
+    if not isinstance(external, dict):
+        failures.append("externalReadiness must be an object")
+    else:
+        for key in RELEASE_READINESS_PREFLIGHT_EXTERNAL_FIELDS:
+            if external.get(key) != "external":
+                failures.append(f"externalReadiness.{key} must be external")
+    return failures
+
+
+def validate_release_readiness_overclaims(value: Any, path: str = "") -> list[str]:
+    failures: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child_path = f"{path}.{key}" if path else key
+            if key in RELEASE_READINESS_PREFLIGHT_OVERCLAIM_FIELDS and not release_readiness_value_is_false_or_external(item):
+                failures.append(f"{child_path} must be false/external")
+            failures.extend(validate_release_readiness_overclaims(item, child_path))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            failures.extend(validate_release_readiness_overclaims(item, f"{path}[{index}]"))
+    return failures
+
+
+def release_readiness_value_is_false_or_external(value: Any) -> bool:
+    if value is False:
+        return True
+    if isinstance(value, str):
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        return normalized in {
+            "false",
+            "external",
+            "external_required",
+            "out_of_scope",
+            "not_covered",
+            "not_included",
+            "pending_external",
+        }
+    return False
 
 
 def validate_installed_app_runtime_workflow_evidence(evidence: Any) -> list[str]:

@@ -55,6 +55,8 @@ DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS = [
     "save_readback_reopen",
     "native_dialog_boundary",
 ]
+DESKTOP_UI_CLICK_SMOKE_EVIDENCE = "docs/qa/desktop-ui-click-smoke-macos.json"
+DESKTOP_UI_CLICK_SMOKE_SCHEMA = "lizzieyzy.desktop-ui-click-smoke.v1"
 KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
 KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
 KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -640,6 +642,7 @@ class UserFlowSmoke:
     def check_external_runtime_gates(self) -> None:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_desktop_sgf_editing_ux_smoke_evidence()
+        self.check_desktop_ui_click_smoke_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
@@ -691,6 +694,30 @@ class UserFlowSmoke:
         self.pass_(
             "desktop_sgf_editing_ux_smoke",
             f"scoped desktop SGF editing UX smoke evidence passes with {len(DESKTOP_SGF_EDITING_UX_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_desktop_ui_click_smoke_evidence(self) -> None:
+        evidence_path = self.path(DESKTOP_UI_CLICK_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "desktop_ui_click_smoke",
+                f"TODO gate: run Worker-1 browser-rendered DOM/click/screenshot smoke and record {DESKTOP_UI_CLICK_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(DESKTOP_UI_CLICK_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_desktop_ui_click_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "desktop_ui_click_smoke",
+                f"{DESKTOP_UI_CLICK_SMOKE_EVIDENCE} is present but not valid scoped browser-rendered DOM/click/screenshot PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "desktop_ui_click_smoke",
+            "scoped browser-rendered desktop UI click smoke evidence passes with DOM, click, screenshot, and boundary checks",
         )
 
     def check_katago_live_smoke_evidence(self) -> None:
@@ -1002,6 +1029,121 @@ def validate_desktop_sgf_editing_ux_boundaries(evidence: dict[str, Any]) -> list
         ):
             if boundaries.get(key) is not False:
                 failures.append(f"boundaries.{key} must be false")
+    return failures
+
+
+def validate_desktop_ui_click_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != DESKTOP_UI_CLICK_SMOKE_SCHEMA:
+        failures.append(f"schema must be {DESKTOP_UI_CLICK_SMOKE_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("browserDomObserved") is not True:
+        failures.append("browserDomObserved must be true")
+    if evidence.get("screenshotObserved") is not True:
+        failures.append("screenshotObserved must be true")
+    if evidence.get("clickObserved") is not True:
+        failures.append("clickObserved must be true")
+    failures.extend(validate_desktop_ui_click_screenshots(evidence.get("screenshots")))
+    failures.extend(validate_desktop_ui_click_clicked_controls(evidence.get("clickedControls")))
+    failures.extend(validate_desktop_ui_click_visible_assertions(evidence.get("visibleAssertions")))
+    failures.extend(validate_desktop_ui_click_boundaries(evidence.get("boundaries")))
+    return failures
+
+
+def validate_desktop_ui_click_screenshots(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if len(value) < 2:
+        failures.append("screenshots must include at least two records")
+    for index, screenshot in enumerate(value):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        sha256 = screenshot.get("sha256")
+        if not is_sha256_hex(sha256):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+        label = first_present(screenshot, "label", "name", "step")
+        if not isinstance(label, str) or not label.strip():
+            failures.append(f"screenshots[{index}] must include label/name/step")
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be a stable repo-relative or non-local path")
+        elif not is_stable_artifact_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+    return failures
+
+
+def validate_desktop_ui_click_clicked_controls(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["clickedControls must be a list"]
+    failures: list[str] = []
+    if not value:
+        failures.append("clickedControls must include at least one control")
+    for index, control in enumerate(value):
+        if isinstance(control, str):
+            if not control.strip():
+                failures.append(f"clickedControls[{index}] must be non-empty")
+            continue
+        if not isinstance(control, dict):
+            failures.append(f"clickedControls[{index}] must be a string or object")
+            continue
+        label = first_present(control, "label", "name", "control", "testId", "selector")
+        if not isinstance(label, str) or not label.strip():
+            failures.append(f"clickedControls[{index}] must include label/name/control/testId/selector")
+        if "clicked" in control and control.get("clicked") is not True:
+            failures.append(f"clickedControls[{index}].clicked must be true when present")
+    return failures
+
+
+def validate_desktop_ui_click_visible_assertions(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return ["visibleAssertions must be a list"]
+    failures: list[str] = []
+    if not value:
+        failures.append("visibleAssertions must include at least one assertion")
+    for index, assertion in enumerate(value):
+        if isinstance(assertion, str):
+            if not assertion.strip():
+                failures.append(f"visibleAssertions[{index}] must be non-empty")
+            continue
+        if not isinstance(assertion, dict):
+            failures.append(f"visibleAssertions[{index}] must be a string or object")
+            continue
+        label = first_present(assertion, "label", "name", "selector", "text", "testId")
+        if not isinstance(label, str) or not label.strip():
+            failures.append(f"visibleAssertions[{index}] must include label/name/selector/text/testId")
+        status = str(assertion.get("status", "pass")).lower()
+        if status not in {"pass", "passed"}:
+            failures.append(f"visibleAssertions[{index}].status must be pass when present")
+        if "visible" in assertion and assertion.get("visible") is not True:
+            failures.append(f"visibleAssertions[{index}].visible must be true when present")
+    return failures
+
+
+def validate_desktop_ui_click_boundaries(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return ["boundaries must be an object"]
+    failures: list[str] = []
+    if value.get("nativeFileDialogCovered") is not False:
+        failures.append("boundaries.nativeFileDialogCovered must be false")
+    tauri_webview_observed = value.get("tauriWebviewDomObserved")
+    if tauri_webview_observed is False:
+        return failures
+    if tauri_webview_observed is not True:
+        failures.append("boundaries.tauriWebviewDomObserved must be false unless true proof is recorded")
+        return failures
+    if value.get("tauriWebviewProof") is not True:
+        failures.append("boundaries.tauriWebviewProof must be true when tauriWebviewDomObserved is true")
+    proof_detail = first_present(value, "tauriWebviewProofDetail", "tauriWebviewEvidence", "tauriWebviewDomEvidence")
+    if not non_empty_proof(proof_detail):
+        failures.append("boundaries.tauriWebview proof detail must be non-empty when tauriWebviewDomObserved is true")
     return failures
 
 
@@ -1961,6 +2103,29 @@ def missing_string_members(value: Any, required: list[str], label: str) -> list[
     if missing:
         return [f"{label} missing: " + ", ".join(missing)]
     return []
+
+
+def non_empty_proof(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return bool(value)
+    if isinstance(value, list):
+        return bool(value)
+    return False
+
+
+def is_stable_artifact_path(value: str) -> bool:
+    path = value.strip()
+    if not path:
+        return False
+    if path.startswith(("/Users/", "/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/", "~")):
+        return False
+    if re.match(r"^[A-Za-z]:[\\/]", path):
+        return False
+    if path.startswith("/"):
+        return False
+    return True
 
 
 def normalize_json_value(value: Any) -> str:

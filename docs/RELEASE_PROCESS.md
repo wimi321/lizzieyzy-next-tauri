@@ -117,6 +117,23 @@ The production workflow also uploads `SHA256SUMS.txt` and `SHA256SUMS-<platform>
 
 The expected dry-run artifact contract is `lizzieyzy-next-desktop-<version>-<platform>-dry-run` as a naming stem for handoff records, plus metadata for commit SHA and signing state. Current workflow uploads diagnostic artifacts only; production installer naming must be verified again before a public release workflow is introduced.
 
+## Windows/Linux Installed-App Smoke Evidence
+
+`docs/qa/windows-unsigned-installed-app-smoke.json` and `docs/qa/linux-unsigned-installed-app-smoke.json` are the scoped future handoff paths for unsigned Windows/Linux installed-app launch smoke. No PASS evidence is committed yet; CI runner output must be downloaded and attached in a follow-up commit.
+
+A valid scoped PASS must record, for both Windows and Linux:
+
+- artifact path, SHA-256 hash, and size,
+- exact launch command,
+- process observation,
+- window observation or explicit display-mode observation,
+- dev-server absence,
+- exit or terminate success,
+- display mode such as physical display, VM display, Xvfb, or headless runner mode,
+- false boundaries for production signing, notarization, updater readiness, official release publication, full release parity, and full legacy parity.
+
+This evidence is unsigned installed-app smoke only. It does not replace Authenticode signing, macOS notarization, updater signing, official release publication, clean-machine manual release testing, provider/readboard/OCR parity, or full legacy parity.
+
 ## Signing and Notarization Policy
 
 Unsigned dry-run artifacts are for engineering validation only. The `v0.1.0` tag workflow may publish unsigned public validation artifacts, but the release notes must keep them marked as unsigned prerelease assets.

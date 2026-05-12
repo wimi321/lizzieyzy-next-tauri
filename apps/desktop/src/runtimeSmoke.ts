@@ -125,7 +125,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -490,6 +490,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runWebviewDomClickPhase(report);
     } else if (resolvedConfig.phase === "installed-app-runtime-proof") {
       await runInstalledAppRuntimeProofPhase(report);
+    } else if (resolvedConfig.phase === "installed-app-sgf-workflow") {
+      await runInstalledAppSgfWorkflowPhase(report, requireRuntimeSmokeSgfPath(sgfPath));
     } else if (resolvedConfig.phase === "readboard-live") {
       await runReadboardLivePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
@@ -1379,23 +1381,7 @@ async function runInstalledAppRuntimeProofPhase(report: RuntimeSmokeReport) {
     };
   });
 
-  await check(report, "backend_runtime_proof_observed", async () => {
-    const proof = await installedAppRuntimeProof();
-    const summary = summarizeInstalledAppRuntimeProof(proof);
-    if (summary.browserFallbackUsed === true) {
-      throw new Error("Installed app backend proof reported browser fallback; this cannot count as Tauri runtime proof.");
-    }
-    const runtimeSource = typeof summary.runtimeSource === "string" ? summary.runtimeSource.toLowerCase() : "";
-    if (!runtimeSource || runtimeSource.includes("browser")) {
-      throw new Error(`Installed app backend proof did not report a Tauri runtime source; observed ${summary.runtimeSource || "missing"}.`);
-    }
-    evidence.backendRuntimeProof = proof;
-    evidence.backendRuntimeProofSummary = summary;
-    return {
-      ...summary,
-      raw: proof
-    };
-  });
+  await observeInstalledAppBackendRuntimeProof(report, evidence);
 
   await check(report, "runtime_source_observed", async () => {
     const root = await waitForVisibleElement('[data-testid="installed-app-runtime-proof"]', "installed app runtime proof");
@@ -1480,6 +1466,119 @@ async function runInstalledAppRuntimeProofPhase(report: RuntimeSmokeReport) {
   });
 
   await check(report, "scope_boundaries_recorded", async () => evidence.boundaries);
+}
+
+async function runInstalledAppSgfWorkflowPhase(report: RuntimeSmokeReport, sgfPath: string) {
+  const evidence: InstalledAppRuntimeProofEvidence = {
+    tauriRuntimeObserved: false,
+    browserFallbackUsed: false,
+    boundaries: {
+      browserFallbackDoesNotClaimTauri: true,
+      webviewDomClickCovered: false,
+      nativeDialogCovered: false,
+      fullLegacyParity: false,
+      releaseParity: false
+    }
+  };
+  report.installedAppRuntimeProof = evidence;
+
+  await check(report, "browser_fallback_excluded", async () => {
+    if (!isTauriRuntime()) throw new Error("installed-app-sgf-workflow must run inside a real Tauri packaged app runtime.");
+    evidence.tauriRuntimeObserved = true;
+    evidence.browserFallbackUsed = false;
+    return { tauriRuntimeObserved: true, browserFallbackUsed: false };
+  });
+
+  const runtimeProof = await observeInstalledAppBackendRuntimeProof(report, evidence);
+  assertInstalledAppPackagedRuntime(runtimeProof);
+  await runEditSavePhase(report, sgfPath, "installed-app-sgf-workflow");
+  if (!report.expected) throw new Error("Installed app SGF workflow did not produce expected edit/save evidence.");
+
+  const reopenedDocument = await readSgfDocument(sgfPath);
+  assertNonEmptyString(reopenedDocument.sgfText, "reopened installed app SGF text was empty.");
+  await verifySgf(report, "installed app reopened workflow", reopenedDocument.sgfText);
+  const reopenedState = await check(report, "reopen_state_verified", async () => verifyReopenedState(report, reopenedDocument.sgfText, report.expected as RuntimeSmokeExpectedEvidence));
+  const afterReopen = {
+    reopenedPath: reopenedDocument.path,
+    bytes: reopenedDocument.sgfText.length,
+    verified: Boolean(reopenedState.verified),
+    reopenVerified: Boolean(reopenedState.verified),
+    annotationsVerified: Boolean(reopenedState.annotationsVerified),
+    commentsVerified: Boolean(reopenedState.commentsVerified),
+    propertiesVerified: Boolean(reopenedState.propertiesVerified),
+    boardStateVerified: Boolean(reopenedState.boardStateVerified),
+    moveCountVerified: Boolean(reopenedState.moveCountVerified),
+    treeOrderVerified: Boolean(reopenedState.treeOrderVerified),
+    deletedTargetAbsent: Boolean(reopenedState.variationDeletePersisted),
+    variationDeletePersisted: Boolean(reopenedState.variationDeletePersisted),
+    invariantVerified: Boolean(reopenedState.invariantVerified),
+    details: reopenedState
+  };
+  const reopen = {
+    status: "pass",
+    path: reopenedDocument.path,
+    matchesSaved: Boolean(reopenedState.verified),
+    phase: report.phase
+  };
+  mergeCheckDetails(report, "save_readback_roundtrip", {
+    reopenVerified: true,
+    reopen,
+    afterReopen,
+    installedAppWorkflowPhase: report.phase,
+    packagedAppRuntimeObserved: true,
+    browserFallbackUsed: false,
+    devServerRequired: false
+  });
+  await check(report, "save_reopen_roundtrip", async () => ({
+    savedPath: sgfPath,
+    reopenedPath: reopenedDocument.path,
+    expectedMoveCount: report.expected?.savedMoveCount,
+    expectedPositionCount: report.expected?.savedPositionCount,
+    savedStateLoaded: true,
+    reopen,
+    reopenVerified: Boolean(reopenedState.verified),
+    readbackVerified: true,
+    annotationsVerified: reopenedState.annotationsVerified,
+    commentsVerified: reopenedState.commentsVerified,
+    propertiesVerified: reopenedState.propertiesVerified,
+    boardStateVerified: reopenedState.boardStateVerified,
+    afterReopen,
+    invariant: report.expected?.invariant,
+    verified: true
+  }));
+
+  await check(report, "scope_boundaries_recorded", async () => ({
+    packagedAppRuntimeObserved: true,
+    browserFallbackUsed: false,
+    devServerRequired: false,
+    nativeDialogCovered: false,
+    webviewDomClickCovered: false,
+    fullLegacyParity: false,
+    releaseParity: false,
+    workflow: "SGF load/tree/edit/annotation/move/save/readback/reopen scoped automation"
+  }));
+}
+
+async function observeInstalledAppBackendRuntimeProof(report: RuntimeSmokeReport, evidence?: InstalledAppRuntimeProofEvidence): Promise<Record<string, unknown>> {
+  return await check(report, "backend_runtime_proof_observed", async () => {
+    const proof = await installedAppRuntimeProof();
+    const summary = summarizeInstalledAppRuntimeProof(proof);
+    if (summary.browserFallbackUsed === true) {
+      throw new Error("Installed app backend proof reported browser fallback; this cannot count as Tauri runtime proof.");
+    }
+    const runtimeSource = typeof summary.runtimeSource === "string" ? summary.runtimeSource.toLowerCase() : "";
+    if (!runtimeSource || runtimeSource.includes("browser")) {
+      throw new Error(`Installed app backend proof did not report a Tauri runtime source; observed ${summary.runtimeSource || "missing"}.`);
+    }
+    if (evidence) {
+      evidence.backendRuntimeProof = proof;
+      evidence.backendRuntimeProofSummary = summary;
+    }
+    return {
+      ...summary,
+      raw: proof
+    };
+  });
 }
 
 function summarizeInstalledAppRuntimeProof(proof: InstalledAppRuntimeProofDto): Record<string, unknown> {
@@ -1577,6 +1676,43 @@ function summarizeEngineLaunchAttempt(value: unknown): Record<string, unknown> {
     message: stringField(value, "message") ?? stringField(value, "error") ?? stringField(value, "reason") ?? null,
     details: value
   };
+}
+
+function assertInstalledAppPackagedRuntime(summary: Record<string, unknown>) {
+  const runtime = requiredRecord(summary.runtime, "installed app SGF workflow runtime summary");
+  const bundle = requiredRecord(summary.bundle, "installed app SGF workflow bundle summary");
+  const boundaries = requiredRecord(summary.boundaries, "installed app SGF workflow boundaries");
+  const runtimeSource = (stringField(summary, "runtimeSource") ?? stringField(runtime, "source") ?? "").toLowerCase();
+  if (!runtimeSource || runtimeSource.includes("tauri-dev") || runtimeSource.includes("browser") || runtimeSource.includes("unknown")) {
+    throw new Error(`Installed app SGF workflow requires packaged app runtime source; observed ${runtimeSource || "missing"}.`);
+  }
+  if (!runtimeSource.includes("packaged") && !runtimeSource.includes("installed")) {
+    throw new Error(`Installed app SGF workflow requires packaged app runtime source; observed ${runtimeSource}.`);
+  }
+  if (booleanField(runtime, "tauriRuntimeObserved") !== true) {
+    throw new Error("Installed app SGF workflow requires runtime.tauriRuntimeObserved=true.");
+  }
+  if (booleanField(runtime, "devServerRequired") !== false) {
+    throw new Error("Installed app SGF workflow requires runtime.devServerRequired=false.");
+  }
+  if (!stringField(runtime, "currentExe")) {
+    throw new Error("Installed app SGF workflow requires runtime.currentExe from the packaged app.");
+  }
+  if (booleanField(bundle, "appBundleExists") !== true) {
+    throw new Error("Installed app SGF workflow requires bundle.appBundleExists=true.");
+  }
+  if (booleanField(bundle, "executableExists") !== true) {
+    throw new Error("Installed app SGF workflow requires bundle.executableExists=true.");
+  }
+  if (booleanField(bundle, "resourceDirExists") !== true) {
+    throw new Error("Installed app SGF workflow requires bundle.resourceDirExists=true.");
+  }
+  if (booleanField(boundaries, "browserFallbackUsed") === true) {
+    throw new Error("Installed app SGF workflow cannot use browser fallback evidence.");
+  }
+  if (booleanField(boundaries, "devServerUsed") === true || booleanField(boundaries, "viteDevServerUsed") === true) {
+    throw new Error("Installed app SGF workflow cannot use dev-server evidence.");
+  }
 }
 
 function normalizeEngineLaunchAvailability(rawStatus: string | null, available: boolean | null): "available" | "problem" | "unavailable" | "observed" {
@@ -1942,6 +2078,16 @@ async function check<T>(
   }
 }
 
+function mergeCheckDetails(report: RuntimeSmokeReport, name: RuntimeSmokeCheckName, details: Record<string, unknown>) {
+  for (let index = report.checks.length - 1; index >= 0; index -= 1) {
+    const check = report.checks[index];
+    if (check.name !== name || check.status !== "pass") continue;
+    check.details = { ...(check.details ?? {}), ...details };
+    return;
+  }
+  throw new Error(`Cannot enrich missing runtime smoke check ${name}.`);
+}
+
 async function verifySgf(report: RuntimeSmokeReport, label: string, sgfText: string) {
   await step(report, `parse ${label} summary`, async () => {
     const parsed = await parseSgfSummary(sgfText);
@@ -1997,7 +2143,8 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "readboard-live" ||
     value === "provider-live" ||
     value === "webview-dom-click" ||
-    value === "installed-app-runtime-proof"
+    value === "installed-app-runtime-proof" ||
+    value === "installed-app-sgf-workflow"
   ) return value;
   return "full";
 }

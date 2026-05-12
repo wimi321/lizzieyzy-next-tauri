@@ -1,0 +1,682 @@
+{
+  "appMode": "tauri-dev",
+  "boundaries": {
+    "fullLegacyParityCovered": false,
+    "linuxCovered": false,
+    "notarized": false,
+    "note": "This scoped smoke covers native macOS Open/Save dialogs and combines them with existing Tauri runtime semantic SGF edit/save/reopen proof. It does not claim production release signing, notarization, publication, OCR/provider/readboard, Windows/Linux, or full legacy parity.",
+    "ocrCovered": false,
+    "productionSigned": false,
+    "providerCovered": false,
+    "readboardCovered": false,
+    "releasePublished": false,
+    "webviewDomAutomationCovered": false,
+    "windowsCovered": false
+  },
+  "checks": [
+    {
+      "details": {
+        "method": "operator-confirmed native desktop app visible",
+        "screenshot": {
+          "bytes": 696530,
+          "captureTool": "screencapture",
+          "name": "app_started",
+          "path": "docs/qa/screenshots/native-desktop-sgf-app-started.png",
+          "sha256": "94210fd911a1efd417fd2ad4c1f0037985b8e0421c6df9ea3a79392cba4cd1e7"
+        }
+      },
+      "name": "app_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "manual-assisted macOS native Open dialog",
+        "openedPath": "<tmp>/native-desktop-sgf-input.sgf",
+        "operator": {
+          "confirmation": "operator confirmed selected input SGF in native Open dialog",
+          "tooling": [
+            "screencapture"
+          ],
+          "type": "manual-assisted"
+        },
+        "screenshot": {
+          "bytes": 820158,
+          "captureTool": "screencapture",
+          "name": "native_open_dialog",
+          "path": "docs/qa/screenshots/native-desktop-sgf-open-dialog.png",
+          "sha256": "e080afad4847eb2f77b5dffd3d0b3bb63f869f64fe876f7de41fd18570ce5a68"
+        }
+      },
+      "name": "native_open_dialog",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "operator-confirmed SGF opened after native dialog",
+        "openedPath": "<tmp>/native-desktop-sgf-input.sgf",
+        "screenshot": {
+          "bytes": 703568,
+          "captureTool": "screencapture",
+          "name": "sgf_opened",
+          "path": "docs/qa/screenshots/native-desktop-sgf-opened.png",
+          "sha256": "cc0912f3f0d701d5f4c96f5730eb588715ad12b1ef77d3e67a1a0129a564cdca"
+        }
+      },
+      "name": "sgf_opened",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "existing Tauri runtime semantic proof",
+        "semanticProof": {
+          "annotationEdit": {
+            "annotations": {
+              "AR": [
+                "aa:bb"
+              ],
+              "CR": [
+                "bb"
+              ],
+              "LB": [
+                "aa:A",
+                "ee:E"
+              ],
+              "LN": [
+                "cc:dd"
+              ],
+              "MA": [
+                "cc"
+              ],
+              "SL": [
+                "dd"
+              ],
+              "SQ": [],
+              "TR": [
+                "aa"
+              ]
+            },
+            "status": "pass"
+          },
+          "boardInvariant": {
+            "absentAfterDelete": true,
+            "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "deletedTargetVertex": "1,0",
+            "expectedSiblingCount": 3,
+            "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "invariantVerified": true,
+            "moveCount": 3,
+            "moveNumber": 2,
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+            "positionCount": 4,
+            "replayErrorsAbsent": true,
+            "siblingCountAfterDelete": 3,
+            "siblingCountVerified": true,
+            "stones": 3,
+            "targetExistsAfterDelete": false,
+            "verified": true
+          },
+          "commentEdit": {
+            "status": "pass"
+          },
+          "propertyEdit": {
+            "status": "pass"
+          },
+          "saveReadbackRoundtrip": {
+            "afterReopen": {
+              "annotationsVerified": true,
+              "boardStateVerified": true,
+              "commentsVerified": true,
+              "deletedTargetAbsent": true,
+              "moveCountVerified": true,
+              "propertiesVerified": true,
+              "treeOrderVerified": true
+            },
+            "readbackStatus": "matched_saved_text",
+            "readbackVerified": true,
+            "status": "pass"
+          },
+          "sourceRuntimeEvidence": {
+            "path": "docs/qa/tauri-runtime-ui-smoke-macos.json",
+            "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+            "status": "pass"
+          },
+          "structuralEdit": {
+            "appendMove": "pass"
+          }
+        }
+      },
+      "name": "edit_operations_applied",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "manual-assisted macOS native Save dialog",
+        "operator": {
+          "confirmation": "operator confirmed selected output SGF in native Save dialog",
+          "tooling": [
+            "screencapture"
+          ],
+          "type": "manual-assisted"
+        },
+        "savedPath": "<tmp>/native-desktop-sgf-saved.sgf",
+        "screenshot": {
+          "bytes": 751758,
+          "captureTool": "screencapture",
+          "name": "save_or_save_as",
+          "path": "docs/qa/screenshots/native-desktop-sgf-save-dialog.png",
+          "sha256": "73e3f6ef107abec0f8014ca26b9d9e4e4158dca65d8f514d2644fa4691b3eb83"
+        }
+      },
+      "name": "save_or_save_as",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "manual-assisted native Open of just-saved SGF path",
+        "openedPath": "<tmp>/native-desktop-sgf-saved.sgf",
+        "operator": {
+          "confirmation": "operator confirmed selected saved SGF in native Open dialog",
+          "tooling": [
+            "screencapture"
+          ],
+          "type": "manual-assisted"
+        },
+        "screenshot": {
+          "bytes": 825484,
+          "captureTool": "screencapture",
+          "name": "reopen_saved_sgf",
+          "path": "docs/qa/screenshots/native-desktop-sgf-reopen-dialog.png",
+          "sha256": "c4b0712d670a6d68a4cafb4fab3c58d7eb8aabf14ea8328843234aaf414857d1"
+        }
+      },
+      "name": "reopen_saved_sgf",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "invariants": {
+          "boardInvariant": {
+            "expectedStones": [
+              {
+                "color": "B",
+                "point": "dd"
+              },
+              {
+                "color": "W",
+                "point": "ee"
+              }
+            ],
+            "verifiedByContent": true
+          },
+          "contentHash": "b803431e92bcee6fac21df39b1e42f16e8cfc34c00836c2e4092f67f6f4adefb",
+          "contentInvariant": {
+            "boardSize9": true,
+            "sourceCommentPresent": true
+          },
+          "treeInvariant": {
+            "moveCountAtLeast": 2,
+            "moveTokens": [
+              ";B[dd]",
+              ";W[ee]"
+            ],
+            "rootPresent": true
+          },
+          "verified": true
+        },
+        "method": "saved SGF content/tree/board invariant verification plus operator-confirmed reopened app state",
+        "screenshot": {
+          "bytes": 703692,
+          "captureTool": "screencapture",
+          "name": "reopen_state",
+          "path": "docs/qa/screenshots/native-desktop-sgf-reopened.png",
+          "sha256": "d80f326cf7a6fc34c1cd19c50b628abaf22206bc4dc3f18d1766cf3a47226136"
+        }
+      },
+      "name": "reopen_state_verified",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "sha256 and positive byte validation",
+        "screenshotCount": 7
+      },
+      "name": "screenshots_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "explicit scoped evidence boundaries"
+      },
+      "name": "scope_boundaries",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "manual_assisted_native_desktop_workflow",
+  "completedAt": "2026-05-12T03:33:40Z",
+  "failures": [],
+  "fullAutomationCovered": false,
+  "fullLegacyParityCovered": false,
+  "name": "native_desktop_sgf_workflow",
+  "nativeDialogOpenCovered": true,
+  "nativeDialogSaveCovered": true,
+  "notarized": false,
+  "openedSgfPath": "<tmp>/native-desktop-sgf-input.sgf",
+  "operator": {
+    "manualAssisted": true,
+    "method": "operator-guided screenshots and artifact checks",
+    "type": "manual-assisted"
+  },
+  "platform": "macos",
+  "productionSigned": false,
+  "releasePublished": false,
+  "reopenVerification": {
+    "boardInvariant": {
+      "expectedStones": [
+        {
+          "color": "B",
+          "point": "dd"
+        },
+        {
+          "color": "W",
+          "point": "ee"
+        }
+      ],
+      "verifiedByContent": true
+    },
+    "contentHash": "b803431e92bcee6fac21df39b1e42f16e8cfc34c00836c2e4092f67f6f4adefb",
+    "contentInvariant": {
+      "boardSize9": true,
+      "sourceCommentPresent": true
+    },
+    "treeInvariant": {
+      "moveCountAtLeast": 2,
+      "moveTokens": [
+        ";B[dd]",
+        ";W[ee]"
+      ],
+      "rootPresent": true
+    },
+    "verified": true
+  },
+  "savedSgf": {
+    "bytes": 93,
+    "path": "<tmp>/native-desktop-sgf-saved.sgf",
+    "sha256": "b803431e92bcee6fac21df39b1e42f16e8cfc34c00836c2e4092f67f6f4adefb",
+    "written": true
+  },
+  "savedSgfPath": "<tmp>/native-desktop-sgf-saved.sgf",
+  "schema": "lizzieyzy.native-desktop-sgf-workflow.v1",
+  "screenshots": [
+    {
+      "bytes": 696530,
+      "captureTool": "screencapture",
+      "name": "app_started",
+      "path": "docs/qa/screenshots/native-desktop-sgf-app-started.png",
+      "sha256": "94210fd911a1efd417fd2ad4c1f0037985b8e0421c6df9ea3a79392cba4cd1e7"
+    },
+    {
+      "bytes": 820158,
+      "captureTool": "screencapture",
+      "name": "native_open_dialog",
+      "path": "docs/qa/screenshots/native-desktop-sgf-open-dialog.png",
+      "sha256": "e080afad4847eb2f77b5dffd3d0b3bb63f869f64fe876f7de41fd18570ce5a68"
+    },
+    {
+      "bytes": 703568,
+      "captureTool": "screencapture",
+      "name": "sgf_opened",
+      "path": "docs/qa/screenshots/native-desktop-sgf-opened.png",
+      "sha256": "cc0912f3f0d701d5f4c96f5730eb588715ad12b1ef77d3e67a1a0129a564cdca"
+    },
+    {
+      "bytes": 751758,
+      "captureTool": "screencapture",
+      "name": "save_or_save_as",
+      "path": "docs/qa/screenshots/native-desktop-sgf-save-dialog.png",
+      "sha256": "73e3f6ef107abec0f8014ca26b9d9e4e4158dca65d8f514d2644fa4691b3eb83"
+    },
+    {
+      "bytes": 703509,
+      "captureTool": "screencapture",
+      "name": "save_completed",
+      "path": "docs/qa/screenshots/native-desktop-sgf-saved.png",
+      "sha256": "8049d5849ad831aef063a11116ad50c5aef78a1c091d8272a31b02820c536724"
+    },
+    {
+      "bytes": 825484,
+      "captureTool": "screencapture",
+      "name": "reopen_saved_sgf",
+      "path": "docs/qa/screenshots/native-desktop-sgf-reopen-dialog.png",
+      "sha256": "c4b0712d670a6d68a4cafb4fab3c58d7eb8aabf14ea8328843234aaf414857d1"
+    },
+    {
+      "bytes": 703692,
+      "captureTool": "screencapture",
+      "name": "reopen_state",
+      "path": "docs/qa/screenshots/native-desktop-sgf-reopened.png",
+      "sha256": "d80f326cf7a6fc34c1cd19c50b628abaf22206bc4dc3f18d1766cf3a47226136"
+    }
+  ],
+  "semanticEditProof": {
+    "annotationEdit": {
+      "annotations": {
+        "AR": [
+          "aa:bb"
+        ],
+        "CR": [
+          "bb"
+        ],
+        "LB": [
+          "aa:A",
+          "ee:E"
+        ],
+        "LN": [
+          "cc:dd"
+        ],
+        "MA": [
+          "cc"
+        ],
+        "SL": [
+          "dd"
+        ],
+        "SQ": [],
+        "TR": [
+          "aa"
+        ]
+      },
+      "status": "pass"
+    },
+    "boardInvariant": {
+      "absentAfterDelete": true,
+      "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+      "deletedTargetVertex": "1,0",
+      "expectedSiblingCount": 3,
+      "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+      "invariantVerified": true,
+      "moveCount": 3,
+      "moveNumber": 2,
+      "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+      "positionCount": 4,
+      "replayErrorsAbsent": true,
+      "siblingCountAfterDelete": 3,
+      "siblingCountVerified": true,
+      "stones": 3,
+      "targetExistsAfterDelete": false,
+      "verified": true
+    },
+    "commentEdit": {
+      "status": "pass"
+    },
+    "propertyEdit": {
+      "status": "pass"
+    },
+    "saveReadbackRoundtrip": {
+      "afterReopen": {
+        "annotationsVerified": true,
+        "boardStateVerified": true,
+        "commentsVerified": true,
+        "deletedTargetAbsent": true,
+        "moveCountVerified": true,
+        "propertiesVerified": true,
+        "treeOrderVerified": true
+      },
+      "readbackStatus": "matched_saved_text",
+      "readbackVerified": true,
+      "status": "pass"
+    },
+    "sourceRuntimeEvidence": {
+      "path": "docs/qa/tauri-runtime-ui-smoke-macos.json",
+      "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+      "status": "pass"
+    },
+    "structuralEdit": {
+      "appendMove": "pass"
+    }
+  },
+  "startedAt": "2026-05-12T03:31:31Z",
+  "status": "pass",
+  "steps": [
+    {
+      "details": {
+        "method": "operator-confirmed native desktop app visible",
+        "screenshot": {
+          "bytes": 696530,
+          "captureTool": "screencapture",
+          "name": "app_started",
+          "path": "docs/qa/screenshots/native-desktop-sgf-app-started.png",
+          "sha256": "94210fd911a1efd417fd2ad4c1f0037985b8e0421c6df9ea3a79392cba4cd1e7"
+        }
+      },
+      "name": "app_started",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "manual-assisted macOS native Open dialog",
+        "openedPath": "<tmp>/native-desktop-sgf-input.sgf",
+        "operator": {
+          "confirmation": "operator confirmed selected input SGF in native Open dialog",
+          "tooling": [
+            "screencapture"
+          ],
+          "type": "manual-assisted"
+        },
+        "screenshot": {
+          "bytes": 820158,
+          "captureTool": "screencapture",
+          "name": "native_open_dialog",
+          "path": "docs/qa/screenshots/native-desktop-sgf-open-dialog.png",
+          "sha256": "e080afad4847eb2f77b5dffd3d0b3bb63f869f64fe876f7de41fd18570ce5a68"
+        }
+      },
+      "name": "native_open_dialog",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "operator-confirmed SGF opened after native dialog",
+        "openedPath": "<tmp>/native-desktop-sgf-input.sgf",
+        "screenshot": {
+          "bytes": 703568,
+          "captureTool": "screencapture",
+          "name": "sgf_opened",
+          "path": "docs/qa/screenshots/native-desktop-sgf-opened.png",
+          "sha256": "cc0912f3f0d701d5f4c96f5730eb588715ad12b1ef77d3e67a1a0129a564cdca"
+        }
+      },
+      "name": "sgf_opened",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "existing Tauri runtime semantic proof",
+        "semanticProof": {
+          "annotationEdit": {
+            "annotations": {
+              "AR": [
+                "aa:bb"
+              ],
+              "CR": [
+                "bb"
+              ],
+              "LB": [
+                "aa:A",
+                "ee:E"
+              ],
+              "LN": [
+                "cc:dd"
+              ],
+              "MA": [
+                "cc"
+              ],
+              "SL": [
+                "dd"
+              ],
+              "SQ": [],
+              "TR": [
+                "aa"
+              ]
+            },
+            "status": "pass"
+          },
+          "boardInvariant": {
+            "absentAfterDelete": true,
+            "boardInvariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "deletedTargetVertex": "1,0",
+            "expectedSiblingCount": 3,
+            "invariant": "saved_or_reopened_replay_has_no_errors_and_position_count_matches_move_count_plus_initial_position",
+            "invariantVerified": true,
+            "moveCount": 3,
+            "moveNumber": 2,
+            "nodeId": "f41ba537-7cd3-48a2-aa97-93ee9e8ccf94",
+            "positionCount": 4,
+            "replayErrorsAbsent": true,
+            "siblingCountAfterDelete": 3,
+            "siblingCountVerified": true,
+            "stones": 3,
+            "targetExistsAfterDelete": false,
+            "verified": true
+          },
+          "commentEdit": {
+            "status": "pass"
+          },
+          "propertyEdit": {
+            "status": "pass"
+          },
+          "saveReadbackRoundtrip": {
+            "afterReopen": {
+              "annotationsVerified": true,
+              "boardStateVerified": true,
+              "commentsVerified": true,
+              "deletedTargetAbsent": true,
+              "moveCountVerified": true,
+              "propertiesVerified": true,
+              "treeOrderVerified": true
+            },
+            "readbackStatus": "matched_saved_text",
+            "readbackVerified": true,
+            "status": "pass"
+          },
+          "sourceRuntimeEvidence": {
+            "path": "docs/qa/tauri-runtime-ui-smoke-macos.json",
+            "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+            "status": "pass"
+          },
+          "structuralEdit": {
+            "appendMove": "pass"
+          }
+        }
+      },
+      "name": "edit_operations_applied",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "manual-assisted macOS native Save dialog",
+        "operator": {
+          "confirmation": "operator confirmed selected output SGF in native Save dialog",
+          "tooling": [
+            "screencapture"
+          ],
+          "type": "manual-assisted"
+        },
+        "savedPath": "<tmp>/native-desktop-sgf-saved.sgf",
+        "screenshot": {
+          "bytes": 751758,
+          "captureTool": "screencapture",
+          "name": "save_or_save_as",
+          "path": "docs/qa/screenshots/native-desktop-sgf-save-dialog.png",
+          "sha256": "73e3f6ef107abec0f8014ca26b9d9e4e4158dca65d8f514d2644fa4691b3eb83"
+        }
+      },
+      "name": "save_or_save_as",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "manual-assisted native Open of just-saved SGF path",
+        "openedPath": "<tmp>/native-desktop-sgf-saved.sgf",
+        "operator": {
+          "confirmation": "operator confirmed selected saved SGF in native Open dialog",
+          "tooling": [
+            "screencapture"
+          ],
+          "type": "manual-assisted"
+        },
+        "screenshot": {
+          "bytes": 825484,
+          "captureTool": "screencapture",
+          "name": "reopen_saved_sgf",
+          "path": "docs/qa/screenshots/native-desktop-sgf-reopen-dialog.png",
+          "sha256": "c4b0712d670a6d68a4cafb4fab3c58d7eb8aabf14ea8328843234aaf414857d1"
+        }
+      },
+      "name": "reopen_saved_sgf",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "invariants": {
+          "boardInvariant": {
+            "expectedStones": [
+              {
+                "color": "B",
+                "point": "dd"
+              },
+              {
+                "color": "W",
+                "point": "ee"
+              }
+            ],
+            "verifiedByContent": true
+          },
+          "contentHash": "b803431e92bcee6fac21df39b1e42f16e8cfc34c00836c2e4092f67f6f4adefb",
+          "contentInvariant": {
+            "boardSize9": true,
+            "sourceCommentPresent": true
+          },
+          "treeInvariant": {
+            "moveCountAtLeast": 2,
+            "moveTokens": [
+              ";B[dd]",
+              ";W[ee]"
+            ],
+            "rootPresent": true
+          },
+          "verified": true
+        },
+        "method": "saved SGF content/tree/board invariant verification plus operator-confirmed reopened app state",
+        "screenshot": {
+          "bytes": 703692,
+          "captureTool": "screencapture",
+          "name": "reopen_state",
+          "path": "docs/qa/screenshots/native-desktop-sgf-reopened.png",
+          "sha256": "d80f326cf7a6fc34c1cd19c50b628abaf22206bc4dc3f18d1766cf3a47226136"
+        }
+      },
+      "name": "reopen_state_verified",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "sha256 and positive byte validation",
+        "screenshotCount": 7
+      },
+      "name": "screenshots_recorded",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "method": "explicit scoped evidence boundaries"
+      },
+      "name": "scope_boundaries",
+      "status": "pass"
+    }
+  ],
+  "termination": {
+    "attempted": false,
+    "operatorManagedAppLifecycle": true,
+    "terminated": false
+  },
+  "webviewDomAutomationCovered": false
+}

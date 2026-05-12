@@ -53,6 +53,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("desktop_ui_click_smoke", pending_names)
             self.assertIn("tauri_window_runtime_smoke", pending_names)
             self.assertIn("installed_macos_app_smoke", pending_names)
+            self.assertIn("native_desktop_sgf_workflow", pending_names)
             self.assertIn("katago_live_smoke", pending_names)
             self.assertIn("readboard_live_smoke", pending_names)
             self.assertIn("provider_live_smoke", pending_names)
@@ -507,6 +508,280 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertNotIn("installed_macos_app_smoke", failures)
             self.assertIn("installed_macos_app_smoke", pending)
             self.assertIn(expected_detail, pending["installed_macos_app_smoke"])
+
+    def test_valid_native_desktop_sgf_workflow_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            write_valid_native_desktop_sgf_workflow_evidence(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("native_desktop_sgf_workflow", pass_names)
+            self.assertNotIn("native_desktop_sgf_workflow", pending_names)
+
+    def test_native_desktop_sgf_workflow_accepts_string_operator_metadata(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            for check_name in ("native_open_dialog", "save_or_save_as"):
+                details = find_evidence_check(evidence, check_name)["details"]
+                assert isinstance(details, dict)
+                details["operator"] = "qa-worker"
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("native_desktop_sgf_workflow", pass_names)
+            self.assertNotIn("native_desktop_sgf_workflow", pending_names)
+
+    def test_native_desktop_sgf_workflow_rejects_full_automation_with_manual_steps(self) -> None:
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            lambda evidence: evidence.__setitem__("fullAutomationCovered", True),
+            "fullAutomationCovered must be false when manual-assisted steps are present",
+        )
+
+    def test_native_desktop_sgf_workflow_requires_native_dialog_coverage(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["nativeDialogOpenCovered"] = False
+            evidence["nativeDialogSaveCovered"] = False
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_desktop_sgf_workflow", failures)
+            self.assertIn("native_desktop_sgf_workflow", pending)
+            self.assertIn("nativeDialogOpenCovered must be true", pending["native_desktop_sgf_workflow"])
+            self.assertIn("nativeDialogSaveCovered must be true", pending["native_desktop_sgf_workflow"])
+
+    def test_native_desktop_sgf_workflow_rejects_release_and_parity_claims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["fullLegacyParityCovered"] = True
+            evidence["productionSigned"] = True
+            evidence["notarized"] = True
+            evidence["releasePublished"] = True
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_desktop_sgf_workflow", failures)
+            self.assertIn("native_desktop_sgf_workflow", pending)
+            self.assertIn("fullLegacyParityCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("productionSigned must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("notarized must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("releasePublished must be false", pending["native_desktop_sgf_workflow"])
+
+    def test_native_desktop_sgf_workflow_rejects_native_dialog_without_metadata(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            open_check = next(check for check in checks if isinstance(check, dict) and check.get("name") == "native_open_dialog")
+            assert isinstance(open_check, dict)
+            open_check["details"] = {"method": "", "openedSgfPath": "", "screenshotPath": ""}
+
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            mutate,
+            "native_open_dialog must include operator metadata",
+        )
+
+    def test_native_desktop_sgf_workflow_rejects_save_dialog_without_metadata(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            save_check = next(check for check in checks if isinstance(check, dict) and check.get("name") == "save_or_save_as")
+            assert isinstance(save_check, dict)
+            save_check["details"] = {"operator": "", "method": "", "savedSgfPath": "", "screenshotPath": ""}
+
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            mutate,
+            "save_or_save_as must include SGF path metadata",
+        )
+
+    def test_native_desktop_sgf_workflow_rejects_webview_dom_claim(self) -> None:
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            lambda evidence: evidence.__setitem__("webviewDomAutomationCovered", True),
+            "webviewDomAutomationCovered must be false for this scoped batch",
+        )
+
+    def test_native_desktop_sgf_workflow_rejects_boundary_scope_claims(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            boundaries = evidence["boundaries"]
+            assert isinstance(boundaries, dict)
+            boundaries["windowsInstalledAppCovered"] = True
+            boundaries["linuxInstalledAppCovered"] = True
+            boundaries["ocrCaptureCovered"] = True
+            boundaries["externalClientCaptureCovered"] = True
+            boundaries["providerParityCovered"] = True
+            boundaries["readboardParityCovered"] = True
+            boundaries["webviewDomAutomationCovered"] = True
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_desktop_sgf_workflow", failures)
+            self.assertIn("native_desktop_sgf_workflow", pending)
+            self.assertIn("boundaries.windowsInstalledAppCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("boundaries.linuxInstalledAppCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("boundaries.ocrCaptureCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("boundaries.externalClientCaptureCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("boundaries.providerParityCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("boundaries.readboardParityCovered must be false", pending["native_desktop_sgf_workflow"])
+            self.assertIn("boundaries.webviewDomAutomationCovered must be false", pending["native_desktop_sgf_workflow"])
+
+    def test_native_desktop_sgf_workflow_rejects_local_absolute_paths(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["appPath"] = "/Applications/LizzieYzy.app"
+            evidence["logPath"] = "/var/folders/native-workflow.log"
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            screenshot = screenshots[0]
+            assert isinstance(screenshot, dict)
+            screenshot["path"] = "/Users/haoc/native-workflow.png"
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            open_check = next(check for check in checks if isinstance(check, dict) and check.get("name") == "native_open_dialog")
+            assert isinstance(open_check, dict)
+            details = open_check["details"]
+            assert isinstance(details, dict)
+            details["openedPath"] = "C:\\Users\\haoc\\game.sgf"
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_desktop_sgf_workflow", failures)
+            self.assertIn("native_desktop_sgf_workflow", pending)
+            self.assertIn("appPath must not be a local absolute path", pending["native_desktop_sgf_workflow"])
+            self.assertIn("logPath must not be a local absolute path", pending["native_desktop_sgf_workflow"])
+            self.assertIn("screenshots[0].path must not be a local absolute path", pending["native_desktop_sgf_workflow"])
+            self.assertIn("native_open_dialog SGF path must not be a local absolute path", pending["native_desktop_sgf_workflow"])
+
+    def test_native_desktop_sgf_workflow_rejects_invalid_screenshots(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            screenshot = screenshots[0]
+            assert isinstance(screenshot, dict)
+            screenshot["bytes"] = 0
+            screenshot["sha256"] = "not-sha"
+
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            mutate,
+            "screenshots[0].bytes must be positive",
+        )
+
+    def test_native_desktop_sgf_workflow_requires_screenshot_sha(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            screenshots = evidence["screenshots"]
+            assert isinstance(screenshots, list)
+            screenshot = screenshots[0]
+            assert isinstance(screenshot, dict)
+            screenshot["sha256"] = "not-sha"
+
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            mutate,
+            "screenshots[0].sha256 must be a 64-character hex sha256",
+        )
+
+    def test_native_desktop_sgf_workflow_requires_screenshot_records(self) -> None:
+        self.assert_invalid_native_desktop_sgf_workflow_pending(
+            lambda evidence: evidence.__setitem__("screenshots", []),
+            "screenshots must include at least one record",
+        )
+
+    def test_native_desktop_sgf_workflow_rejects_missing_reopen_invariants(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            reopen = next(check for check in checks if isinstance(check, dict) and check.get("name") == "reopen_state_verified")
+            assert isinstance(reopen, dict)
+            details = reopen["details"]
+            assert isinstance(details, dict)
+            invariants = details["invariants"]
+            assert isinstance(invariants, dict)
+            invariants["contentHash"] = ""
+            invariants["contentInvariant"] = {}
+            board = invariants["boardInvariant"]
+            tree = invariants["treeInvariant"]
+            assert isinstance(board, dict)
+            assert isinstance(tree, dict)
+            board["verifiedByContent"] = False
+            tree["rootPresent"] = False
+            tree["moveCountAtLeast"] = 1
+            tree["moveTokens"] = []
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            mutate(evidence)
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_desktop_sgf_workflow", failures)
+            self.assertIn("native_desktop_sgf_workflow", pending)
+            self.assertIn("reopen_state_verified must include persisted edit evidence", pending["native_desktop_sgf_workflow"])
+            self.assertIn("reopen_state_verified must verify board invariant", pending["native_desktop_sgf_workflow"])
+            self.assertIn("reopen_state_verified must verify tree invariant", pending["native_desktop_sgf_workflow"])
+
+    def assert_invalid_native_desktop_sgf_workflow_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_native_desktop_sgf_workflow_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("native_desktop_sgf_workflow", failures)
+            self.assertIn("native_desktop_sgf_workflow", pending)
+            self.assertIn(expected_detail, pending["native_desktop_sgf_workflow"])
 
     def test_valid_katago_live_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1402,6 +1677,13 @@ def write_valid_installed_macos_app_evidence(root: Path) -> None:
     )
 
 
+def write_valid_native_desktop_sgf_workflow_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE,
+        valid_native_desktop_sgf_workflow_evidence(),
+    )
+
+
 def write_valid_katago_live_evidence(root: Path) -> None:
     write_json(root / smoke_user_flows.KATAGO_LIVE_SMOKE_EVIDENCE, valid_katago_live_evidence())
 
@@ -2051,6 +2333,191 @@ def valid_installed_macos_app_evidence() -> dict[str, object]:
             "status": "pass",
             "exitCode": 0,
             "success": True,
+        },
+    }
+
+
+def valid_native_desktop_sgf_workflow_evidence() -> dict[str, object]:
+    return {
+        "schema": smoke_user_flows.NATIVE_DESKTOP_SGF_WORKFLOW_SCHEMA,
+        "name": "native_desktop_sgf_workflow",
+        "status": "pass",
+        "platform": "macos",
+        "appMode": "packaged-macos-app",
+        "collectionMethod": "manual_assisted_native_desktop_workflow",
+        "nativeDialogOpenCovered": True,
+        "nativeDialogSaveCovered": True,
+        "webviewDomAutomationCovered": False,
+        "fullAutomationCovered": False,
+        "fullLegacyParityCovered": False,
+        "releasePublished": False,
+        "productionSigned": False,
+        "notarized": False,
+        "appPath": "dist/macos/LizzieYzy.app",
+        "inputSgfPath": "<tmp>/native-desktop-sgf-workflow/input.sgf",
+        "savedSgfPath": "<tmp>/native-desktop-sgf-workflow/saved.sgf",
+        "logPath": "docs/qa/logs/native-desktop-sgf-workflow.log",
+        "screenshots": [
+            {
+                "label": "native-open-dialog",
+                "path": "docs/qa/screenshots/native-desktop-sgf-open-dialog.png",
+                "bytes": 1234,
+                "sha256": "1" * 64,
+            },
+            {
+                "label": "native-reopened-sgf",
+                "path": "docs/qa/screenshots/native-desktop-sgf-reopened.png",
+                "bytes": 2345,
+                "sha256": "2" * 64,
+            },
+        ],
+        "checks": [
+            {
+                "name": "app_started",
+                "status": "pass",
+                "details": {
+                    "appPath": "dist/macos/LizzieYzy.app",
+                    "logPath": "docs/qa/logs/native-desktop-sgf-workflow.log",
+                },
+            },
+            {
+                "name": "native_open_dialog",
+                "status": "pass",
+                "details": {
+                    "operator": {
+                        "confirmation": "operator confirmed selected input SGF in native Open dialog",
+                        "tooling": ["screencapture"],
+                        "type": "manual-assisted",
+                    },
+                    "method": "manual_assisted_native_dialog",
+                    "openedPath": "<tmp>/native-desktop-sgf-workflow/input.sgf",
+                    "screenshot": {
+                        "path": "docs/qa/screenshots/native-desktop-sgf-open-dialog.png",
+                        "bytes": 1234,
+                        "sha256": "1" * 64,
+                    },
+                },
+            },
+            {
+                "name": "sgf_opened",
+                "status": "pass",
+                "details": {
+                    "openedSgfPath": "<tmp>/native-desktop-sgf-workflow/input.sgf",
+                    "boardLoaded": True,
+                    "treeLoaded": True,
+                },
+            },
+            {
+                "name": "edit_operations_applied",
+                "status": "pass",
+                "details": {
+                    "operations": [
+                        "comment_edit",
+                        "property_edit",
+                        "annotation_edit",
+                        "append_move",
+                        "reorder_variation",
+                        "delete_node",
+                    ],
+                    "editsApplied": True,
+                },
+            },
+            {
+                "name": "save_or_save_as",
+                "status": "pass",
+                "details": {
+                    "operator": {
+                        "confirmation": "operator confirmed selected output SGF in native Save dialog",
+                        "tooling": ["screencapture"],
+                        "type": "manual-assisted",
+                    },
+                    "method": "manual_assisted_native_dialog",
+                    "savedPath": "<tmp>/native-desktop-sgf-workflow/saved.sgf",
+                    "screenshot": {
+                        "path": "docs/qa/screenshots/native-desktop-sgf-save-dialog.png",
+                        "bytes": 2234,
+                        "sha256": "3" * 64,
+                    },
+                },
+            },
+            {
+                "name": "reopen_saved_sgf",
+                "status": "pass",
+                "details": {
+                    "savedSgfPath": "<tmp>/native-desktop-sgf-workflow/saved.sgf",
+                    "reopenedSgfPath": "<tmp>/native-desktop-sgf-workflow/saved.sgf",
+                    "reopened": True,
+                },
+            },
+            {
+                "name": "reopen_state_verified",
+                "status": "pass",
+                "details": {
+                    "method": "saved SGF content/tree/board invariant verification plus operator-confirmed reopened app state",
+                    "invariants": {
+                        "verified": True,
+                        "contentHash": "4" * 64,
+                        "contentInvariant": {
+                            "boardSize9": True,
+                            "sourceCommentPresent": True,
+                        },
+                        "boardInvariant": {
+                            "verifiedByContent": True,
+                            "expectedStones": [
+                                {"color": "B", "point": "dd"},
+                                {"color": "W", "point": "ee"},
+                            ],
+                        },
+                        "treeInvariant": {
+                            "moveCountAtLeast": 2,
+                            "rootPresent": True,
+                            "moveTokens": [";B[dd]", ";W[ee]"],
+                        },
+                    },
+                },
+            },
+            {
+                "name": "screenshots_recorded",
+                "status": "pass",
+                "details": {
+                    "count": 2,
+                    "paths": [
+                        "docs/qa/screenshots/native-desktop-sgf-open-dialog.png",
+                        "docs/qa/screenshots/native-desktop-sgf-reopened.png",
+                    ],
+                },
+            },
+            {
+                "name": "scope_boundaries",
+                "status": "pass",
+                "details": {
+                    "webviewDomAutomationCovered": False,
+                    "fullAutomationCovered": False,
+                    "fullLegacyParityCovered": False,
+                    "releasePublished": False,
+                    "productionSigned": False,
+                    "notarized": False,
+                },
+            },
+        ],
+        "boundaries": {
+            "windowsCovered": False,
+            "windowsInstalledAppCovered": False,
+            "linuxCovered": False,
+            "linuxInstalledAppCovered": False,
+            "ocrCovered": False,
+            "ocrCaptureCovered": False,
+            "captureCovered": False,
+            "externalClientCaptureCovered": False,
+            "providerCovered": False,
+            "providerParityCovered": False,
+            "readboardCovered": False,
+            "readboardParityCovered": False,
+            "webviewDomAutomationCovered": False,
+            "fullLegacyParityCovered": False,
+            "releasePublished": False,
+            "productionSigned": False,
+            "notarized": False,
         },
     }
 

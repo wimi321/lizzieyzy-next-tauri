@@ -61,6 +61,34 @@ TAURI_WINDOW_RUNTIME_SMOKE_EVIDENCE = "docs/qa/tauri-window-runtime-smoke-macos.
 TAURI_WINDOW_RUNTIME_SMOKE_SCHEMA = "lizzieyzy.tauri-window-runtime-smoke.v1"
 INSTALLED_MACOS_APP_SMOKE_EVIDENCE = "docs/qa/installed-macos-app-smoke.json"
 INSTALLED_MACOS_APP_SMOKE_SCHEMA = "lizzieyzy.installed-macos-app-smoke.v1"
+NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE = "docs/qa/native-desktop-sgf-workflow-macos.json"
+NATIVE_DESKTOP_SGF_WORKFLOW_SCHEMA = "lizzieyzy.native-desktop-sgf-workflow.v1"
+NATIVE_DESKTOP_SGF_WORKFLOW_COLLECTION_METHODS = {
+    "manual_assisted_native_desktop_workflow",
+    "automated_native_desktop_workflow",
+    "automated_native_desktop_sgf_workflow",
+}
+NATIVE_DESKTOP_SGF_WORKFLOW_REQUIRED_BOOLEANS = [
+    "nativeDialogOpenCovered",
+    "nativeDialogSaveCovered",
+    "webviewDomAutomationCovered",
+    "fullAutomationCovered",
+    "fullLegacyParityCovered",
+    "releasePublished",
+    "productionSigned",
+    "notarized",
+]
+NATIVE_DESKTOP_SGF_WORKFLOW_REQUIRED_CHECKS = [
+    "app_started",
+    "native_open_dialog",
+    "sgf_opened",
+    "edit_operations_applied",
+    "save_or_save_as",
+    "reopen_saved_sgf",
+    "reopen_state_verified",
+    "screenshots_recorded",
+    "scope_boundaries",
+]
 KATAGO_LIVE_SMOKE_EVIDENCE = "docs/qa/katago-live-smoke-macos.json"
 KATAGO_LIVE_SMOKE_SCHEMA = "lizzieyzy.katago-live-smoke.v1"
 KATAGO_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -649,6 +677,7 @@ class UserFlowSmoke:
         self.check_desktop_ui_click_smoke_evidence()
         self.check_tauri_window_runtime_smoke_evidence()
         self.check_installed_macos_app_smoke_evidence()
+        self.check_native_desktop_sgf_workflow_evidence()
         self.check_katago_live_smoke_evidence()
         self.check_readboard_live_smoke_evidence()
         self.check_provider_live_smoke_evidence()
@@ -772,6 +801,30 @@ class UserFlowSmoke:
         self.pass_(
             "installed_macos_app_smoke",
             "scoped installed macOS .app launch smoke evidence passes with app bundle, window, screenshot, dev-server, and release-boundary checks",
+        )
+
+    def check_native_desktop_sgf_workflow_evidence(self) -> None:
+        evidence_path = self.path(NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "native_desktop_sgf_workflow",
+                f"TODO gate: record scoped native desktop SGF open/edit/save/reopen workflow evidence at {NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_native_desktop_sgf_workflow_evidence(evidence)
+        if failures:
+            self.pending(
+                "native_desktop_sgf_workflow",
+                f"{NATIVE_DESKTOP_SGF_WORKFLOW_EVIDENCE} is present but not valid scoped native desktop SGF workflow PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "native_desktop_sgf_workflow",
+            "scoped native desktop SGF open/edit/save/reopen workflow evidence passes with native dialog, persistence, screenshot, and boundary checks",
         )
 
     def check_katago_live_smoke_evidence(self) -> None:
@@ -1455,6 +1508,291 @@ def validate_installed_macos_app_termination(evidence: dict[str, Any]) -> list[s
     if first_present(evidence, "terminated", "terminateSuccess", "exitSuccess", "exited") is True:
         return []
     return ["exit/terminate success must be recorded"]
+
+
+def validate_native_desktop_sgf_workflow_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != NATIVE_DESKTOP_SGF_WORKFLOW_SCHEMA:
+        failures.append(f"schema must be {NATIVE_DESKTOP_SGF_WORKFLOW_SCHEMA}")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    platform = str(evidence.get("platform", "")).lower()
+    if platform not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    app_mode = evidence.get("appMode")
+    if app_mode not in {"tauri-dev", "packaged-macos-app"}:
+        failures.append("appMode must be tauri-dev or packaged-macos-app")
+    collection_method = evidence.get("collectionMethod")
+    if collection_method not in NATIVE_DESKTOP_SGF_WORKFLOW_COLLECTION_METHODS:
+        failures.append("collectionMethod must be explicit")
+
+    for key in NATIVE_DESKTOP_SGF_WORKFLOW_REQUIRED_BOOLEANS:
+        if evidence.get(key) not in {True, False}:
+            failures.append(f"{key} must be a boolean")
+    for key in ("nativeDialogOpenCovered", "nativeDialogSaveCovered"):
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in ("fullLegacyParityCovered", "productionSigned", "notarized", "releasePublished"):
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    if evidence.get("webviewDomAutomationCovered") is not False:
+        failures.append("webviewDomAutomationCovered must be false for this scoped batch")
+    if evidence.get("fullAutomationCovered") is True and native_workflow_has_manual_assisted_step(evidence):
+        failures.append("fullAutomationCovered must be false when manual-assisted steps are present")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in NATIVE_DESKTOP_SGF_WORKFLOW_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in NATIVE_DESKTOP_SGF_WORKFLOW_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    failures.extend(validate_native_desktop_workflow_dialog_coverage(evidence, check_by_name))
+    failures.extend(validate_native_desktop_workflow_screenshots(evidence))
+    failures.extend(validate_native_desktop_workflow_reopen_state(check_by_name.get("reopen_state_verified")))
+    failures.extend(validate_native_desktop_workflow_scope_boundaries(evidence))
+    failures.extend(validate_native_desktop_workflow_paths(evidence))
+    return failures
+
+
+def native_workflow_has_manual_assisted_step(evidence: dict[str, Any]) -> bool:
+    if evidence.get("collectionMethod") == "manual_assisted_native_desktop_workflow":
+        return True
+    for value in (evidence.get("steps"), evidence.get("checks")):
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            details = check_evidence(item) or item
+            method = first_present(details, "method", "collectionMethod", "interactionMethod")
+            if isinstance(method, str) and "manual" in method.lower():
+                return True
+            operator = first_present(details, "operator", "operatorId", "operatorName")
+            if isinstance(operator, str) and operator.strip():
+                return True
+    return False
+
+
+def validate_native_desktop_workflow_dialog_coverage(
+    evidence: dict[str, Any],
+    check_by_name: dict[str, Any],
+) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("nativeDialogOpenCovered") is True:
+        failures.extend(
+            validate_native_desktop_workflow_dialog_step(
+                check_by_name.get("native_open_dialog"),
+                "native_open_dialog",
+                ("openedPath", "openedSgfPath", "opened_sgf_path", "sgfPath", "inputSgfPath"),
+            )
+        )
+    if evidence.get("nativeDialogSaveCovered") is True:
+        failures.extend(
+            validate_native_desktop_workflow_dialog_step(
+                check_by_name.get("save_or_save_as"),
+                "save_or_save_as",
+                ("savedPath", "savedSgfPath", "saved_sgf_path", "outputSgfPath", "sgfPath"),
+            )
+        )
+    return failures
+
+
+def validate_native_desktop_workflow_dialog_step(check: Any, name: str, path_keys: tuple[str, ...]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return [f"{name} must include concrete native dialog step evidence"]
+    failures: list[str] = []
+    operator = first_present(evidence, "operator", "operatorId", "operatorName")
+    if not has_operator_metadata(operator):
+        failures.append(f"{name} must include operator metadata")
+    method = first_present(evidence, "method", "dialogMethod", "interactionMethod")
+    if not isinstance(method, str) or not method.strip():
+        failures.append(f"{name} must include method metadata")
+    sgf_path = first_present(evidence, *path_keys)
+    if not isinstance(sgf_path, str) or not sgf_path.strip():
+        failures.append(f"{name} must include SGF path metadata")
+    elif not is_allowed_evidence_path(sgf_path):
+        failures.append(f"{name} SGF path must not be a local absolute path")
+    screenshot = first_present(evidence, "screenshot", "screenshotPath", "screenshot_path", "screenshotRef")
+    if isinstance(screenshot, dict):
+        screenshot_path = screenshot.get("path")
+        if not isinstance(screenshot_path, str) or not screenshot_path.strip():
+            failures.append(f"{name} screenshot.path must be present")
+        elif not is_allowed_evidence_path(screenshot_path):
+            failures.append(f"{name} screenshot.path must not be a local absolute path")
+    elif not isinstance(screenshot, str) or not screenshot.strip():
+        failures.append(f"{name} must include screenshot evidence")
+    elif not is_allowed_evidence_path(screenshot):
+        failures.append(f"{name} screenshot path must not be a local absolute path")
+    return failures
+
+
+def has_operator_metadata(value: Any) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return bool(value)
+    return False
+
+
+def validate_native_desktop_workflow_screenshots(evidence: dict[str, Any]) -> list[str]:
+    screenshots = evidence.get("screenshots")
+    if not isinstance(screenshots, list):
+        return ["screenshots must be a list"]
+    failures: list[str] = []
+    if not screenshots:
+        failures.append("screenshots must include at least one record")
+    for index, screenshot in enumerate(screenshots):
+        if not isinstance(screenshot, dict):
+            failures.append(f"screenshots[{index}] must be an object")
+            continue
+        path = screenshot.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"screenshots[{index}].path must be a stable repo-relative or <tmp> path")
+        elif not is_allowed_evidence_path(path):
+            failures.append(f"screenshots[{index}].path must not be a local absolute path")
+        bytes_value = first_present(screenshot, "bytes", "sizeBytes", "size_bytes")
+        if not positive_number(bytes_value):
+            failures.append(f"screenshots[{index}].bytes must be positive")
+        if not is_sha256_hex(screenshot.get("sha256")):
+            failures.append(f"screenshots[{index}].sha256 must be a 64-character hex sha256")
+    return failures
+
+
+def validate_native_desktop_workflow_reopen_state(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["reopen_state_verified evidence must be an object"]
+    failures: list[str] = []
+    invariants = evidence.get("invariants")
+    if invariants is not None and not isinstance(invariants, dict):
+        failures.append("reopen_state_verified.invariants must be an object when present")
+        invariants = None
+    persisted = first_present(
+        evidence,
+        "persistedEditsVerified",
+        "persisted_edit_evidence",
+        "persistedEditEvidence",
+        "editsPersisted",
+    )
+    nested_persisted = False
+    if isinstance(invariants, dict) and invariants.get("verified") is True:
+        content_hash = invariants.get("contentHash")
+        content_invariant = invariants.get("contentInvariant")
+        nested_persisted = (isinstance(content_hash, str) and bool(content_hash.strip())) or (
+            isinstance(content_invariant, dict) and bool(content_invariant)
+        )
+    if persisted is not True and not isinstance(persisted, dict) and not nested_persisted:
+        failures.append("reopen_state_verified must include persisted edit evidence")
+    if (
+        first_present(evidence, "boardInvariantVerified", "boardStateVerified", "board_state_verified") is not True
+        and not nested_board_invariant_verified(invariants)
+    ):
+        failures.append("reopen_state_verified must verify board invariant")
+    if (
+        first_present(evidence, "treeInvariantVerified", "treeStateVerified", "tree_state_verified") is not True
+        and not nested_tree_invariant_verified(invariants)
+    ):
+        failures.append("reopen_state_verified must verify tree invariant")
+    return failures
+
+
+def nested_board_invariant_verified(invariants: Any) -> bool:
+    if not isinstance(invariants, dict) or invariants.get("verified") is not True:
+        return False
+    board = invariants.get("boardInvariant")
+    if not isinstance(board, dict):
+        return False
+    return board.get("verifiedByContent") is True or board.get("verified") is True
+
+
+def nested_tree_invariant_verified(invariants: Any) -> bool:
+    if not isinstance(invariants, dict) or invariants.get("verified") is not True:
+        return False
+    tree = invariants.get("treeInvariant")
+    if not isinstance(tree, dict):
+        return False
+    if tree.get("verified") is True:
+        return True
+    move_count = tree.get("moveCountAtLeast")
+    move_tokens = tree.get("moveTokens")
+    return tree.get("rootPresent") is True and isinstance(move_count, (int, float)) and move_count >= 2 and (
+        isinstance(move_tokens, list) and bool(move_tokens)
+    )
+
+
+def validate_native_desktop_workflow_scope_boundaries(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries")
+    if boundaries is not None and not isinstance(boundaries, dict):
+        return ["boundaries must be an object when present"]
+    boundary_map = boundaries if isinstance(boundaries, dict) else {}
+    forbidden_true = [
+        "windowsCovered",
+        "windowsInstalledAppCovered",
+        "linuxCovered",
+        "linuxInstalledAppCovered",
+        "ocrCovered",
+        "ocrCaptureCovered",
+        "captureCovered",
+        "externalClientCaptureCovered",
+        "providerCovered",
+        "providerParityCovered",
+        "readboardCovered",
+        "readboardParityCovered",
+    ]
+    for key in forbidden_true:
+        if boundary_map.get(key) is True:
+            failures.append(f"boundaries.{key} must be false")
+    for key in ("fullLegacyParityCovered", "productionSigned", "notarized", "releasePublished"):
+        if key in boundary_map and boundary_map.get(key) is not False:
+            failures.append(f"boundaries.{key} must be false")
+    if boundary_map.get("webviewDomAutomationCovered") is True:
+        failures.append("boundaries.webviewDomAutomationCovered must be false")
+    return failures
+
+
+def validate_native_desktop_workflow_paths(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+
+    def walk(value: Any, key_path: str) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                next_path = f"{key_path}.{key}" if key_path else str(key)
+                walk(child, next_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{key_path}[{index}]")
+        elif isinstance(value, str) and key_path:
+            key_name = key_path.rsplit(".", 1)[-1].lower()
+            if "path" not in key_name:
+                return
+            if not is_allowed_evidence_path(value):
+                failures.append(f"{key_path} must not be a local absolute path")
+
+    walk(evidence, "")
+    return failures
+
+
+def is_allowed_evidence_path(value: str) -> bool:
+    return value.startswith("<tmp>/") or is_stable_artifact_path(value)
 
 
 def validate_katago_live_smoke_evidence(evidence: Any) -> list[str]:

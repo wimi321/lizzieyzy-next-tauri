@@ -156,6 +156,7 @@ TAURI_COMMANDS = [
     "append_sgf_move",
     "delete_sgf_node",
 ]
+LEGACY_IMPORT_CAPTURE_HELPER_COMMAND = "legacy_import_capture_helper"
 TAURI_COMMAND_GROUPS = {
     "tauri_sgf_properties_command": ["update_sgf_node_properties"],
     "tauri_sgf_reorder_command": ["reorder_sgf_variation"],
@@ -190,6 +191,9 @@ TAURI_COMMAND_GROUPS = {
 LEGACY_SHELL_SOURCE = "apps/desktop/src/components/LegacyShell.tsx"
 APP_SOURCE = "apps/desktop/src/App.tsx"
 BACKEND_SOURCE = "apps/desktop/src/api/backend.ts"
+PROVIDER_API_SOURCE = "apps/desktop/src/api/providers.ts"
+PROVIDER_DOMAIN_SOURCE = "apps/desktop/src/domain/providers.ts"
+PROVIDER_PANEL_SOURCE = "apps/desktop/src/components/ProviderPanel.tsx"
 SGF_TREE_PANEL_SOURCE = "apps/desktop/src/components/SgfTreePanel.tsx"
 SGF_ANNOTATION_PANEL_SOURCE = "apps/desktop/src/components/SgfAnnotationPanel.tsx"
 PREFERENCES_PANEL_SOURCE = "apps/desktop/src/components/PreferencesPanel.tsx"
@@ -712,6 +716,120 @@ class UserFlowSmoke:
             "runtime asset layout backend wrappers and EngineSetupPanel bundled/runtime status surface are wired while local engine/model/config asset fields remain available",
         )
 
+    def check_legacy_import_capture_helper_surface(self) -> None:
+        frontend_sources = {
+            "provider API source": self.path(PROVIDER_API_SOURCE),
+            "provider domain source": self.path(PROVIDER_DOMAIN_SOURCE),
+            "ProviderPanel source": self.path(PROVIDER_PANEL_SOURCE),
+            "App source": self.path(APP_SOURCE),
+        }
+        if not any(path.is_file() for path in frontend_sources.values()):
+            self.pending(
+                "legacy_import_capture_helper_surface",
+                "provider/App source files absent in reduced fixture; full repository smoke must include legacy import/capture helper UI and API wiring evidence",
+            )
+            return
+        sources = {
+            "Tauri command source": self.path("apps/desktop/src-tauri/src/lib.rs"),
+            **frontend_sources,
+        }
+        missing_sources = [label for label, path in sources.items() if not path.is_file()]
+        if missing_sources:
+            self.fail("legacy_import_capture_helper_surface", "missing source file(s): " + ", ".join(missing_sources))
+            return
+
+        tauri_text = self.read_text("apps/desktop/src-tauri/src/lib.rs")
+        api_text = self.read_text(PROVIDER_API_SOURCE)
+        domain_text = self.read_text(PROVIDER_DOMAIN_SOURCE)
+        panel_text = self.read_text(PROVIDER_PANEL_SOURCE)
+        app_text = self.read_text(APP_SOURCE)
+        if tauri_text is None or api_text is None or domain_text is None or panel_text is None or app_text is None:
+            return
+        failures = [
+            *missing_tauri_command_surface(tauri_text, [LEGACY_IMPORT_CAPTURE_HELPER_COMMAND]),
+            *missing_required_tokens(
+                domain_text,
+                "provider domain",
+                [
+                    "LegacyImportCaptureHelperKind",
+                    "LegacyImportCaptureHelperStatus",
+                    "LegacyImportCaptureHelperRequest",
+                    "LegacyImportCaptureHelperResult",
+                    "recoverable_unsupported",
+                    "image_ocr",
+                    "external_window_capture",
+                    "external_client_capture",
+                    "imported",
+                    "boardReplacement",
+                    "payload",
+                    "image_path",
+                    "image_base64",
+                    "window_title",
+                    "client_name",
+                    "process_id",
+                    "timeout_ms",
+                    "metadata",
+                ],
+            ),
+            *missing_required_tokens(
+                api_text,
+                "provider API",
+                [
+                    "previewLegacyImportCaptureHelper",
+                    "legacy_import_capture_helper",
+                    "legacyImportCaptureHelperFallback",
+                    "recoverable_unsupported",
+                    "OCR/image helper",
+                    "External window/client capture",
+                    "imported: false",
+                    "boardReplacement",
+                    "No stale, guessed, or partial board replacement",
+                ],
+            ),
+            *missing_provider_api_invoke_command(
+                api_text,
+                "provider API",
+                "previewLegacyImportCaptureHelper",
+                LEGACY_IMPORT_CAPTURE_HELPER_COMMAND,
+            ),
+            *missing_required_tokens(
+                panel_text,
+                "ProviderPanel",
+                [
+                    "legacy-import-capture-helper-surface",
+                    "legacy-helper-sgf-payload",
+                    "legacy-helper-protocol-snapshot",
+                    "legacy-helper-ocr-unsupported",
+                    "legacy-helper-external-capture-unsupported",
+                    "legacy-helper-status",
+                    "legacy-helper-no-board-replacement",
+                    "SGF/payload helper",
+                    "Protocol snapshot helper",
+                    "OCR/image helper",
+                    "External window/client capture",
+                    "recoverable unsupported",
+                    "not imported",
+                    "not replaced",
+                    "board was not replaced",
+                    "previewLegacyImportCaptureHelper",
+                    "handleLegacyHelperStatus",
+                    "legacyHelperResult",
+                ],
+            ),
+            *missing_required_tokens(
+                app_text,
+                "App",
+                ["ProviderPanel", "handleProviderImport"],
+            ),
+        ]
+        if failures:
+            self.fail("legacy_import_capture_helper_surface", "missing legacy import/capture helper surface: " + ", ".join(failures))
+            return
+        self.pass_(
+            "legacy_import_capture_helper_surface",
+            "ProviderPanel exposes scoped SGF/payload and protocol snapshot helpers plus structured recoverable unsupported OCR/external capture boundaries without board replacement claims",
+        )
+
     def check_external_runtime_gates(self) -> None:
         self.check_tauri_runtime_ui_smoke_evidence()
         self.check_desktop_sgf_editing_ux_smoke_evidence()
@@ -1018,6 +1136,7 @@ class UserFlowSmoke:
         self.check_sgf_annotation_surface()
         self.check_legacy_config_migration_surface()
         self.check_runtime_asset_layout_surface()
+        self.check_legacy_import_capture_helper_surface()
         self.check_external_runtime_gates()
         return self.results
 
@@ -1030,6 +1149,21 @@ def missing_tauri_command_surface(text: str, commands: list[str]) -> list[str]:
         if not command_registered_in_handler(text, command):
             failures.append(f"{command} invoke handler")
     return failures
+
+
+def missing_provider_api_invoke_command(text: str, source_label: str, function_name: str, command: str) -> list[str]:
+    function_match = re.search(r"\b" + re.escape(function_name) + r"\s*\([^)]*\)\s*(?::[^{]+)?\{", text)
+    if not function_match:
+        return [f"{source_label} missing {function_name}"]
+    body_start = text.find("{", function_match.start())
+    body_end = find_matching_delimiter(text, body_start, "{", "}")
+    if body_end is None:
+        return [f"{source_label} {function_name} body is not balanced"]
+    body = text[body_start:body_end]
+    invoke_pattern = re.compile(r"\binvoke(?:\s*<[^>]+>)?\s*\(\s*['\"]" + re.escape(command) + r"['\"]")
+    if not invoke_pattern.search(body):
+        return [f"{source_label} {function_name} must invoke {command}"]
+    return []
 
 
 def validate_tauri_runtime_ui_smoke_evidence(evidence: Any) -> list[str]:

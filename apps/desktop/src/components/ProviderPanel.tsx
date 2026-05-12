@@ -4,6 +4,7 @@ import {
   fetchYikeProvider,
   importProviderPayload,
   parseYikeUrl,
+  previewLegacyImportCaptureHelper,
   probeReadboardSidecar,
   syncReadboardSidecarSnapshot
 } from "../api/providers";
@@ -17,6 +18,8 @@ import {
   type ProviderImportRequest,
   type ProviderImportResult,
   type ProviderKind,
+  type LegacyImportCaptureHelperKind,
+  type LegacyImportCaptureHelperResult,
   type ReadboardSidecarProbeResult,
   type ReadboardSidecarSyncSnapshotResult,
   type YikeUrlDescriptor
@@ -34,6 +37,7 @@ type OperationStatus = {
   import: string;
   readboardProbe: string;
   readboardSync: string;
+  legacyHelper: string;
 };
 
 type FoxFetchInput = {
@@ -50,7 +54,8 @@ const initialStatuses: OperationStatus = {
   fetch: "Provider fetch ready.",
   import: "Payload import ready.",
   readboardProbe: "Readboard probe ready.",
-  readboardSync: "Protocol snapshot preview ready."
+  readboardSync: "Protocol snapshot preview ready.",
+  legacyHelper: "Legacy helper status ready."
 };
 
 export function ProviderPanel({ disabled = false, onImport }: Props) {
@@ -63,6 +68,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardProtocolLine, setReadboardProtocolLine] = useState("");
   const [readboardProbeResult, setReadboardProbeResult] = useState<ReadboardSidecarProbeResult | null>(null);
   const [readboardSyncResult, setReadboardSyncResult] = useState<ReadboardSidecarSyncSnapshotResult | null>(null);
+  const [legacyHelperResult, setLegacyHelperResult] = useState<LegacyImportCaptureHelperResult | null>(null);
   const [providerWarnings, setProviderWarnings] = useState<string[]>([]);
   const canPreviewYike = !disabled && provider === "yike" && sourceUrl.trim().length > 0;
   const canFetchYike = !disabled && provider === "yike" && descriptor !== null;
@@ -187,6 +193,32 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       setOperationStatus("readboardSync", readboardSnapshotImportStatus(result));
     } catch (error) {
       setOperationStatus("readboardSync", `Readboard snapshot import failed: ${errorMessage(error)}`);
+    }
+  }
+
+  async function handleLegacyHelperStatus(kind: LegacyImportCaptureHelperKind) {
+    setOperationStatus("legacyHelper", legacyHelperPendingStatus(kind));
+    try {
+      const result = await previewLegacyImportCaptureHelper({
+        kind,
+        payload: kind === "sgf_payload" ? payload : kind === "protocol_snapshot" ? readboardProtocolLine : null,
+        metadata: { source: "provider_panel_legacy_helper_surface" }
+      });
+      setLegacyHelperResult(result);
+      setOperationStatus("legacyHelper", legacyHelperStatus(result));
+    } catch (error) {
+      setLegacyHelperResult({
+        kind,
+        status: "recoverable_unsupported",
+        title: "Legacy helper unavailable",
+        message: `Helper status failed: ${errorMessage(error)}. No SGF was imported and the board was not replaced.`,
+        recoverable: true,
+        imported: false,
+        boardReplacement: "none",
+        warnings: ["No stale, guessed, or partial board replacement was applied."],
+        details: { no_stale_board_replacement: "true" }
+      });
+      setOperationStatus("legacyHelper", "Legacy helper status unavailable; no import performed.");
     }
   }
 
@@ -349,6 +381,108 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         ) : null}
         <WarningList label="Readboard snapshot warnings" warnings={readboardSyncResult?.warnings ?? []} />
       </div>
+
+      <section className="legacy-import-helper" aria-label="Legacy import and capture helpers" data-testid="legacy-import-capture-helper-surface">
+        <div className="provider-subheader">
+          <h3>Legacy import/capture helpers</h3>
+          <span title={statuses.legacyHelper}>{statuses.legacyHelper}</span>
+        </div>
+        <div className="legacy-helper-grid">
+          <HelperCard
+            testId="legacy-helper-sgf-payload"
+            title="SGF/payload helper"
+            status="available"
+            detail="Paste SGF or provider JSON above, then use Import pasted payload."
+            actionLabel="Show payload path"
+            disabled={disabled}
+            onAction={() => void handleLegacyHelperStatus("sgf_payload")}
+          />
+          <HelperCard
+            testId="legacy-helper-protocol-snapshot"
+            title="Protocol snapshot helper"
+            status="available"
+            detail="Paste a readboard protocol line, preview it, then import only after a position is shown."
+            actionLabel="Show snapshot path"
+            disabled={disabled}
+            onAction={() => void handleLegacyHelperStatus("protocol_snapshot")}
+          />
+          <HelperCard
+            testId="legacy-helper-ocr-unsupported"
+            title="OCR/image helper"
+            status="recoverable unsupported"
+            detail="Image OCR import is not implemented here; it will not import SGF or replace the board."
+            actionLabel="Check OCR status"
+            disabled={disabled}
+            onAction={() => void handleLegacyHelperStatus("image_ocr")}
+          />
+          <HelperCard
+            testId="legacy-helper-external-capture-unsupported"
+            title="External window/client capture"
+            status="recoverable unsupported"
+            detail="External client/window capture is not implemented here; it will not import SGF or replace the board."
+            actionLabel="Check capture status"
+            disabled={disabled}
+            onAction={() => void handleLegacyHelperStatus("external_window_capture")}
+          />
+        </div>
+        <p className="provider-status" data-testid="legacy-helper-no-board-replacement">
+          Unsupported helpers are recoverable boundaries: no SGF import is performed and the board was not replaced with guessed, stale, or partial data.
+        </p>
+        {legacyHelperResult ? (
+          <dl className="provider-preview legacy-helper-result" data-testid="legacy-helper-status">
+            <div>
+              <dt>Helper</dt>
+              <dd>{legacyHelperResult.title}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{legacyHelperResult.status}</dd>
+            </div>
+            <div>
+              <dt>Import</dt>
+              <dd>{legacyHelperResult.imported ? "imported" : "not imported"}</dd>
+            </div>
+            <div>
+              <dt>Board</dt>
+              <dd>{legacyHelperResult.boardReplacement === "none" ? "not replaced" : legacyHelperResult.boardReplacement}</dd>
+            </div>
+            <div>
+              <dt>Message</dt>
+              <dd title={legacyHelperResult.message}>{legacyHelperResult.message}</dd>
+            </div>
+          </dl>
+        ) : null}
+        <WarningList label="Legacy helper warnings" warnings={legacyHelperResult?.warnings ?? []} />
+      </section>
+    </section>
+  );
+}
+
+function HelperCard({
+  testId,
+  title,
+  status,
+  detail,
+  actionLabel,
+  disabled,
+  onAction
+}: {
+  testId: string;
+  title: string;
+  status: string;
+  detail: string;
+  actionLabel: string;
+  disabled: boolean;
+  onAction: () => void;
+}) {
+  return (
+    <section className="legacy-helper-card" data-testid={testId}>
+      <div>
+        <strong>{title}</strong>
+        <span>{status}</span>
+      </div>
+      <p>{detail}</p>
+      <button type="button" disabled={disabled} onClick={onAction}>{actionLabel}</button>
     </section>
   );
 }
@@ -569,6 +703,17 @@ function readboardSyncStatus(result: ReadboardSidecarSyncSnapshotResult): string
 
 function readboardSnapshotImportStatus(result: ProviderImportResult): string {
   return `Imported readboard snapshot ${result.metadata.source_id ?? "current"} with ${result.summary.board_size ?? "unknown"}x${result.summary.board_size ?? "unknown"} position and ${result.warnings.length} warning(s).`;
+}
+
+function legacyHelperPendingStatus(kind: LegacyImportCaptureHelperKind): string {
+  if (kind === "image_ocr") return "Checking OCR/image helper boundary...";
+  if (kind === "external_window_capture" || kind === "external_client_capture") return "Checking external capture helper boundary...";
+  return "Checking legacy import helper path...";
+}
+
+function legacyHelperStatus(result: LegacyImportCaptureHelperResult): string {
+  if (result.status === "available") return `${result.title} available; no import performed yet.`;
+  return `${result.title}: recoverable unsupported; no import performed and board not replaced.`;
 }
 
 function positionStatus(result: ReadboardSidecarSyncSnapshotResult): string {

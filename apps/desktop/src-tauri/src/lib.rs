@@ -12,8 +12,8 @@ use engine_manager::{
 use go_core::ReadBoardLocalContext;
 use katago_protocol::{AnalysisBatchQueryOptions, AnalysisQueryOptions};
 use provider_core::{
-    invalid_payload, invalid_request, invalid_url, timeout, transport_failed, ProviderResult,
-    ProviderTransport,
+    invalid_payload, invalid_request, invalid_url, not_implemented, timeout, transport_failed,
+    ProviderResult, ProviderTransport,
 };
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -386,6 +386,54 @@ struct RuntimeAssetValidationDto {
     warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct LegacyExternalCaptureRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    process_id: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct LegacyImportCaptureHelperRequest {
+    #[serde(default)]
+    kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    payload: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    image_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    process_id: Option<u32>,
+    #[serde(default)]
+    metadata: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyImportCaptureHelperResult {
+    kind: String,
+    status: String,
+    title: String,
+    message: String,
+    recoverable: bool,
+    imported: bool,
+    board_replacement: String,
+    warnings: Vec<String>,
+    details: BTreeMap<String, String>,
+}
+
 struct PreparedBatchAnalysis {
     query_jsonl: String,
     turns: Vec<u32>,
@@ -679,9 +727,97 @@ fn readboard_sidecar_sync_snapshot(
     }
     Err(ProviderError {
         kind: ProviderErrorKind::RuntimeUnavailable,
-        message: "readboard image OCR runtime is unavailable; provide sgf_text as an offline snapshot protocol line"
+        message: "readboard image OCR runtime is unavailable; recoverable unsupported OCR helper contract; provide sgf_text as an offline snapshot protocol line"
             .to_string(),
     })
+}
+
+#[tauri::command]
+fn legacy_capture_external_window(
+    request: LegacyExternalCaptureRequest,
+) -> Result<ReadboardSidecarSyncSnapshotResult, ProviderError> {
+    validate_legacy_external_capture_request(&request)?;
+    Err(not_implemented(
+        "external client/window capture unavailable; this recoverable helper contract does not implement OCR or native window capture",
+    ))
+}
+
+#[tauri::command]
+fn legacy_import_capture_helper(
+    request: LegacyImportCaptureHelperRequest,
+) -> Result<LegacyImportCaptureHelperResult, ProviderError> {
+    validate_timeout_ms(request.timeout_ms, "legacy_import_capture_helper")?;
+    if request.process_id == Some(0) {
+        return Err(invalid_request(
+            "legacy_import_capture_helper process_id must be greater than zero",
+        ));
+    }
+
+    let kind = request.kind.trim().to_string();
+    match kind.as_str() {
+        "sgf_payload" => Ok(legacy_import_capture_available_result(
+            "sgf_payload",
+            "SGF/payload helper",
+            "Paste SGF or provider JSON into Payload / SGF, then use Import pasted payload.",
+            "provider-payload-textarea",
+            "provider-import-payload",
+            "This helper only describes the visible import path; it does not import until the user presses Import pasted payload.",
+            request.metadata,
+        )),
+        "protocol_snapshot" => Ok(legacy_import_capture_available_result(
+            "protocol_snapshot",
+            "Protocol snapshot helper",
+            "Paste a readboard protocol line, preview the snapshot, then import only after a valid position is shown.",
+            "readboard-protocol-textarea",
+            "readboard-preview-snapshot",
+            "Protocol snapshot import is current-position only and does not reconstruct full game history.",
+            request.metadata,
+        )),
+        "image_ocr" => Ok(legacy_import_capture_unsupported_result(
+            "image_ocr",
+            "OCR/image helper unsupported",
+            "Image OCR import is not implemented in this build. No SGF was imported and the board was not replaced.",
+            "real_ocr_external_gate",
+            "OCR/image helper is a recoverable unsupported path.",
+            request.metadata,
+            [
+                ("imagePathProvided", request.image_path.is_some_and(|value| !value.trim().is_empty())),
+                ("payloadProvided", request.payload.is_some_and(|value| !value.trim().is_empty())),
+            ],
+        )),
+        "external_window_capture" | "external_client_capture" => {
+            Ok(legacy_import_capture_unsupported_result(
+                &kind,
+                "External window/client capture unsupported",
+                "External window/client capture is not implemented in this build. No SGF was imported and the board was not replaced.",
+                "real_external_capture_external_gate",
+                "External window/client capture helper is a recoverable unsupported path.",
+                request.metadata,
+                [
+                    ("notImplementedBoundary", true),
+                    ("externalCaptureUnavailable", true),
+                    (
+                        "clientNameProvided",
+                        request
+                            .client_name
+                            .is_some_and(|value| !value.trim().is_empty()),
+                    ),
+                    (
+                        "windowTitleProvided",
+                        request
+                            .window_title
+                            .is_some_and(|value| !value.trim().is_empty()),
+                    ),
+                ],
+            ))
+        }
+        "" => Err(invalid_request(
+            "legacy_import_capture_helper requires a non-empty kind",
+        )),
+        other => Err(invalid_request(format!(
+            "legacy_import_capture_helper received unsupported kind `{other}`"
+        ))),
+    }
 }
 
 #[tauri::command]
@@ -3638,6 +3774,92 @@ fn validate_provider_fetch_request(
     validate_timeout_ms(request.timeout_ms, command_name)
 }
 
+fn validate_legacy_external_capture_request(
+    request: &LegacyExternalCaptureRequest,
+) -> Result<(), ProviderError> {
+    validate_timeout_ms(request.timeout_ms, "legacy_capture_external_window")?;
+    if request.process_id == Some(0) {
+        return Err(invalid_request(
+            "legacy_capture_external_window process_id must be greater than zero",
+        ));
+    }
+    let has_target = request
+        .client_name
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || request
+            .window_title
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || request.process_id.is_some();
+    if !has_target {
+        return Err(invalid_request(
+            "legacy_capture_external_window requires client_name, window_title, or process_id",
+        ));
+    }
+    Ok(())
+}
+
+fn legacy_import_capture_available_result(
+    kind: &str,
+    title: &str,
+    message: &str,
+    surface: &str,
+    action: &str,
+    warning: &str,
+    metadata: BTreeMap<String, String>,
+) -> LegacyImportCaptureHelperResult {
+    let mut details = metadata;
+    details.insert("surface".to_string(), surface.to_string());
+    details.insert("action".to_string(), action.to_string());
+    details.insert("importsOnHelperCall".to_string(), "false".to_string());
+    details.insert("boardReplacementApplied".to_string(), "false".to_string());
+    LegacyImportCaptureHelperResult {
+        kind: kind.to_string(),
+        status: "available".to_string(),
+        title: title.to_string(),
+        message: message.to_string(),
+        recoverable: true,
+        imported: false,
+        board_replacement: "none".to_string(),
+        warnings: vec![warning.to_string()],
+        details,
+    }
+}
+
+fn legacy_import_capture_unsupported_result<const N: usize>(
+    kind: &str,
+    title: &str,
+    message: &str,
+    boundary: &str,
+    warning: &str,
+    metadata: BTreeMap<String, String>,
+    flags: [(&str, bool); N],
+) -> LegacyImportCaptureHelperResult {
+    let mut details = metadata;
+    details.insert("boundary".to_string(), boundary.to_string());
+    details.insert("no_stale_board_replacement".to_string(), "true".to_string());
+    details.insert("providerErrorKind".to_string(), "not_implemented".to_string());
+    details.insert("boardReplacementApplied".to_string(), "false".to_string());
+    for (key, value) in flags {
+        details.insert(key.to_string(), value.to_string());
+    }
+    LegacyImportCaptureHelperResult {
+        kind: kind.to_string(),
+        status: "recoverable_unsupported".to_string(),
+        title: title.to_string(),
+        message: message.to_string(),
+        recoverable: true,
+        imported: false,
+        board_replacement: "none".to_string(),
+        warnings: vec![
+            warning.to_string(),
+            "No stale, guessed, or partial board replacement was applied.".to_string(),
+        ],
+        details,
+    }
+}
+
 fn validate_timeout_ms(timeout_ms: Option<u64>, command_name: &str) -> Result<(), ProviderError> {
     if timeout_ms == Some(0) {
         return Err(ProviderError {
@@ -3703,6 +3925,8 @@ pub fn run() {
             provider_fetch_fox,
             readboard_sidecar_probe,
             readboard_sidecar_sync_snapshot,
+            legacy_capture_external_window,
+            legacy_import_capture_helper,
             replay_sgf_positions,
             update_sgf_node_comment,
             update_sgf_node_properties,
@@ -5476,6 +5700,222 @@ mod tests {
         assert!(sync_error
             .message
             .contains("readboard image OCR runtime is unavailable"));
+        assert!(sync_error.message.contains("recoverable unsupported"));
+    }
+
+    #[test]
+    fn readboard_sidecar_sync_snapshot_reports_base64_ocr_runtime_unavailable() {
+        let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
+            endpoint: None,
+            snapshot_id: Some("snapshot-base64".to_string()),
+            image_path: None,
+            image_base64: Some("iVBORw0KGgo=".to_string()),
+            sgf_text: None,
+            metadata: std::collections::BTreeMap::new(),
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+
+        assert_eq!(sync_error.kind, ProviderErrorKind::RuntimeUnavailable);
+        assert!(sync_error
+            .message
+            .contains("readboard image OCR runtime is unavailable"));
+        assert!(sync_error.message.contains("recoverable unsupported"));
+    }
+
+    #[test]
+    fn readboard_sidecar_sync_snapshot_rejects_empty_ocr_request() {
+        let sync_error = readboard_sidecar_sync_snapshot(ReadboardSidecarSyncSnapshotRequest {
+            endpoint: None,
+            snapshot_id: None,
+            image_path: Some("  ".to_string()),
+            image_base64: None,
+            sgf_text: None,
+            metadata: std::collections::BTreeMap::new(),
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+
+        assert_eq!(sync_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(sync_error.message.contains("requires image_path"));
+    }
+
+    #[test]
+    fn legacy_capture_external_window_reports_unsupported_contract() {
+        let capture_error = legacy_capture_external_window(LegacyExternalCaptureRequest {
+            client_name: Some("Fox".to_string()),
+            window_title: Some("Live game".to_string()),
+            process_id: None,
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+
+        assert_eq!(capture_error.kind, ProviderErrorKind::NotImplemented);
+        assert!(capture_error
+            .message
+            .contains("external client/window capture unavailable"));
+        assert!(capture_error.message.contains("recoverable"));
+    }
+
+    #[test]
+    fn legacy_capture_external_window_rejects_empty_or_invalid_request() {
+        let empty_error = legacy_capture_external_window(LegacyExternalCaptureRequest {
+            client_name: Some(" ".to_string()),
+            window_title: None,
+            process_id: None,
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+        assert_eq!(empty_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(empty_error.message.contains("requires client_name"));
+
+        let invalid_pid_error = legacy_capture_external_window(LegacyExternalCaptureRequest {
+            client_name: None,
+            window_title: None,
+            process_id: Some(0),
+            timeout_ms: Some(100),
+        })
+        .unwrap_err();
+        assert_eq!(invalid_pid_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(invalid_pid_error
+            .message
+            .contains("process_id must be greater than zero"));
+    }
+
+    #[test]
+    fn legacy_import_capture_helper_reports_sgf_payload_available_without_import() {
+        let result = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "sgf_payload".to_string(),
+            payload: Some("(;GM[1]SZ[19])".to_string()),
+            metadata: std::collections::BTreeMap::from([("source".to_string(), "rust-test".to_string())]),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap();
+
+        assert_eq!(result.kind, "sgf_payload");
+        assert_eq!(result.status, "available");
+        assert!(result.recoverable);
+        assert!(!result.imported);
+        assert_eq!(result.board_replacement, "none");
+        assert_eq!(result.details.get("importsOnHelperCall").unwrap(), "false");
+        assert_eq!(result.details.get("boardReplacementApplied").unwrap(), "false");
+    }
+
+    #[test]
+    fn legacy_import_capture_helper_reports_protocol_snapshot_available_without_import() {
+        let result = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "protocol_snapshot".to_string(),
+            payload: Some("snapshot board_size=2 move_number=1 codes=3000".to_string()),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap();
+
+        assert_eq!(result.kind, "protocol_snapshot");
+        assert_eq!(result.status, "available");
+        assert!(result.recoverable);
+        assert!(!result.imported);
+        assert_eq!(result.board_replacement, "none");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("current-position only")));
+    }
+
+    #[test]
+    fn legacy_import_capture_helper_reports_image_ocr_recoverable_unsupported() {
+        let result = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "image_ocr".to_string(),
+            image_path: Some("/tmp/board.png".to_string()),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap();
+
+        assert_eq!(result.kind, "image_ocr");
+        assert_eq!(result.status, "recoverable_unsupported");
+        assert!(result.recoverable);
+        assert!(!result.imported);
+        assert_eq!(result.board_replacement, "none");
+        assert!(result.message.contains("No SGF was imported"));
+        assert_eq!(
+            result.details.get("providerErrorKind").unwrap(),
+            "not_implemented"
+        );
+        assert_eq!(result.details.get("imagePathProvided").unwrap(), "true");
+    }
+
+    #[test]
+    fn legacy_import_capture_helper_reports_external_capture_recoverable_unsupported() {
+        for kind in ["external_window_capture", "external_client_capture"] {
+            let result = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+                kind: kind.to_string(),
+                window_title: Some("Live game".to_string()),
+                ..LegacyImportCaptureHelperRequest::default()
+            })
+            .unwrap();
+
+            assert_eq!(result.kind, kind);
+            assert_eq!(result.status, "recoverable_unsupported");
+            assert!(result.recoverable);
+            assert!(!result.imported);
+            assert_eq!(result.board_replacement, "none");
+            assert!(result
+                .message
+                .contains("External window/client capture is not implemented"));
+            assert_eq!(result.details.get("notImplementedBoundary").unwrap(), "true");
+            assert_eq!(result.details.get("no_stale_board_replacement").unwrap(), "true");
+        }
+    }
+
+    #[test]
+    fn legacy_import_capture_helper_rejects_invalid_kind_or_request() {
+        let empty_kind_error = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: " ".to_string(),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap_err();
+        assert_eq!(empty_kind_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(empty_kind_error.message.contains("non-empty kind"));
+
+        let invalid_kind_error = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "screen_scrape".to_string(),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap_err();
+        assert_eq!(invalid_kind_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(invalid_kind_error.message.contains("unsupported kind"));
+
+        let invalid_timeout_error = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "image_ocr".to_string(),
+            timeout_ms: Some(0),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap_err();
+        assert_eq!(invalid_timeout_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(invalid_timeout_error.message.contains("timeout_ms"));
+
+        let invalid_pid_error = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "external_window_capture".to_string(),
+            process_id: Some(0),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap_err();
+        assert_eq!(invalid_pid_error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(invalid_pid_error.message.contains("process_id"));
+    }
+
+    #[test]
+    fn legacy_import_capture_helper_serializes_frontend_contract_shape() {
+        let result = legacy_import_capture_helper(LegacyImportCaptureHelperRequest {
+            kind: "image_ocr".to_string(),
+            ..LegacyImportCaptureHelperRequest::default()
+        })
+        .unwrap();
+        let serialized = serde_json::to_value(result).unwrap();
+
+        assert_eq!(serialized["status"], "recoverable_unsupported");
+        assert_eq!(serialized["boardReplacement"], "none");
+        assert!(serialized.get("board_replacement").is_none());
+        assert_eq!(serialized["imported"], false);
     }
 
     #[test]

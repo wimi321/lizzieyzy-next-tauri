@@ -1535,6 +1535,66 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("runtime_asset_layout_surface", failures)
             self.assertIn("EngineSetupPanel missing runtimeAssetValidation", failures["runtime_asset_layout_surface"])
 
+    def test_legacy_import_capture_helper_surface_passes_with_frontend_wiring(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            passes = {result.name for result in results if result.status == "PASS"}
+            self.assertNotIn("legacy_import_capture_helper_surface", failures)
+            self.assertIn("legacy_import_capture_helper_surface", passes)
+
+    def test_legacy_import_capture_helper_surface_missing_unsupported_boundary_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, legacy_helper_ui=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_import_capture_helper_surface", failures)
+            self.assertIn("ProviderPanel missing legacy-helper-ocr-unsupported", failures["legacy_import_capture_helper_surface"])
+
+    def test_legacy_import_capture_helper_surface_missing_api_wrapper_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, legacy_helper_api=False)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_import_capture_helper_surface", failures)
+            self.assertIn("provider API missing previewLegacyImportCaptureHelper", failures["legacy_import_capture_helper_surface"])
+
+    def test_legacy_import_capture_helper_surface_missing_rust_command_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, omitted_commands={smoke_user_flows.LEGACY_IMPORT_CAPTURE_HELPER_COMMAND})
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_import_capture_helper_surface", failures)
+            self.assertIn("legacy_import_capture_helper function", failures["legacy_import_capture_helper_surface"])
+            self.assertIn("legacy_import_capture_helper invoke handler", failures["legacy_import_capture_helper_surface"])
+
+    def test_legacy_import_capture_helper_surface_wrong_api_invoke_fails(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root, legacy_helper_api_command="legacy_capture_external_window")
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            self.assertIn("legacy_import_capture_helper_surface", failures)
+            self.assertIn(
+                "provider API previewLegacyImportCaptureHelper must invoke legacy_import_capture_helper",
+                failures["legacy_import_capture_helper_surface"],
+            )
+
     def test_edit_existing_move_surface_reduced_fixture_all_frontend_sources_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1675,6 +1735,9 @@ def create_complete_smoke_fixture(
     preferences_migration_ui: bool = True,
     preferences_migration_safety_ui: bool = True,
     runtime_asset_ui: bool = True,
+    legacy_helper_ui: bool = True,
+    legacy_helper_api: bool = True,
+    legacy_helper_api_command: str = smoke_user_flows.LEGACY_IMPORT_CAPTURE_HELPER_COMMAND,
 ) -> None:
     omitted_commands = omitted_commands or set()
     write_json(
@@ -1712,6 +1775,7 @@ def create_complete_smoke_fixture(
     )
     commands = [
         *smoke_user_flows.TAURI_COMMANDS,
+        smoke_user_flows.LEGACY_IMPORT_CAPTURE_HELPER_COMMAND,
         *[
             command
             for group in smoke_user_flows.TAURI_COMMAND_GROUPS.values()
@@ -1751,6 +1815,9 @@ def create_complete_smoke_fixture(
     create_runtime_smoke_fixture(root)
     create_preferences_panel_fixture(root, migration_ui=preferences_migration_ui, migration_safety_ui=preferences_migration_safety_ui)
     create_engine_setup_panel_fixture(root, runtime_asset_ui=runtime_asset_ui)
+    create_provider_domain_fixture(root)
+    create_provider_api_fixture(root, legacy_helper_api=legacy_helper_api, legacy_helper_api_command=legacy_helper_api_command)
+    create_provider_panel_fixture(root, legacy_helper_ui=legacy_helper_ui)
 
 
 def write_valid_tauri_runtime_ui_evidence(root: Path) -> None:
@@ -2942,7 +3009,11 @@ def create_app_fixture(
           const legacyConfigApplyResult = null;
           const annotationError = null;
           const isAnnotationSaving = false;
+          const ProviderPanel = "ProviderPanel";
           const sgfTextEditVersionRef = {{ current: 0 }};
+          async function handleProviderImport(result) {{
+            return result;
+          }}
           async function loadAppPreferences() {{
             return {{}};
           }}
@@ -2986,7 +3057,7 @@ def create_app_fixture(
             }}
           }}
           {edit_handler_body}
-          return {{ handleSaveSgfDocument, handleSaveAnnotations, annotationError, isAnnotationSaving, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
+          return {{ ProviderPanel, handleProviderImport, handleSaveSgfDocument, handleSaveAnnotations, annotationError, isAnnotationSaving, handlePreviewLegacyConfigMigration, handleApplyLegacyConfigMigration, legacyConfigStatus, legacyConfigPreview, legacyConfigApplyResult }};
         }}
         """,
     )
@@ -3140,6 +3211,120 @@ def create_preferences_panel_fixture(root: Path, *, migration_ui: bool = True, m
         }
         """
     write(root / smoke_user_flows.PREFERENCES_PANEL_SOURCE, body)
+
+
+def create_provider_domain_fixture(root: Path) -> None:
+    write(
+        root / smoke_user_flows.PROVIDER_DOMAIN_SOURCE,
+        """
+        export type ProviderKind = "yike" | "fox" | "readboard_snapshot";
+        export type LegacyImportCaptureHelperKind = "sgf_payload" | "protocol_snapshot" | "image_ocr" | "external_window_capture" | "external_client_capture";
+        export type LegacyImportCaptureHelperStatus = "available" | "recoverable_unsupported" | "error";
+        export type LegacyImportCaptureHelperRequest = {
+          kind: LegacyImportCaptureHelperKind;
+          payload?: string | null;
+          image_path?: string | null;
+          image_base64?: string | null;
+          window_title?: string | null;
+          client_name?: string | null;
+          process_id?: number | null;
+          timeout_ms?: number | null;
+          metadata: Record<string, string>;
+        };
+        export type LegacyImportCaptureHelperResult = {
+          kind: LegacyImportCaptureHelperKind;
+          status: LegacyImportCaptureHelperStatus;
+          title: string;
+          message: string;
+          recoverable: boolean;
+          imported: boolean;
+          boardReplacement: "none" | "imported" | "preview_only";
+          warnings: string[];
+          details: Record<string, string>;
+        };
+        """,
+    )
+
+
+def create_provider_api_fixture(
+    root: Path,
+    *,
+    legacy_helper_api: bool = True,
+    legacy_helper_api_command: str = smoke_user_flows.LEGACY_IMPORT_CAPTURE_HELPER_COMMAND,
+) -> None:
+    legacy_helper_body = """
+        export async function previewLegacyImportCaptureHelper(request: LegacyImportCaptureHelperRequest): Promise<LegacyImportCaptureHelperResult> {
+          try {
+            return await invoke<LegacyImportCaptureHelperResult>("__LEGACY_HELPER_API_COMMAND__", { request });
+          } catch (error) {
+            return legacyImportCaptureHelperFallback(request, String(error));
+          }
+        }
+
+        function legacyImportCaptureHelperFallback(request: LegacyImportCaptureHelperRequest, backendMessage?: string): LegacyImportCaptureHelperResult {
+          if (request.kind === "sgf_payload" || request.kind === "protocol_snapshot") {
+            return { kind: request.kind, status: "available", title: "SGF/payload helper", message: "visible helper path only", recoverable: true, imported: false, boardReplacement: "none", warnings: [], details: {} };
+          }
+          return {
+            kind: request.kind,
+            status: "recoverable_unsupported",
+            title: request.kind === "image_ocr" ? "OCR/image helper" : "External window/client capture",
+            message: "No SGF was imported and the board was not replaced.",
+            recoverable: true,
+            imported: false,
+            boardReplacement: "none",
+            warnings: ["No stale, guessed, or partial board replacement was applied.", backendMessage ?? ""],
+            details: { no_stale_board_replacement: "true" }
+          };
+        }
+    """.replace("__LEGACY_HELPER_API_COMMAND__", legacy_helper_api_command) if legacy_helper_api else ""
+    write(
+        root / smoke_user_flows.PROVIDER_API_SOURCE,
+        f"""
+        import {{ invoke }} from "@tauri-apps/api/core";
+        import type {{ LegacyImportCaptureHelperRequest, LegacyImportCaptureHelperResult }} from "../domain/providers";
+
+        {legacy_helper_body}
+        """,
+    )
+
+
+def create_provider_panel_fixture(root: Path, *, legacy_helper_ui: bool = True) -> None:
+    legacy_helper_body = """
+          <section data-testid="legacy-import-capture-helper-surface" aria-label="Legacy import and capture helpers">
+            <section data-testid="legacy-helper-sgf-payload">SGF/payload helper</section>
+            <section data-testid="legacy-helper-protocol-snapshot">Protocol snapshot helper</section>
+            <section data-testid="legacy-helper-ocr-unsupported">OCR/image helper recoverable unsupported</section>
+            <section data-testid="legacy-helper-external-capture-unsupported">External window/client capture recoverable unsupported</section>
+            <p data-testid="legacy-helper-no-board-replacement">Unsupported helpers do not import SGF; board was not replaced with guessed, stale, or partial data.</p>
+            <dl data-testid="legacy-helper-status"><dd>not imported</dd><dd>not replaced</dd></dl>
+            <button onClick={() => handleLegacyHelperStatus("image_ocr")}>Check OCR status</button>
+          </section>
+    """ if legacy_helper_ui else ""
+    write(
+        root / smoke_user_flows.PROVIDER_PANEL_SOURCE,
+        f"""
+        import {{ previewLegacyImportCaptureHelper }} from "../api/providers";
+
+        export function ProviderPanel() {{
+          const legacyHelperResult = null;
+          async function handleLegacyHelperStatus(kind) {{
+            return await previewLegacyImportCaptureHelper({{ kind, metadata: {{}} }});
+          }}
+          return (
+            <section data-testid="provider-panel">
+              <textarea data-testid="provider-payload-textarea" aria-label="Provider payload or SGF" />
+              <button data-testid="provider-import-payload">Import pasted payload</button>
+              <textarea data-testid="readboard-protocol-textarea" aria-label="Readboard protocol preview line" />
+              <button data-testid="readboard-preview-snapshot">Preview snapshot</button>
+              <button data-testid="readboard-import-snapshot">Import snapshot</button>
+              {{legacyHelperResult}}
+              {legacy_helper_body}
+            </section>
+          );
+        }}
+        """,
+    )
 
 
 def create_engine_setup_panel_fixture(root: Path, *, runtime_asset_ui: bool = True) -> None:

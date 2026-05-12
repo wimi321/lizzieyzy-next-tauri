@@ -349,17 +349,20 @@ struct RuntimeAssetPathDto {
 struct RuntimeAssetLayoutDto {
     resource_dir: Option<String>,
     dev_roots: Vec<String>,
+    resource_roots: Vec<String>,
     release_roots: Vec<String>,
     candidates: Vec<RuntimeAssetPathDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct RuntimeAssetMissingWarningDto {
+struct RuntimeAssetValidationEntryDto {
     label: String,
     kind: String,
     source: String,
     path: String,
+    required: bool,
+    status: String,
     message: String,
 }
 
@@ -367,7 +370,10 @@ struct RuntimeAssetMissingWarningDto {
 #[serde(rename_all = "camelCase")]
 struct RuntimeAssetValidationDto {
     layout: RuntimeAssetLayoutDto,
-    missing: Vec<RuntimeAssetMissingWarningDto>,
+    checks: Vec<RuntimeAssetValidationEntryDto>,
+    exists: Vec<RuntimeAssetValidationEntryDto>,
+    missing: Vec<RuntimeAssetValidationEntryDto>,
+    placeholders: Vec<RuntimeAssetValidationEntryDto>,
     warnings: Vec<String>,
 }
 
@@ -2227,13 +2233,17 @@ fn resolve_runtime_asset_layout_for_paths(
         push_runtime_asset_candidates(&mut candidates, root, "dev");
     }
     for root in &release_roots {
-        push_runtime_asset_candidates(&mut candidates, root, "release");
+        push_runtime_asset_candidates(&mut candidates, root, "resource_dir");
     }
 
     RuntimeAssetLayoutDto {
         resource_dir: resource_dir.map(|path| path.display().to_string()),
         dev_roots: dev_roots
             .into_iter()
+            .map(|path| path.display().to_string())
+            .collect(),
+        resource_roots: release_roots
+            .iter()
             .map(|path| path.display().to_string())
             .collect(),
         release_roots: release_roots
@@ -2246,30 +2256,30 @@ fn resolve_runtime_asset_layout_for_paths(
 
 fn push_runtime_asset_candidates(candidates: &mut Vec<RuntimeAssetPathDto>, root: &Path, source: &str) {
     for (label, kind, relative, required) in [
-        ("resource dir", "directory", PathBuf::new(), false),
+        ("runtime root", "directory", PathBuf::new(), false),
         (
             "KataGo bin",
             "directory",
             PathBuf::from("runtime").join("katago").join("bin"),
-            false,
+            true,
         ),
         (
             "KataGo models",
             "directory",
             PathBuf::from("runtime").join("katago").join("models"),
-            false,
+            true,
         ),
         (
             "KataGo configs",
             "directory",
             PathBuf::from("runtime").join("katago").join("configs"),
-            false,
+            true,
         ),
         (
             "readboard runtime",
             "directory",
             PathBuf::from("runtime").join("readboard"),
-            false,
+            true,
         ),
     ] {
         candidates.push(RuntimeAssetPathDto {
@@ -2283,28 +2293,153 @@ fn push_runtime_asset_candidates(candidates: &mut Vec<RuntimeAssetPathDto>, root
 }
 
 fn validate_runtime_asset_layout_from_layout(layout: RuntimeAssetLayoutDto) -> RuntimeAssetValidationDto {
-    let missing = layout
+    let checks = layout
         .candidates
         .iter()
-        .filter(|candidate| !Path::new(&candidate.path).exists())
-        .map(|candidate| RuntimeAssetMissingWarningDto {
-            label: candidate.label.clone(),
-            kind: candidate.kind.clone(),
-            source: candidate.source.clone(),
-            path: candidate.path.clone(),
-            message: format!("{} candidate is missing at {}", candidate.label, candidate.path),
-        })
+        .map(validate_runtime_asset_candidate)
+        .collect::<Vec<_>>();
+
+    let exists = checks
+        .iter()
+        .filter(|check| check.status == "exists")
+        .cloned()
+        .collect::<Vec<_>>();
+    let missing = checks
+        .iter()
+        .filter(|check| check.status == "missing")
+        .cloned()
+        .collect::<Vec<_>>();
+    let placeholders = checks
+        .iter()
+        .filter(|check| check.status == "placeholder")
+        .cloned()
         .collect::<Vec<_>>();
     let warnings = missing
         .iter()
+        .chain(placeholders.iter())
         .map(|missing| missing.message.clone())
         .collect::<Vec<_>>();
 
     RuntimeAssetValidationDto {
         layout,
+        checks,
+        exists,
         missing,
+        placeholders,
         warnings,
     }
+}
+
+fn validate_runtime_asset_candidate(candidate: &RuntimeAssetPathDto) -> RuntimeAssetValidationEntryDto {
+    let path = Path::new(&candidate.path);
+    let (status, message) = match fs::metadata(path) {
+        Ok(metadata) => {
+            if candidate.kind == "directory" && !metadata.is_dir() {
+                (
+                    "placeholder",
+                    format!(
+                        "{} candidate exists at {} but is not a directory",
+                        candidate.label, candidate.path
+                    ),
+                )
+            } else if is_runtime_asset_placeholder(candidate, path) {
+                (
+                    "placeholder",
+                    format!(
+                        "{} candidate exists at {} but does not contain a real bundled runtime asset",
+                        candidate.label, candidate.path
+                    ),
+                )
+            } else {
+                (
+                    "exists",
+                    format!("{} candidate exists at {}", candidate.label, candidate.path),
+                )
+            }
+        }
+        Err(_) => (
+            "missing",
+            format!("{} candidate is missing at {}", candidate.label, candidate.path),
+        ),
+    };
+
+    RuntimeAssetValidationEntryDto {
+        label: candidate.label.clone(),
+        kind: candidate.kind.clone(),
+        source: candidate.source.clone(),
+        path: candidate.path.clone(),
+        required: candidate.required,
+        status: status.to_string(),
+        message,
+    }
+}
+
+fn is_runtime_asset_placeholder(candidate: &RuntimeAssetPathDto, path: &Path) -> bool {
+    if !candidate.required {
+        return false;
+    }
+
+    match candidate.label.as_str() {
+        "KataGo models" => !directory_contains_matching_asset(path, 2, is_katago_model_asset),
+        "KataGo configs" => !directory_contains_matching_asset(path, 2, is_katago_config_asset),
+        "KataGo bin" | "readboard runtime" => !directory_contains_matching_asset(path, 3, |_| true),
+        _ => false,
+    }
+}
+
+fn directory_contains_matching_asset(path: &Path, max_depth: usize, matches_asset: fn(&str) -> bool) -> bool {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return false,
+    };
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        if is_placeholder_asset_name(&name) {
+            continue;
+        }
+
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.is_file() && matches_asset(&name) {
+            return true;
+        }
+        if metadata.is_dir()
+            && max_depth > 0
+            && directory_contains_matching_asset(&entry_path, max_depth - 1, matches_asset)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn is_placeholder_asset_name(name: &str) -> bool {
+    let name = name.trim().to_ascii_lowercase();
+    name.is_empty()
+        || name == ".gitkeep"
+        || name == ".keep"
+        || name == "readme"
+        || name.starts_with("readme.")
+        || name.contains("placeholder")
+}
+
+fn is_katago_model_asset(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.ends_with(".bin.gz")
+        || name.ends_with(".txt.gz")
+        || name.ends_with(".onnx")
+        || name.ends_with(".pb.gz")
+}
+
+fn is_katago_config_asset(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.ends_with(".cfg") || name.ends_with(".conf")
 }
 
 fn default_app_preferences() -> AppPreferencesDto {
@@ -3753,21 +3888,126 @@ mod tests {
     }
 
     #[test]
-    fn runtime_asset_validation_missing_assets_returns_warnings_not_panic() {
-        let dir = native_config_temp_dir("runtime-assets");
-        fs::create_dir_all(&dir).unwrap();
-        let layout =
-            resolve_runtime_asset_layout_for_paths(dir.join("dev-root"), Some(dir.join("resources")));
+    fn runtime_asset_layout_resolves_dev_roots_and_required_slots() {
+        let dir = native_config_temp_dir("runtime-assets-dev");
+        let dev_root = dir.join("repo");
+        let nested_src_tauri = dev_root.join("apps").join("desktop").join("src-tauri");
+        let layout = resolve_runtime_asset_layout_for_paths(dev_root.clone(), None);
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(layout.resource_dir, None);
+        assert_eq!(
+            layout.dev_roots,
+            vec![
+                dev_root.display().to_string(),
+                nested_src_tauri.display().to_string()
+            ]
+        );
+        for relative in [
+            PathBuf::from("runtime").join("katago").join("bin"),
+            PathBuf::from("runtime").join("katago").join("models"),
+            PathBuf::from("runtime").join("katago").join("configs"),
+            PathBuf::from("runtime").join("readboard"),
+        ] {
+            let expected_path = dev_root.join(relative).display().to_string();
+            let candidate = layout
+                .candidates
+                .iter()
+                .find(|candidate| candidate.source == "dev" && candidate.path == expected_path)
+                .unwrap();
+            assert_eq!(candidate.kind, "directory");
+            assert!(candidate.required);
+        }
+    }
+
+    #[test]
+    fn runtime_asset_layout_resolves_resource_dir_root() {
+        let dir = native_config_temp_dir("runtime-assets-resource");
+        let resource_dir = dir.join("resources");
+        let layout = resolve_runtime_asset_layout_for_paths(dir.join("repo"), Some(resource_dir.clone()));
+
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(
+            layout.resource_dir.as_deref(),
+            Some(resource_dir.to_str().unwrap())
+        );
+        assert_eq!(layout.resource_roots, vec![resource_dir.display().to_string()]);
+        assert_eq!(layout.release_roots, vec![resource_dir.display().to_string()]);
+        assert!(layout.candidates.iter().any(|candidate| {
+            candidate.source == "resource_dir"
+                && candidate.label == "KataGo models"
+                && candidate.path == resource_dir.join("runtime/katago/models").display().to_string()
+                && candidate.required
+        }));
+    }
+
+    #[test]
+    fn runtime_asset_validation_reports_missing_and_placeholder_warnings() {
+        let dir = native_config_temp_dir("runtime-assets-validation");
+        let dev_root = dir.join("dev-root");
+        fs::create_dir_all(dev_root.join("runtime/katago/bin")).unwrap();
+        fs::create_dir_all(dev_root.join("runtime/katago/models")).unwrap();
+        fs::create_dir_all(dev_root.join("runtime/katago/configs")).unwrap();
+        fs::write(dev_root.join("runtime/katago/bin/katago"), "fake binary").unwrap();
+        fs::write(
+            dev_root.join("runtime/katago/models/README.md"),
+            "model placeholder",
+        )
+        .unwrap();
+        fs::write(
+            dev_root.join("runtime/katago/configs/analysis.cfg"),
+            "maxVisits = 64",
+        )
+        .unwrap();
+        let layout = resolve_runtime_asset_layout_for_paths(dev_root.clone(), None);
 
         let validation = validate_runtime_asset_layout_from_layout(layout);
 
         let _ = fs::remove_dir_all(&dir);
-        assert!(!validation.missing.is_empty());
-        assert_eq!(validation.missing.len(), validation.warnings.len());
+        assert!(validation.exists.iter().any(|check| {
+            check.status == "exists"
+                && check.path == dev_root.join("runtime/katago/bin").display().to_string()
+        }));
+        assert!(validation.placeholders.iter().any(|check| {
+            check.status == "placeholder"
+                && check.path == dev_root.join("runtime/katago/models").display().to_string()
+        }));
+        assert!(validation.missing.iter().any(|check| {
+            check.status == "missing"
+                && check.path == dev_root.join("runtime/readboard").display().to_string()
+        }));
+        assert_eq!(
+            validation.warnings.len(),
+            validation.missing.len() + validation.placeholders.len()
+        );
         assert!(validation
-            .missing
+            .warnings
             .iter()
-            .any(|warning| warning.path.contains("runtime/katago/bin")));
+            .any(|warning| warning.contains("does not contain a real bundled runtime asset")));
+    }
+
+    #[test]
+    fn runtime_asset_validation_invalid_path_does_not_panic() {
+        let layout = RuntimeAssetLayoutDto {
+            resource_dir: None,
+            dev_roots: vec!["\0invalid-root".to_string()],
+            resource_roots: Vec::new(),
+            release_roots: Vec::new(),
+            candidates: vec![RuntimeAssetPathDto {
+                label: "KataGo models".to_string(),
+                kind: "directory".to_string(),
+                source: "dev".to_string(),
+                path: "\0invalid-root/runtime/katago/models".to_string(),
+                required: true,
+            }],
+        };
+
+        let validation = std::panic::catch_unwind(|| validate_runtime_asset_layout_from_layout(layout))
+            .expect("invalid paths should be reported instead of panicking");
+
+        assert_eq!(validation.checks.len(), 1);
+        assert_eq!(validation.missing[0].status, "missing");
+        assert_eq!(validation.warnings.len(), 1);
     }
 
     #[test]

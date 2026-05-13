@@ -10459,30 +10459,35 @@ mod tests {
         assert!(!serialized.contains("/var/folders/"));
     }
 
+    #[cfg(target_os = "macos")]
     fn fake_interactive_unused(_timeout: Duration) -> ReadboardCaptureFileOutcome {
         ReadboardCaptureFileOutcome::Unsupported {
             message: "unused interactive runner".to_string(),
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn fake_selected_window_success(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
         ReadboardCaptureFileOutcome::Captured {
             path: readboard_image_fixture("controlled-19-three-stones.ppm"),
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn fake_selected_window_permission(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
         ReadboardCaptureFileOutcome::PermissionDenied {
             message: "permission denied for /Users/example/private-window.png".to_string(),
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn fake_selected_window_not_found(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
         ReadboardCaptureFileOutcome::WindowNotFound {
             message: "window id 404 was not found".to_string(),
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn fake_selected_window_capture_failed(
         _window_id: u32,
         _timeout: Duration,
@@ -10492,6 +10497,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn fake_selected_window_unsupported(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
         ReadboardCaptureFileOutcome::Unsupported {
             message: "selected window capture is only supported on macOS".to_string(),

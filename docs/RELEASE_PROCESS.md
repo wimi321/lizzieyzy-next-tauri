@@ -4,7 +4,7 @@ This process covers production release preparation for the LizzieYzy Next Tauri 
 
 ## Truth Sync Summary
 
-Current evidence supports scoped release-candidate validation, not a stable production release. `scripts/smoke_user_flows.py --verbose` currently reports `60 passed, 0 failed, 0 pending`, but the completion audit still marks production release readiness as blocked by signing, notarization, updater policy, official publication, clean-machine release testing, and remaining external parity gates. Do not use unsigned or scoped evidence to imply full production readiness, full Java/Swing parity, real provider/readboard/OCR parity, bundled large-model parity, or full legacy UI/layout/shortcut parity.
+Current evidence supports scoped release-candidate validation, not a stable production release. `scripts/smoke_user_flows.py --verbose` currently reports `61 passed, 0 failed, 0 pending`, but the completion audit still marks production release readiness as blocked by signing, notarization, updater policy, official publication, clean-machine release testing, and remaining external parity gates. Do not use unsigned or scoped evidence to imply full production readiness, full Java/Swing parity, real provider/readboard/OCR parity, bundled large-model parity, or full legacy UI/layout/shortcut parity.
 
 The added KataGo analysis stale-guard gate is scoped CI-verifiable evidence for edit-version guarded analysis cleanup and stale-result suppression. It does not change production release readiness, full legacy analysis parity, bundled large-model parity, or release parity.
 

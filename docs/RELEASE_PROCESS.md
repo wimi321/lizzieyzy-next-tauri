@@ -8,6 +8,8 @@ Current evidence supports scoped release-candidate validation, not a stable prod
 
 The added KataGo analysis stale-guard gate is scoped CI-verifiable evidence for edit-version guarded analysis cleanup and stale-result suppression. It does not change production release readiness, full legacy analysis parity, bundled large-model parity, or release parity.
 
+The selected-window readboard capture validator is prepared as a standalone check only. It does not change central smoke status or release readiness until runtime-backed evidence proves selected window id capture, decode, preview/confirm/import, and failed-decode no-replacement semantics without full OCR/readboard/client parity overclaims.
+
 The user-facing completion summary is `docs/COMPLETION_AUDIT.md`; release notes should mirror that scoped status.
 
 ## Release Gates

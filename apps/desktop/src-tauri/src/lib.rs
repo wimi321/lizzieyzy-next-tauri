@@ -2,8 +2,8 @@ use app_model::{
     AnalysisFrameDto, AppHealthDto, CandidateMoveDto, EngineBackend, EngineProfileDto, MoveVertex, NodeId,
     PointDto, PositionDto, ProviderError, ProviderErrorKind, ProviderFetchMethod, ProviderFetchRequest,
     ProviderFetchResult, ProviderGameMetadata, ProviderImportRequest, ProviderImportResult, ProviderKind,
-    ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest,
-    ReadboardSidecarSyncSnapshotResult, SgfTreeDto, SgfTreeNodeDto,
+    ReadboardBoardRegionDto, ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult,
+    ReadboardSidecarSyncSnapshotRequest, ReadboardSidecarSyncSnapshotResult, SgfTreeDto, SgfTreeNodeDto,
 };
 use engine_manager::{
     build_command_spec, check_assets, AnalysisBatchRunOptions, AnalysisCancelToken, AssetCheck, CommandSpec,
@@ -1014,6 +1014,7 @@ struct ReadboardExternalCaptureResultDto {
     snapshot_hash: Option<String>,
     size: Option<u64>,
     position: Option<PositionDto>,
+    board_region: Option<ReadboardBoardRegionDto>,
     decode: ReadboardExternalCaptureDecodeDto,
     snapshot: Option<ReadboardExternalCaptureSnapshotDto>,
     board_replacement: String,
@@ -2113,6 +2114,32 @@ fn readboard_external_capture_with_runner(
                 metadata,
             ))
         }
+        "arbitrary_screenshot_board_region" | "screenshot_board_region" | "board_region_screenshot" => {
+            let path = request
+                .image_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    invalid_request(
+                        "readboard_external_capture arbitrary_screenshot_board_region requires imagePath",
+                    )
+                })?;
+            let mut metadata = metadata;
+            metadata
+                .entry("boardRegionDetection".to_string())
+                .or_insert_with(|| "true".to_string());
+            metadata
+                .entry("arbitraryScreenshot".to_string())
+                .or_insert_with(|| "true".to_string());
+            Ok(readboard_external_capture_decode_path(
+                Path::new(path),
+                "arbitrary_screenshot_board_region",
+                false,
+                false,
+                metadata,
+            ))
+        }
         "screen"
         | "window"
         | "macos_interactive_capture"
@@ -2418,10 +2445,14 @@ fn readboard_external_capture_decode_path(
         Ok(outcome) => {
             let dto = outcome.into_dto();
             let position = dto.position.clone();
+            let board_region = dto.board_region.clone();
             let snapshot_id = Some(dto.snapshot_id.clone());
             let snapshot_hash = position.as_ref().and_then(snapshot_position_hash);
             let mut warnings = dto.warnings.clone();
             warnings.push(readboard_external_capture_scope_warning(capture_source));
+            if let Some(region) = board_region.as_ref() {
+                insert_readboard_board_region_metadata(&mut metadata, region);
+            }
             let decode = dto
                 .position
                 .as_ref()
@@ -2459,6 +2490,7 @@ fn readboard_external_capture_decode_path(
                 snapshot_hash,
                 size: Some(size),
                 position,
+                board_region,
                 decode,
                 snapshot,
                 board_replacement: "none".to_string(),
@@ -2503,6 +2535,30 @@ fn readboard_external_capture_decode_summary(position: &PositionDto) -> Readboar
         black_stones: Some(black),
         white_stones: Some(white),
     }
+}
+
+fn insert_readboard_board_region_metadata(
+    metadata: &mut BTreeMap<String, String>,
+    region: &ReadboardBoardRegionDto,
+) {
+    metadata
+        .entry("boardRegionX".to_string())
+        .or_insert_with(|| region.x.to_string());
+    metadata
+        .entry("boardRegionY".to_string())
+        .or_insert_with(|| region.y.to_string());
+    metadata
+        .entry("boardRegionWidth".to_string())
+        .or_insert_with(|| region.width.to_string());
+    metadata
+        .entry("boardRegionHeight".to_string())
+        .or_insert_with(|| region.height.to_string());
+    metadata
+        .entry("boardRegionConfidence".to_string())
+        .or_insert_with(|| format!("{:.3}", region.confidence));
+    metadata
+        .entry("boardRegionSource".to_string())
+        .or_insert_with(|| sanitize_capture_metadata_value(&region.source));
 }
 
 fn readboard_external_capture_status(
@@ -2558,6 +2614,7 @@ fn readboard_external_capture_status_with_file(
         snapshot_hash: None,
         size,
         position: None,
+        board_region: None,
         decode: ReadboardExternalCaptureDecodeDto {
             attempted: matches!(status, "decode_error"),
             status: status.to_string(),
@@ -2600,6 +2657,7 @@ fn sanitize_capture_path_for_source(path: &Path, source: &str) -> String {
     let prefix = match source {
         "operator_selected_file" => "operator-selected-file",
         "controlled_local_target_window" | "controlled_target_window" => "controlled-local-target-window",
+        "arbitrary_screenshot_board_region" => "arbitrary-screenshot-board-region",
         "macos_interactive_capture" | "macos_interactive_screencapture" => "macos-interactive-capture",
         _ => "local-image",
     };
@@ -2621,6 +2679,9 @@ fn normalize_capture_source(source: &str) -> &'static str {
         | "interactive_screencapture"
         | "external_window_capture" => "macos_interactive_capture",
         "operator_selected_file" | "selected_file" | "file" => "operator_selected_file",
+        "arbitrary_screenshot_board_region" | "screenshot_board_region" | "board_region_screenshot" => {
+            "arbitrary_screenshot_board_region"
+        }
         _ => "local_image",
     }
 }
@@ -2630,6 +2691,7 @@ fn readboard_external_capture_scope_warning(source: &str) -> String {
         "local_image" | "local_image_file" => "Readboard external capture decoded an explicit local image file only; this is not arbitrary OCR or target-client capture parity.".to_string(),
         "operator_selected_file" => "Readboard external capture decoded an operator-selected image file only; no target-client discovery or automatic board replacement was performed.".to_string(),
         "controlled_local_target_window" | "controlled_target_window" => "Readboard external capture decoded an explicit controlled local target-window screenshot fixture only; no real client discovery, arbitrary OCR, or automatic board replacement was performed.".to_string(),
+        "arbitrary_screenshot_board_region" => "Readboard external capture decoded a scoped arbitrary screenshot board-region preview only; this is not full OCR, real client discovery, or automatic board replacement parity.".to_string(),
         "macos_interactive_capture" => "Readboard external capture used operator-selected macOS interactive capture only; this is not arbitrary OCR or external client parity.".to_string(),
         _ => "Readboard external capture is scoped preview-only proof; no arbitrary OCR, target-client parity, or automatic board replacement is claimed.".to_string(),
     }
@@ -9321,6 +9383,124 @@ mod tests {
             Some("<path>")
         );
         assert_eq!(result.boundaries.get("realClientCapture"), Some(&false));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains(path.parent().unwrap().to_str().unwrap()));
+        assert!(!serialized.contains("/Users/"));
+        assert!(!serialized.contains("/private/"));
+        assert!(!serialized.contains("/var/folders/"));
+    }
+
+    #[test]
+    fn readboard_external_capture_arbitrary_screenshot_board_region_alias_decodes_preview() {
+        let path = readboard_image_fixture("controlled-19-three-stones.ppm");
+        let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(serde_json::json!({
+            "source": "screenshot_board_region",
+            "imagePath": path.display().to_string(),
+            "sourceMetadata": {
+                "scenario": "frontend-arbitrary-screenshot"
+            }
+        }))
+        .unwrap();
+
+        let result = readboard_external_capture(request).unwrap();
+
+        assert_eq!(result.status, "captured");
+        assert_eq!(result.source, "arbitrary_screenshot_board_region");
+        assert_eq!(result.capture_source, "arbitrary_screenshot_board_region");
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("arbitrary-screenshot-board-region:controlled-19-three-stones.ppm")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("boardRegionDetection")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("arbitraryScreenshot")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(result.position.as_ref().unwrap().board_size, 19);
+        let region = result.board_region.as_ref().unwrap();
+        assert_eq!(region.x, 0);
+        assert_eq!(region.y, 0);
+        assert!(region.width > 0);
+        assert_eq!(region.width, region.height);
+        assert!(region.confidence > 0.7);
+        assert_eq!(
+            result.source_metadata.get("boardRegionX").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("boardRegionSource")
+                .map(String::as_str),
+            Some("readboard_sidecar_board_region_detection")
+        );
+        assert_eq!(result.decode.status, "success");
+        assert_eq!(result.decode.stone_count, Some(3));
+        assert_eq!(result.board_replacement, "none");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("scoped arbitrary screenshot board-region preview")));
+    }
+
+    #[test]
+    fn readboard_external_capture_arbitrary_screenshot_non_board_is_recoverable_decode_error() {
+        let path = readboard_image_fixture("non-board.ppm");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "board_region_screenshot".to_string(),
+            image_path: Some(path.display().to_string()),
+            metadata: Some(BTreeMap::from([(
+                "privatePath".to_string(),
+                Value::String("/Users/example/non-board.png".to_string()),
+            )])),
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "decode_error");
+        assert!(result.recoverable);
+        assert_eq!(result.source, "arbitrary_screenshot_board_region");
+        assert_eq!(result.capture_source, "arbitrary_screenshot_board_region");
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert!(result.position.is_none());
+        assert!(result.snapshot.is_none());
+        assert!(result.board_region.is_none());
+        assert_eq!(result.board_replacement, "none");
+        assert_eq!(result.decode.status, "decode_error");
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("arbitrary-screenshot-board-region:non-board.ppm")
+        );
+        assert_eq!(
+            result.source_metadata.get("privatePath").map(String::as_str),
+            Some("<path>")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("boardRegionDetection")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("arbitraryScreenshot")
+                .map(String::as_str),
+            Some("true")
+        );
         let serialized = serde_json::to_string(&result).unwrap();
         assert!(!serialized.contains(path.parent().unwrap().to_str().unwrap()));
         assert!(!serialized.contains("/Users/"));

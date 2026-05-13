@@ -361,8 +361,21 @@ pub struct ReadboardSidecarSyncSnapshotResult {
     pub snapshot_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<PositionDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board_region: Option<ReadboardBoardRegionDto>,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ReadboardBoardRegionDto {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub confidence: f32,
+    pub source: String,
 }
 
 impl ProviderGameSummary {

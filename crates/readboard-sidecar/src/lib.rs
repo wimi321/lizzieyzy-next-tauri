@@ -1,7 +1,7 @@
 use app_model::{
-    MoveDto, MoveVertex, PlayerColor, PointDto, PositionDto, ReadboardSidecarProbeRequest,
-    ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest, ReadboardSidecarSyncSnapshotResult,
-    StoneDto,
+    MoveDto, MoveVertex, PlayerColor, PointDto, PositionDto, ReadboardBoardRegionDto,
+    ReadboardSidecarProbeRequest, ReadboardSidecarProbeResult, ReadboardSidecarSyncSnapshotRequest,
+    ReadboardSidecarSyncSnapshotResult, StoneDto,
 };
 use go_core::{
     decide_readboard_sync, Color, ReadBoardLocalContext, ReadBoardProvider, ReadBoardProviderKind,
@@ -175,12 +175,13 @@ pub struct ParsedReadboardLine {
     pub warnings: Vec<ReadboardSidecarWarning>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadboardSyncOutcome {
     pub snapshot_id: String,
     pub snapshot: ReadBoardSnapshot,
     pub decision: ReadBoardSyncDecision,
     pub position: PositionDto,
+    pub board_region: Option<ReadboardBoardRegionDto>,
     pub warnings: Vec<ReadboardSidecarWarning>,
 }
 
@@ -189,6 +190,7 @@ impl ReadboardSyncOutcome {
         ReadboardSidecarSyncSnapshotResult {
             snapshot_id: self.snapshot_id,
             position: Some(self.position),
+            board_region: self.board_region,
             warnings: self
                 .warnings
                 .into_iter()
@@ -508,6 +510,7 @@ pub fn sync_snapshot_line(
         snapshot: parsed.snapshot,
         decision,
         position,
+        board_region: None,
         warnings: parsed.warnings,
     })
 }
@@ -523,7 +526,8 @@ pub fn sync_snapshot_image_bytes(
     request: &ReadboardSidecarSyncSnapshotRequest,
     image_bytes: &[u8],
 ) -> Result<ReadboardSyncOutcome, ReadboardSidecarError> {
-    let snapshot = controlled_image_snapshot(image_bytes)?;
+    let detection = controlled_image_detection(image_bytes)?;
+    let snapshot = detection.snapshot;
     let local = ReadBoardLocalContext {
         board_size: snapshot.board_size,
         positions: Vec::new(),
@@ -545,14 +549,15 @@ pub fn sync_snapshot_image_bytes(
         snapshot,
         decision,
         position,
+        board_region: Some(detection.board_region),
         warnings: vec![
             ReadboardSidecarWarning::new(
                 ReadboardWarningCode::UnsupportedProvider,
-                "scoped controlled image import decoded a synthetic/controlled board image",
+                "scoped controlled image import decoded a controlled board region from an image/screenshot",
             ),
             ReadboardSidecarWarning::new(
                 ReadboardWarningCode::UnsupportedProvider,
-                "this is not full OCR and does not support arbitrary client screenshots",
+                "this is scoped arbitrary screenshot board-region detection, not full OCR or real client parity",
             ),
         ],
     })
@@ -870,68 +875,176 @@ fn read_controlled_image_bytes(
     ))
 }
 
-fn controlled_image_snapshot(image_bytes: &[u8]) -> Result<ReadBoardSnapshot, ReadboardSidecarError> {
+struct ControlledImageDetection {
+    snapshot: ReadBoardSnapshot,
+    board_region: ReadboardBoardRegionDto,
+}
+
+fn controlled_image_detection(image_bytes: &[u8]) -> Result<ControlledImageDetection, ReadboardSidecarError> {
     let image = image::load_from_memory(image_bytes)
         .map_err(|err| ReadboardSidecarError::ImageDecode(err.to_string()))?
         .to_rgb8();
     let (width, height) = image.dimensions();
-    let side = width.min(height);
-    if side < 95 {
+    if width.min(height) < 95 {
         return Err(ReadboardSidecarError::ImageLowConfidence(format!(
             "image is too small for controlled board sampling: {width}x{height}"
         )));
     }
-    let aspect_delta = width.abs_diff(height);
-    if aspect_delta.saturating_mul(100) > side.saturating_mul(8) {
-        return Err(ReadboardSidecarError::ImageLowConfidence(format!(
-            "controlled board image must be approximately square: {width}x{height}"
-        )));
-    }
 
-    let origin_x = (width - side) as f32 / 2.0;
-    let origin_y = (height - side) as f32 / 2.0;
-    let margin = (side as f32 * 0.055).max(4.0);
-    let background = average_rgb(
-        &image,
-        origin_x + side as f32 * 0.12,
-        origin_y + side as f32 * 0.12,
-        (side as f32 * 0.012).clamp(2.0, 8.0),
-    );
-    if !looks_like_controlled_board_background(background) {
-        return Err(ReadboardSidecarError::ImageLowConfidence(format!(
-            "controlled board background was not detected; sampled rgb={background:?}"
-        )));
-    }
-
-    let candidates = [19usize, 13usize]
-        .into_iter()
-        .filter_map(|board_size| {
-            controlled_image_snapshot_candidate(
-                &image,
-                board_size,
-                origin_x,
-                origin_y,
-                side as f32,
-                margin,
-                background,
+    detect_controlled_board_region(&image)
+        .map(|best| ControlledImageDetection {
+            snapshot: best.snapshot,
+            board_region: best.board_region,
+        })
+        .ok_or_else(|| {
+            ReadboardSidecarError::ImageLowConfidence(
+                "no controlled 13x13 or 19x19 board region was detected in the image".to_string(),
             )
         })
-        .collect::<Vec<_>>();
-    let Some(best) = candidates
-        .into_iter()
-        .max_by_key(|candidate| (candidate.grid_confidence, candidate.occupied))
-    else {
-        return Err(ReadboardSidecarError::ImageLowConfidence(
-            "no controlled 13x13 or 19x19 board grid was detected".to_string(),
-        ));
-    };
-    Ok(best.snapshot)
 }
 
 struct ControlledImageCandidate {
     snapshot: ReadBoardSnapshot,
+    board_region: ReadboardBoardRegionDto,
     occupied: usize,
     grid_confidence: usize,
+    line_confidence: usize,
+}
+
+fn detect_controlled_board_region(image: &image::RgbImage) -> Option<ControlledImageCandidate> {
+    let (width, height) = image.dimensions();
+    let centered_side = width.min(height);
+    let centered_origin_x = (width - centered_side) as f32 / 2.0;
+    let centered_origin_y = (height - centered_side) as f32 / 2.0;
+    if let Some(candidate) = best_controlled_candidate_for_region(
+        image,
+        centered_origin_x,
+        centered_origin_y,
+        centered_side as f32,
+    ) {
+        return Some(candidate);
+    }
+
+    let mut best: Option<ControlledImageCandidate> = None;
+    for side in candidate_board_region_sides(width, height) {
+        let side_f = side as f32;
+        for origin_y in candidate_board_region_offsets(height, side) {
+            for origin_x in candidate_board_region_offsets(width, side) {
+                let origin_x_f = origin_x as f32;
+                let origin_y_f = origin_y as f32;
+                let Some(candidate) =
+                    best_controlled_candidate_for_region(image, origin_x_f, origin_y_f, side_f)
+                else {
+                    continue;
+                };
+                if best
+                    .as_ref()
+                    .map(|current| {
+                        controlled_candidate_score(&candidate) > controlled_candidate_score(current)
+                    })
+                    .unwrap_or(true)
+                {
+                    best = Some(candidate);
+                }
+            }
+        }
+    }
+    best
+}
+
+fn best_controlled_candidate_for_region(
+    image: &image::RgbImage,
+    origin_x: f32,
+    origin_y: f32,
+    side: f32,
+) -> Option<ControlledImageCandidate> {
+    let margin = (side * 0.055).max(4.0);
+    let background = controlled_region_background(image, origin_x, origin_y, side)?;
+    [19usize, 13usize]
+        .into_iter()
+        .filter_map(|board_size| {
+            controlled_image_snapshot_candidate(
+                image, board_size, origin_x, origin_y, side, margin, background,
+            )
+        })
+        .max_by_key(controlled_candidate_score)
+}
+
+fn controlled_region_background(
+    image: &image::RgbImage,
+    origin_x: f32,
+    origin_y: f32,
+    side: f32,
+) -> Option<[u8; 3]> {
+    let radius = (side * 0.012).clamp(2.0, 8.0);
+    let samples = [(0.12f32, 0.12f32), (0.88, 0.12), (0.12, 0.88), (0.88, 0.88)];
+    let colors = samples
+        .into_iter()
+        .map(|(x, y)| average_rgb(image, origin_x + side * x, origin_y + side * y, radius))
+        .collect::<Vec<_>>();
+    if colors
+        .iter()
+        .all(|color| looks_like_controlled_board_background(*color))
+    {
+        Some(colors[0])
+    } else {
+        None
+    }
+}
+
+fn candidate_board_region_sides(width: u32, height: u32) -> Vec<u32> {
+    let mut sides = BTreeSet::new();
+    let max_side = width.min(height);
+    let step = (max_side / 28).clamp(10, 24);
+    let mut side = max_side;
+    while side >= 95 {
+        sides.insert(side);
+        side = side.saturating_sub(step);
+        if side < 95 {
+            break;
+        }
+    }
+    for percent in [100u32, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30, 25] {
+        let scaled = max_side.saturating_mul(percent) / 100;
+        if scaled >= 95 {
+            sides.insert(scaled);
+        }
+    }
+    sides.into_iter().rev().collect()
+}
+
+fn candidate_board_region_offsets(total: u32, side: u32) -> Vec<u32> {
+    if side >= total {
+        return vec![0];
+    }
+    let max_offset = total - side;
+    let step = (side / 16).clamp(6, 24);
+    let mut offsets = BTreeSet::new();
+    offsets.insert(0);
+    offsets.insert(max_offset / 2);
+    offsets.insert(max_offset);
+    let mut offset = 0u32;
+    while offset <= max_offset {
+        offsets.insert(offset);
+        let Some(next) = offset.checked_add(step) else {
+            break;
+        };
+        if next == offset {
+            break;
+        }
+        offset = next;
+    }
+    offsets.into_iter().collect()
+}
+
+fn controlled_candidate_score(candidate: &ControlledImageCandidate) -> (usize, usize, usize) {
+    let board_points = usize::from(candidate.snapshot.board_size).pow(2);
+    let board_lines = usize::from(candidate.snapshot.board_size) * 2;
+    (
+        candidate.line_confidence * 1000 / board_lines.max(1),
+        candidate.occupied,
+        candidate.grid_confidence * 1000 / board_points.max(1),
+    )
 }
 
 fn controlled_image_snapshot_candidate(
@@ -944,12 +1057,13 @@ fn controlled_image_snapshot_candidate(
     background: [u8; 3],
 ) -> Option<ControlledImageCandidate> {
     let spacing = (side - margin * 2.0) / (board_size as f32 - 1.0);
-    let sample_radius = (spacing * 0.22).clamp(2.0, 8.0);
+    let sample_radius = (spacing * 0.30).clamp(3.5, 8.0);
     let grid_radius = (spacing * 0.045).clamp(1.0, 3.0);
     let background_luma = rgb_luma(background);
     let mut stones = Vec::with_capacity(board_size * board_size);
     let mut occupied = 0usize;
     let mut grid_confidence = 0usize;
+    let mut line_confidence = 0usize;
 
     for y in 0..board_size {
         for x in 0..board_size {
@@ -968,12 +1082,60 @@ fn controlled_image_snapshot_candidate(
         }
     }
 
+    for index in 0..board_size {
+        let coord = margin + index as f32 * spacing;
+        let vertical_samples = [0.25f32, 0.5, 0.75]
+            .into_iter()
+            .filter(|fraction| {
+                controlled_grid_line_dark(
+                    image,
+                    origin_x + coord,
+                    origin_y + margin + *fraction * (side - margin * 2.0),
+                    grid_radius,
+                    background_luma,
+                )
+            })
+            .count();
+        let horizontal_samples = [0.25f32, 0.5, 0.75]
+            .into_iter()
+            .filter(|fraction| {
+                controlled_grid_line_dark(
+                    image,
+                    origin_x + margin + *fraction * (side - margin * 2.0),
+                    origin_y + coord,
+                    grid_radius,
+                    background_luma,
+                )
+            })
+            .count();
+        if vertical_samples >= 2 {
+            line_confidence += 1;
+        }
+        if horizontal_samples >= 2 {
+            line_confidence += 1;
+        }
+    }
+
     let minimum_grid_confidence = board_size * board_size * 3 / 5;
-    if occupied == 0 || grid_confidence < minimum_grid_confidence {
+    let minimum_line_confidence = board_size * 2 * 3 / 4;
+    let maximum_scoped_occupied = board_size * board_size * 3 / 5;
+    if occupied == 0
+        || occupied > maximum_scoped_occupied
+        || grid_confidence < minimum_grid_confidence
+        || line_confidence < minimum_line_confidence
+    {
         return None;
     }
 
     Some(ControlledImageCandidate {
+        board_region: controlled_board_region_dto(
+            origin_x,
+            origin_y,
+            side,
+            board_size,
+            grid_confidence,
+            line_confidence,
+        ),
         snapshot: ReadBoardSnapshot {
             board_size: board_size as u8,
             stones,
@@ -986,7 +1148,55 @@ fn controlled_image_snapshot_candidate(
         },
         occupied,
         grid_confidence,
+        line_confidence,
     })
+}
+
+fn controlled_board_region_dto(
+    origin_x: f32,
+    origin_y: f32,
+    side: f32,
+    board_size: usize,
+    grid_confidence: usize,
+    line_confidence: usize,
+) -> ReadboardBoardRegionDto {
+    let board_points = board_size * board_size;
+    let board_lines = board_size * 2;
+    let grid_ratio = grid_confidence as f32 / board_points.max(1) as f32;
+    let line_ratio = line_confidence as f32 / board_lines.max(1) as f32;
+    ReadboardBoardRegionDto {
+        x: origin_x.round().max(0.0) as u32,
+        y: origin_y.round().max(0.0) as u32,
+        width: side.round().max(0.0) as u32,
+        height: side.round().max(0.0) as u32,
+        confidence: grid_ratio.min(line_ratio).clamp(0.0, 1.0),
+        source: "readboard_sidecar_board_region_detection".to_string(),
+    }
+}
+
+fn controlled_grid_line_dark(
+    image: &image::RgbImage,
+    x: f32,
+    y: f32,
+    radius: f32,
+    background_luma: u16,
+) -> bool {
+    min_rgb_luma(image, x, y, radius.max(1.5)).saturating_add(35) < background_luma
+}
+
+fn min_rgb_luma(image: &image::RgbImage, x: f32, y: f32, radius: f32) -> u16 {
+    let (width, height) = image.dimensions();
+    let min_x = (x - radius).floor().max(0.0) as u32;
+    let max_x = (x + radius).ceil().min(width.saturating_sub(1) as f32) as u32;
+    let min_y = (y - radius).floor().max(0.0) as u32;
+    let max_y = (y + radius).ceil().min(height.saturating_sub(1) as f32) as u32;
+    let mut min_luma = u16::MAX;
+    for py in min_y..=max_y {
+        for px in min_x..=max_x {
+            min_luma = min_luma.min(rgb_luma(image.get_pixel(px, py).0));
+        }
+    }
+    min_luma
 }
 
 fn average_rgb(image: &image::RgbImage, x: f32, y: f32, radius: f32) -> [u8; 3] {
@@ -1193,6 +1403,7 @@ mod tests {
         );
         assert_eq!(outcome.position.stones.len(), 1);
         assert_eq!(outcome.position.to_play, PlayerColor::White);
+        assert!(outcome.board_region.is_none());
     }
 
     #[test]
@@ -1215,6 +1426,11 @@ mod tests {
         assert_eq!(outcome.position.board_size, 19);
         assert_eq!(outcome.position.move_number, 3);
         assert_eq!(outcome.position.stones.len(), 3);
+        let region = outcome.board_region.as_ref().unwrap();
+        assert_eq!(region.width, 400);
+        assert_eq!(region.height, 400);
+        assert!(region.confidence > 0.7);
+        assert_eq!(region.source, "readboard_sidecar_board_region_detection");
         assert!(outcome
             .position
             .stones
@@ -1252,6 +1468,48 @@ mod tests {
     }
 
     #[test]
+    fn sync_snapshot_image_decodes_embedded_board_screenshot() {
+        use base64::Engine;
+        let image = embedded_board_screenshot(640, 420, 184, 52, 300, false);
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            snapshot_id: Some("embedded-screenshot".to_string()),
+            image_base64: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes(image))),
+            ..Default::default()
+        };
+
+        let outcome = sync_snapshot_image(&request).unwrap();
+
+        assert_eq!(outcome.snapshot_id, "embedded-screenshot");
+        assert_eq!(outcome.position.board_size, 19);
+        assert_eq!(outcome.position.stones.len(), 3);
+        let region = outcome.board_region.as_ref().unwrap();
+        assert!(region.x > 0);
+        assert!(region.y > 0);
+        assert!(region.width >= 280);
+        assert!(region.confidence > 0.7);
+        assert!(outcome
+            .warnings
+            .iter()
+            .any(|warning| warning.message.contains("board-region detection")));
+    }
+
+    #[test]
+    fn sync_snapshot_image_decodes_offset_border_noise_screenshot() {
+        use base64::Engine;
+        let image = embedded_board_screenshot(520, 480, 48, 96, 259, true);
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            snapshot_id: Some("offset-noise-screenshot".to_string()),
+            image_base64: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes(image))),
+            ..Default::default()
+        };
+
+        let outcome = sync_snapshot_image(&request).unwrap();
+
+        assert_eq!(outcome.position.board_size, 19);
+        assert_eq!(outcome.position.move_number, 3);
+    }
+
+    #[test]
     fn sync_snapshot_image_rejects_bad_base64() {
         let request = ReadboardSidecarSyncSnapshotRequest {
             image_base64: Some("not valid base64@@".to_string()),
@@ -1285,6 +1543,35 @@ mod tests {
         };
 
         let error = sync_snapshot_image(&request).unwrap_err();
+
+        assert!(matches!(error, ReadboardSidecarError::ImageLowConfidence(_)));
+    }
+
+    #[test]
+    fn sync_snapshot_image_rejects_screenshot_without_board_region() {
+        use base64::Engine;
+        let mut image = RgbImage::from_pixel(640, 420, Rgb([42, 48, 56]));
+        for y in 76..344 {
+            for x in 180..448 {
+                image.put_pixel(x, y, Rgb([196, 146, 78]));
+            }
+        }
+        let request = ReadboardSidecarSyncSnapshotRequest {
+            image_base64: Some(base64::engine::general_purpose::STANDARD.encode(png_bytes(image))),
+            ..Default::default()
+        };
+
+        let error = sync_snapshot_image(&request).unwrap_err();
+
+        assert!(matches!(error, ReadboardSidecarError::ImageLowConfidence(_)));
+    }
+
+    #[test]
+    fn sync_snapshot_image_failure_does_not_return_default_board() {
+        let image = RgbImage::from_pixel(320, 240, Rgb([25, 30, 36]));
+        let error =
+            sync_snapshot_image_bytes(&ReadboardSidecarSyncSnapshotRequest::default(), &png_bytes(image))
+                .expect_err("non-board screenshots must not decode to an empty/default board");
 
         assert!(matches!(error, ReadboardSidecarError::ImageLowConfidence(_)));
     }
@@ -1576,6 +1863,97 @@ mod tests {
                 let dy = y - center_y;
                 if dx * dx + dy * dy <= radius * radius {
                     image.put_pixel(x as u32, y as u32, color);
+                }
+            }
+        }
+    }
+
+    fn embedded_board_screenshot(
+        width: u32,
+        height: u32,
+        origin_x: u32,
+        origin_y: u32,
+        side: u32,
+        noisy: bool,
+    ) -> RgbImage {
+        let mut image = RgbImage::from_pixel(width, height, Rgb([38, 45, 54]));
+        if noisy {
+            add_deterministic_noise(&mut image);
+        }
+        for y in origin_y.saturating_sub(8)..(origin_y + side + 8).min(height) {
+            for x in origin_x.saturating_sub(8)..(origin_x + side + 8).min(width) {
+                image.put_pixel(x, y, Rgb([18, 22, 28]));
+            }
+        }
+        draw_board_region(&mut image, origin_x, origin_y, side);
+        image
+    }
+
+    fn draw_board_region(image: &mut RgbImage, origin_x: u32, origin_y: u32, side: u32) {
+        for y in origin_y..(origin_y + side).min(image.height()) {
+            for x in origin_x..(origin_x + side).min(image.width()) {
+                image.put_pixel(x, y, Rgb([205, 154, 80]));
+            }
+        }
+        let margin = (side as f32 * 0.055).max(4.0);
+        let spacing = (side as f32 - margin * 2.0) / 18.0;
+        let start = origin_x + margin.round() as u32;
+        let end = origin_x + side - margin.round() as u32;
+        let top = origin_y + margin.round() as u32;
+        let bottom = origin_y + side - margin.round() as u32;
+        for index in 0..19 {
+            let x = (origin_x as f32 + margin + index as f32 * spacing).round() as u32;
+            let y = (origin_y as f32 + margin + index as f32 * spacing).round() as u32;
+            for py in top..=bottom.min(image.height().saturating_sub(1)) {
+                image.put_pixel(x.min(image.width().saturating_sub(1)), py, Rgb([45, 35, 20]));
+            }
+            for px in start..=end.min(image.width().saturating_sub(1)) {
+                image.put_pixel(px, y.min(image.height().saturating_sub(1)), Rgb([45, 35, 20]));
+            }
+        }
+        draw_region_stone(image, origin_x, origin_y, side, 3, 3, Rgb([12, 12, 12]));
+        draw_region_stone(image, origin_x, origin_y, side, 10, 4, Rgb([12, 12, 12]));
+        draw_region_stone(image, origin_x, origin_y, side, 15, 15, Rgb([245, 245, 240]));
+    }
+
+    fn draw_region_stone(
+        image: &mut RgbImage,
+        origin_x: u32,
+        origin_y: u32,
+        side: u32,
+        board_x: u32,
+        board_y: u32,
+        color: Rgb<u8>,
+    ) {
+        let margin = (side as f32 * 0.055).max(4.0);
+        let spacing = (side as f32 - margin * 2.0) / 18.0;
+        let center_x = (origin_x as f32 + margin + board_x as f32 * spacing).round() as i32;
+        let center_y = (origin_y as f32 + margin + board_y as f32 * spacing).round() as i32;
+        let radius = (side as f32 * 0.03).round().clamp(5.0, 11.0) as i32;
+        for y in center_y - radius..=center_y + radius {
+            for x in center_x - radius..=center_x + radius {
+                if x < 0 || y < 0 || x >= image.width() as i32 || y >= image.height() as i32 {
+                    continue;
+                }
+                let dx = x - center_x;
+                let dy = y - center_y;
+                if dx * dx + dy * dy <= radius * radius {
+                    image.put_pixel(x as u32, y as u32, color);
+                }
+            }
+        }
+    }
+
+    fn add_deterministic_noise(image: &mut RgbImage) {
+        for y in 0..image.height() {
+            for x in 0..image.width() {
+                if (x * 31 + y * 17) % 29 != 0 {
+                    continue;
+                }
+                let pixel = image.get_pixel_mut(x, y);
+                let delta = if (x + y) % 2 == 0 { 4i16 } else { -4i16 };
+                for channel in &mut pixel.0 {
+                    *channel = (i16::from(*channel) + delta).clamp(0, 255) as u8;
                 }
             }
         }

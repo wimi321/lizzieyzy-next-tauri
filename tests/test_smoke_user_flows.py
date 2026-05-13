@@ -89,6 +89,7 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_image_ocr_corpus_smoke", pending_names)
             self.assertIn("readboard_external_capture_mvp", pending_names)
             self.assertIn("readboard_operator_capture", pending_names)
+            self.assertIn("readboard_target_window_screenshot_smoke", pass_names)
             self.assertIn("provider_live_smoke", pending_names)
             self.assertIn("multiplatform_packaging_smoke", pending_names)
 
@@ -3227,6 +3228,64 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_operator_capture", pending)
             self.assertIn(expected_detail, pending["readboard_operator_capture"])
 
+    def test_valid_readboard_target_window_screenshot_evidence_passes_runtime_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_target_window_screenshot_smoke", pass_names)
+            self.assertNotIn("readboard_target_window_screenshot_smoke", pending_names)
+
+    def test_readboard_target_window_screenshot_rejects_overclaim(self) -> None:
+        self.assert_invalid_readboard_target_window_screenshot_pending(
+            lambda evidence: evidence.__setitem__("fullOcrParity", True),
+            "fullOcrParity must be false",
+        )
+
+    def test_readboard_target_window_screenshot_rejects_failed_decode_import(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            failed = evidence["failedDecodeNoReplacement"]
+            assert isinstance(failed, dict)
+            failed["imported"] = True
+
+        self.assert_invalid_readboard_target_window_screenshot_pending(
+            mutate,
+            "failedDecodeNoReplacement.imported must be false",
+        )
+
+    def test_readboard_target_window_screenshot_requires_target_metadata(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            metadata = evidence["targetWindowMetadata"]
+            assert isinstance(metadata, dict)
+            metadata.pop("bounds", None)
+
+        self.assert_invalid_readboard_target_window_screenshot_pending(
+            mutate,
+            "targetWindowMetadata.bounds must be an object",
+        )
+
+    def assert_invalid_readboard_target_window_screenshot_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_target_window_screenshot_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_target_window_screenshot_smoke", failures)
+            self.assertIn("readboard_target_window_screenshot_smoke", pending)
+            self.assertIn(expected_detail, pending["readboard_target_window_screenshot_smoke"])
+
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4403,6 +4462,7 @@ def create_complete_smoke_fixture(
     write_valid_completion_audit_gate_evidence(root)
     write_valid_completion_audit_doc(root)
     write_valid_katago_analysis_stale_guard_evidence(root)
+    write_valid_readboard_target_window_screenshot_evidence(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -4670,6 +4730,14 @@ def write_valid_readboard_external_capture_mvp_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_target_window_screenshot_evidence(root: Path) -> None:
+    create_readboard_target_window_screenshot_fixtures(root)
+    write_json(
+        root / smoke_user_flows.READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE,
+        valid_readboard_target_window_screenshot_evidence(),
+    )
+
+
 def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
@@ -4702,6 +4770,22 @@ def create_readboard_ocr_corpus_fixtures(root: Path) -> None:
     ):
         source = source_root / filename
         target = root / "tests/fixtures/readboard-images" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+
+
+def create_readboard_target_window_screenshot_fixtures(root: Path) -> None:
+    source_root = Path(__file__).resolve().parents[1] / "tests/fixtures/readboard-screenshots"
+    for filename in (
+        "target-window-scale.ppm",
+        "target-window-border.ppm",
+        "target-window-offset.ppm",
+        "target-window-light-dark.ppm",
+        "target-window-slight-noise.ppm",
+        "target-window-non-board.ppm",
+    ):
+        source = source_root / filename
+        target = root / "tests/fixtures/readboard-screenshots" / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(source.read_bytes())
 
@@ -6073,6 +6157,11 @@ def valid_readboard_operator_capture_evidence() -> dict[str, object]:
         ],
         "boundaries": boundaries,
     }
+
+
+def valid_readboard_target_window_screenshot_evidence() -> dict[str, object]:
+    evidence_path = Path(__file__).resolve().parents[1] / smoke_user_flows.READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE
+    return json.loads(evidence_path.read_text(encoding="utf-8"))
 
 
 def valid_provider_live_evidence() -> dict[str, object]:

@@ -1,0 +1,1263 @@
+{
+  "backendCommand": "readboard_external_capture",
+  "backendCommandInvoked": true,
+  "boardReplacedOnlyAfterConfirmation": true,
+  "boundaries": {
+    "fullOcrParity": false,
+    "fullReadboardParity": false,
+    "realClientParity": false,
+    "releaseParity": false,
+    "sourceStaticOnly": false,
+    "targetClientDiscoveryParity": false,
+    "windowsLinuxCaptureCovered": false
+  },
+  "captureSource": {
+    "controlledLocalTargetWindow": true,
+    "operatorInitiated": false,
+    "rawSource": "controlled_local_target_window",
+    "selection": null,
+    "sourceKind": "controlled_local_target_window",
+    "targetClientDiscoveryCovered": false,
+    "userSelectionRequired": false
+  },
+  "checks": [
+    {
+      "details": {
+        "backendCommandInvoked": true,
+        "controlledLocalTargetWindow": true,
+        "realClientObserved": false,
+        "runtimeObserved": true,
+        "sourceStaticOnly": false
+      },
+      "name": "controlled_local_target_window",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "appName": "LizzieYzy Next Fixture Host",
+        "bounds": {
+          "height": 480,
+          "width": 640,
+          "x": 16,
+          "y": 24
+        },
+        "captureSource": "controlled_local_target_window",
+        "controlledFixture": true,
+        "fixtureId": "target-window-scale",
+        "fixtureSize": "640x480",
+        "imagePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+        "processId": 4242,
+        "processName": "readboard-fixture-host",
+        "targetClientDiscovery": false,
+        "title": "Controlled Readboard Target Window",
+        "windowIdSanitized": true
+      },
+      "name": "target_window_metadata",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "artifacts": [
+          {
+            "kind": "valid_board",
+            "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+            "sanitized": true,
+            "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+            "sizeBytes": 480015
+          },
+          {
+            "kind": "non_board",
+            "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+            "sanitized": true,
+            "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "sizeBytes": 97215
+          }
+        ]
+      },
+      "name": "screenshot_artifacts",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardSize": 19,
+        "decodeAttempted": true,
+        "decodeSucceeded": true,
+        "importedAfterConfirmation": true,
+        "previewProduced": true,
+        "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+        "snapshotId": "external-capture-preview",
+        "stoneCount": 3,
+        "structuredResultProduced": true,
+        "toPlay": "white"
+      },
+      "name": "decode_result",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "afterConfirmation": {
+          "canImportPreview": true,
+          "confirmationControl": {
+            "attributes": {
+              "class": "migration-result",
+              "data-can-import-preview": "true",
+              "data-legacy-target": "provider-readboard-confirmation",
+              "data-testid": "readboard-import-confirmation",
+              "data-user-confirmed": "true"
+            },
+            "className": "migration-result",
+            "id": null,
+            "selector": "[data-testid=\"readboard-import-confirmation\"]",
+            "tagName": "div",
+            "testId": "readboard-import-confirmation",
+            "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+            "visible": true
+          },
+          "importButton": {
+            "attributes": {
+              "data-testid": "readboard-import-image-snapshot"
+            },
+            "className": null,
+            "id": null,
+            "selector": "[data-testid=\"readboard-import-image-snapshot\"]",
+            "tagName": "button",
+            "testId": "readboard-import-image-snapshot",
+            "text": "Import confirmed preview",
+            "visible": true
+          },
+          "importDisabled": false,
+          "surface": {
+            "attributes": {
+              "class": "provider-readboard",
+              "data-arbitrary-ocr-parity": "false",
+              "data-board-replaced-before-confirmation": "false",
+              "data-board-replaced-only-after-confirmation": "false",
+              "data-board-replacement-observed": "false",
+              "data-can-import-preview": "true",
+              "data-controlled-local-target-window": "true",
+              "data-full-readboard-parity": "false",
+              "data-legacy-target": "provider-readboard",
+              "data-no-full-ocr-parity": "true",
+              "data-no-release-parity": "true",
+              "data-no-target-client-parity": "true",
+              "data-preview-before-confirmation": "false",
+              "data-preview-confirmed": "true",
+              "data-preview-has-position": "true",
+              "data-preview-kind": "controlled_target",
+              "data-preview-only-before-confirmation": "false",
+              "data-release-parity": "false",
+              "data-target-client-parity": "false",
+              "data-testid": "controlled-board-image-import-mvp",
+              "data-user-confirmed": "true"
+            },
+            "className": "provider-readboard",
+            "id": null,
+            "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+            "tagName": "div",
+            "testId": "controlled-board-image-import-mvp",
+            "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+            "visible": true
+          },
+          "userConfirmed": true
+        },
+        "afterConfirmationControl": {
+          "attributes": {
+            "class": "migration-result",
+            "data-can-import-preview": "true",
+            "data-legacy-target": "provider-readboard-confirmation",
+            "data-testid": "readboard-import-confirmation",
+            "data-user-confirmed": "true"
+          },
+          "className": "migration-result",
+          "id": null,
+          "selector": "[data-testid=\"readboard-import-confirmation\"]",
+          "tagName": "div",
+          "testId": "readboard-import-confirmation",
+          "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+          "visible": true
+        },
+        "afterImport": {
+          "boardReplacedOnlyAfterConfirmation": true,
+          "boardReplacementObserved": true,
+          "statusbar": {
+            "attributes": {
+              "class": "legacy-statusbar",
+              "data-menu-target": "backend-status",
+              "data-testid": "legacy-statusbar",
+              "id": "legacy-menu-target-backend-status",
+              "role": "status"
+            },
+            "className": "legacy-statusbar",
+            "id": "legacy-menu-target-backend-status",
+            "selector": "[data-testid=\"legacy-statusbar\"]",
+            "tagName": "footer",
+            "testId": "legacy-statusbar",
+            "text": "Imported Readboard snapshot provider payload from external-capture-preview: 0 moves. 5 provider warning(s). No cached review yet.",
+            "visible": true
+          },
+          "surface": {
+            "attributes": {
+              "class": "provider-readboard",
+              "data-arbitrary-ocr-parity": "false",
+              "data-board-replaced-before-confirmation": "false",
+              "data-board-replaced-only-after-confirmation": "true",
+              "data-board-replacement-observed": "true",
+              "data-can-import-preview": "false",
+              "data-controlled-local-target-window": "true",
+              "data-full-readboard-parity": "false",
+              "data-legacy-target": "provider-readboard",
+              "data-no-full-ocr-parity": "true",
+              "data-no-release-parity": "true",
+              "data-no-target-client-parity": "true",
+              "data-preview-before-confirmation": "false",
+              "data-preview-confirmed": "false",
+              "data-preview-has-position": "true",
+              "data-preview-kind": "controlled_target",
+              "data-preview-only-before-confirmation": "false",
+              "data-release-parity": "false",
+              "data-target-client-parity": "false",
+              "data-testid": "controlled-board-image-import-mvp",
+              "data-user-confirmed": "true"
+            },
+            "className": "provider-readboard",
+            "id": null,
+            "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+            "tagName": "div",
+            "testId": "controlled-board-image-import-mvp",
+            "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+            "visible": true
+          }
+        },
+        "afterImportSurface": {
+          "attributes": {
+            "class": "provider-readboard",
+            "data-arbitrary-ocr-parity": "false",
+            "data-board-replaced-before-confirmation": "false",
+            "data-board-replaced-only-after-confirmation": "true",
+            "data-board-replacement-observed": "true",
+            "data-can-import-preview": "false",
+            "data-controlled-local-target-window": "true",
+            "data-full-readboard-parity": "false",
+            "data-legacy-target": "provider-readboard",
+            "data-no-full-ocr-parity": "true",
+            "data-no-release-parity": "true",
+            "data-no-target-client-parity": "true",
+            "data-preview-before-confirmation": "false",
+            "data-preview-confirmed": "false",
+            "data-preview-has-position": "true",
+            "data-preview-kind": "controlled_target",
+            "data-preview-only-before-confirmation": "false",
+            "data-release-parity": "false",
+            "data-target-client-parity": "false",
+            "data-testid": "controlled-board-image-import-mvp",
+            "data-user-confirmed": "true"
+          },
+          "className": "provider-readboard",
+          "id": null,
+          "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+          "tagName": "div",
+          "testId": "controlled-board-image-import-mvp",
+          "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+          "visible": true
+        },
+        "arbitraryOcrParity": false,
+        "beforeConfirmation": {
+          "canImportPreview": false,
+          "confirmationControl": {
+            "attributes": {
+              "class": "migration-result",
+              "data-can-import-preview": "false",
+              "data-legacy-target": "provider-readboard-confirmation",
+              "data-testid": "readboard-import-confirmation",
+              "data-user-confirmed": "false"
+            },
+            "className": "migration-result",
+            "id": null,
+            "selector": "[data-testid=\"readboard-import-confirmation\"]",
+            "tagName": "div",
+            "testId": "readboard-import-confirmation",
+            "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+            "visible": true
+          },
+          "importButton": {
+            "attributes": {
+              "data-testid": "readboard-import-image-snapshot"
+            },
+            "className": null,
+            "id": null,
+            "selector": "[data-testid=\"readboard-import-image-snapshot\"]",
+            "tagName": "button",
+            "testId": "readboard-import-image-snapshot",
+            "text": "Import confirmed preview",
+            "visible": true
+          },
+          "importDisabled": true,
+          "surface": {
+            "attributes": {
+              "class": "provider-readboard",
+              "data-arbitrary-ocr-parity": "false",
+              "data-board-replaced-before-confirmation": "false",
+              "data-board-replaced-only-after-confirmation": "false",
+              "data-board-replacement-observed": "false",
+              "data-can-import-preview": "false",
+              "data-controlled-local-target-window": "true",
+              "data-full-readboard-parity": "false",
+              "data-legacy-target": "provider-readboard",
+              "data-no-full-ocr-parity": "true",
+              "data-no-release-parity": "true",
+              "data-no-target-client-parity": "true",
+              "data-preview-before-confirmation": "true",
+              "data-preview-confirmed": "false",
+              "data-preview-has-position": "true",
+              "data-preview-kind": "controlled_target",
+              "data-preview-only-before-confirmation": "true",
+              "data-release-parity": "false",
+              "data-target-client-parity": "false",
+              "data-testid": "controlled-board-image-import-mvp",
+              "data-user-confirmed": "false"
+            },
+            "className": "provider-readboard",
+            "id": null,
+            "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+            "tagName": "div",
+            "testId": "controlled-board-image-import-mvp",
+            "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+            "visible": true
+          },
+          "userConfirmed": false
+        },
+        "beforeConfirmationControl": {
+          "attributes": {
+            "class": "migration-result",
+            "data-can-import-preview": "false",
+            "data-legacy-target": "provider-readboard-confirmation",
+            "data-testid": "readboard-import-confirmation",
+            "data-user-confirmed": "false"
+          },
+          "className": "migration-result",
+          "id": null,
+          "selector": "[data-testid=\"readboard-import-confirmation\"]",
+          "tagName": "div",
+          "testId": "readboard-import-confirmation",
+          "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+          "visible": true
+        },
+        "boardReplacedBeforeConfirmation": false,
+        "boardReplacedOnlyAfterConfirmation": true,
+        "boardReplacementObserved": true,
+        "confirmationControl": {
+          "attributes": {
+            "class": "migration-result",
+            "data-can-import-preview": "true",
+            "data-legacy-target": "provider-readboard-confirmation",
+            "data-testid": "readboard-import-confirmation",
+            "data-user-confirmed": "true"
+          },
+          "className": "migration-result",
+          "id": null,
+          "selector": "[data-testid=\"readboard-import-confirmation\"]",
+          "tagName": "div",
+          "testId": "readboard-import-confirmation",
+          "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+          "visible": true
+        },
+        "fullOcrParity": false,
+        "fullReadboardParity": false,
+        "previewConfirmationObserved": true,
+        "previewOnlyBeforeConfirmation": true,
+        "previewSummary": {
+          "attributes": {
+            "class": "provider-preview",
+            "data-controlled-local-target-window": "true",
+            "data-legacy-target": "provider-readboard-preview",
+            "data-preview-has-position": "true",
+            "data-preview-kind": "controlled_target",
+            "data-preview-stone-count": "3",
+            "data-testid": "readboard-snapshot-preview-summary"
+          },
+          "className": "provider-preview",
+          "id": null,
+          "selector": "[data-testid=\"readboard-snapshot-preview-summary\"]",
+          "tagName": "dl",
+          "testId": "readboard-snapshot-preview-summary",
+          "text": "Snapshotexternal-capture-previewHash41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922Board size19x19Move3Stones3Confidencenot reportedTo playWhiteSourcecontrolled...",
+          "visible": true
+        },
+        "releaseParity": false,
+        "statusbar": {
+          "attributes": {
+            "class": "legacy-statusbar",
+            "data-menu-target": "backend-status",
+            "data-testid": "legacy-statusbar",
+            "id": "legacy-menu-target-backend-status",
+            "role": "status"
+          },
+          "className": "legacy-statusbar",
+          "id": "legacy-menu-target-backend-status",
+          "selector": "[data-testid=\"legacy-statusbar\"]",
+          "tagName": "footer",
+          "testId": "legacy-statusbar",
+          "text": "Imported Readboard snapshot provider payload from external-capture-preview: 0 moves. 5 provider warning(s). No cached review yet.",
+          "visible": true
+        },
+        "targetClientParity": false,
+        "userConfirmed": true
+      },
+      "name": "preview_confirmation",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "artifact": {
+          "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+          "sanitized": true,
+          "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+          "sizeBytes": 97215
+        },
+        "boardReplaced": false,
+        "decodeAttempted": true,
+        "decodeSucceeded": false,
+        "errorKind": "decode_error",
+        "fixtureKind": "non_board",
+        "imported": false,
+        "message": "controlled readboard image confidence is too low: controlled board background was not detected; sampled rgb=[238, 238, 238]",
+        "previewProduced": false,
+        "rawBackendResult": {
+          "boardReplacement": "none",
+          "boundaries": {
+            "automaticBoardReplacement": false,
+            "fullOcrParity": false,
+            "fullReadboardParity": false,
+            "providerParity": false,
+            "readboardParity": false,
+            "realClientCapture": false,
+            "targetClientDiscovery": false
+          },
+          "captureSource": "controlled_local_target_window",
+          "decode": {
+            "attempted": true,
+            "blackStones": null,
+            "boardSize": null,
+            "status": "decode_error",
+            "stoneCount": null,
+            "whiteStones": null
+          },
+          "errorMessage": "controlled readboard image confidence is too low: controlled board background was not detected; sampled rgb=[238, 238, 238]",
+          "hash": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+          "message": "controlled readboard image confidence is too low: controlled board background was not detected; sampled rgb=[238, 238, 238]",
+          "metadata": {
+            "controlledLocalTargetWindow": "true",
+            "fixtureId": "target-window-scale-non-board",
+            "fixture_id": "target-window-scale-non-board",
+            "fixture_kind": "non_board",
+            "height": "480",
+            "phase": "readboard_controlled_target_proof_failed_decode",
+            "process_id": "4242",
+            "scope": "controlled_target_non_board_decode_failure_no_preview_or_import",
+            "screenshotPath": "controlled-local-target-window:target-window-non-board.ppm",
+            "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "screenshotSize": "97215",
+            "source": "runtime_smoke",
+            "targetProcessId": "4242",
+            "targetWindowTitle": "Controlled Readboard Target Window Non-board",
+            "width": "640",
+            "window_title": "Controlled Readboard Target Window Non-board"
+          },
+          "operatorInitiated": false,
+          "position": null,
+          "recoverable": true,
+          "sanitizedPath": "controlled-local-target-window:target-window-non-board.ppm",
+          "schema": "lizzieyzy.readboard-external-capture.v1",
+          "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+          "size": 97215,
+          "snapshot": null,
+          "snapshotHash": null,
+          "snapshotId": null,
+          "source": "controlled_local_target_window",
+          "sourceMetadata": {
+            "controlledLocalTargetWindow": "true",
+            "fixtureId": "target-window-scale-non-board",
+            "fixture_id": "target-window-scale-non-board",
+            "fixture_kind": "non_board",
+            "height": "480",
+            "phase": "readboard_controlled_target_proof_failed_decode",
+            "process_id": "4242",
+            "scope": "controlled_target_non_board_decode_failure_no_preview_or_import",
+            "screenshotPath": "controlled-local-target-window:target-window-non-board.ppm",
+            "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "screenshotSize": "97215",
+            "source": "runtime_smoke",
+            "targetProcessId": "4242",
+            "targetWindowTitle": "Controlled Readboard Target Window Non-board",
+            "width": "640",
+            "window_title": "Controlled Readboard Target Window Non-board"
+          },
+          "status": "decode_error",
+          "userSelectionRequired": false,
+          "warnings": [
+            "Readboard external capture decoded an explicit controlled local target-window screenshot fixture only; no real client discovery, arbitrary OCR, or automatic board replacement was performed."
+          ]
+        },
+        "status": "decode_error"
+      },
+      "name": "failed_decode_no_replacement",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "fixtures": [
+          {
+            "boardSize": 19,
+            "expectedOutcome": "decode_success",
+            "height": 400,
+            "kind": "controlled_board",
+            "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+            "sanitized": true,
+            "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+            "sizeBytes": 480015,
+            "stoneCount": 3,
+            "width": 400
+          },
+          {
+            "boardReplaced": false,
+            "errorKind": "ImageLowConfidence",
+            "expectedOutcome": "decode_error",
+            "height": 180,
+            "imported": false,
+            "kind": "non_board",
+            "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+            "sanitized": true,
+            "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "sizeBytes": 97215,
+            "width": 180
+          }
+        ]
+      },
+      "name": "fixture_manifest",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boundaries": {
+          "fullOcrParity": false,
+          "fullReadboardParity": false,
+          "realClientParity": false,
+          "releaseParity": false,
+          "sourceStaticOnly": false,
+          "targetClientDiscoveryParity": false,
+          "windowsLinuxCaptureCovered": false
+        }
+      },
+      "name": "scope_boundaries",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "controlled_local_target_window_screenshot_fixture",
+  "controlledLocalTargetWindow": true,
+  "decodeResult": {
+    "boardSize": 19,
+    "decodeAttempted": true,
+    "decodeSucceeded": true,
+    "importedAfterConfirmation": true,
+    "previewProduced": true,
+    "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+    "snapshotId": "external-capture-preview",
+    "stoneCount": 3,
+    "structuredResultProduced": true,
+    "toPlay": "white"
+  },
+  "failedDecodeNoReplacement": {
+    "artifact": {
+      "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+      "sanitized": true,
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "sizeBytes": 97215
+    },
+    "boardReplaced": false,
+    "decodeAttempted": true,
+    "decodeSucceeded": false,
+    "errorKind": "decode_error",
+    "fixtureKind": "non_board",
+    "imported": false,
+    "message": "controlled readboard image confidence is too low: controlled board background was not detected; sampled rgb=[238, 238, 238]",
+    "previewProduced": false,
+    "rawBackendResult": {
+      "boardReplacement": "none",
+      "boundaries": {
+        "automaticBoardReplacement": false,
+        "fullOcrParity": false,
+        "fullReadboardParity": false,
+        "providerParity": false,
+        "readboardParity": false,
+        "realClientCapture": false,
+        "targetClientDiscovery": false
+      },
+      "captureSource": "controlled_local_target_window",
+      "decode": {
+        "attempted": true,
+        "blackStones": null,
+        "boardSize": null,
+        "status": "decode_error",
+        "stoneCount": null,
+        "whiteStones": null
+      },
+      "errorMessage": "controlled readboard image confidence is too low: controlled board background was not detected; sampled rgb=[238, 238, 238]",
+      "hash": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "message": "controlled readboard image confidence is too low: controlled board background was not detected; sampled rgb=[238, 238, 238]",
+      "metadata": {
+        "controlledLocalTargetWindow": "true",
+        "fixtureId": "target-window-scale-non-board",
+        "fixture_id": "target-window-scale-non-board",
+        "fixture_kind": "non_board",
+        "height": "480",
+        "phase": "readboard_controlled_target_proof_failed_decode",
+        "process_id": "4242",
+        "scope": "controlled_target_non_board_decode_failure_no_preview_or_import",
+        "screenshotPath": "controlled-local-target-window:target-window-non-board.ppm",
+        "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "screenshotSize": "97215",
+        "source": "runtime_smoke",
+        "targetProcessId": "4242",
+        "targetWindowTitle": "Controlled Readboard Target Window Non-board",
+        "width": "640",
+        "window_title": "Controlled Readboard Target Window Non-board"
+      },
+      "operatorInitiated": false,
+      "position": null,
+      "recoverable": true,
+      "sanitizedPath": "controlled-local-target-window:target-window-non-board.ppm",
+      "schema": "lizzieyzy.readboard-external-capture.v1",
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "size": 97215,
+      "snapshot": null,
+      "snapshotHash": null,
+      "snapshotId": null,
+      "source": "controlled_local_target_window",
+      "sourceMetadata": {
+        "controlledLocalTargetWindow": "true",
+        "fixtureId": "target-window-scale-non-board",
+        "fixture_id": "target-window-scale-non-board",
+        "fixture_kind": "non_board",
+        "height": "480",
+        "phase": "readboard_controlled_target_proof_failed_decode",
+        "process_id": "4242",
+        "scope": "controlled_target_non_board_decode_failure_no_preview_or_import",
+        "screenshotPath": "controlled-local-target-window:target-window-non-board.ppm",
+        "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "screenshotSize": "97215",
+        "source": "runtime_smoke",
+        "targetProcessId": "4242",
+        "targetWindowTitle": "Controlled Readboard Target Window Non-board",
+        "width": "640",
+        "window_title": "Controlled Readboard Target Window Non-board"
+      },
+      "status": "decode_error",
+      "userSelectionRequired": false,
+      "warnings": [
+        "Readboard external capture decoded an explicit controlled local target-window screenshot fixture only; no real client discovery, arbitrary OCR, or automatic board replacement was performed."
+      ]
+    },
+    "status": "decode_error"
+  },
+  "fixtureManifest": [
+    {
+      "boardSize": 19,
+      "expectedOutcome": "decode_success",
+      "height": 400,
+      "kind": "controlled_board",
+      "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "sanitized": true,
+      "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "sizeBytes": 480015,
+      "stoneCount": 3,
+      "width": 400
+    },
+    {
+      "boardReplaced": false,
+      "errorKind": "ImageLowConfidence",
+      "expectedOutcome": "decode_error",
+      "height": 180,
+      "imported": false,
+      "kind": "non_board",
+      "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+      "sanitized": true,
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "sizeBytes": 97215,
+      "width": 180
+    }
+  ],
+  "fullOcrParity": false,
+  "fullReadboardParity": false,
+  "name": "readboard_target_window_screenshot_smoke",
+  "nonBoardFailedDecodeNoReplacement": true,
+  "platform": "macos",
+  "previewConfirmation": {
+    "afterConfirmation": {
+      "canImportPreview": true,
+      "confirmationControl": {
+        "attributes": {
+          "class": "migration-result",
+          "data-can-import-preview": "true",
+          "data-legacy-target": "provider-readboard-confirmation",
+          "data-testid": "readboard-import-confirmation",
+          "data-user-confirmed": "true"
+        },
+        "className": "migration-result",
+        "id": null,
+        "selector": "[data-testid=\"readboard-import-confirmation\"]",
+        "tagName": "div",
+        "testId": "readboard-import-confirmation",
+        "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+        "visible": true
+      },
+      "importButton": {
+        "attributes": {
+          "data-testid": "readboard-import-image-snapshot"
+        },
+        "className": null,
+        "id": null,
+        "selector": "[data-testid=\"readboard-import-image-snapshot\"]",
+        "tagName": "button",
+        "testId": "readboard-import-image-snapshot",
+        "text": "Import confirmed preview",
+        "visible": true
+      },
+      "importDisabled": false,
+      "surface": {
+        "attributes": {
+          "class": "provider-readboard",
+          "data-arbitrary-ocr-parity": "false",
+          "data-board-replaced-before-confirmation": "false",
+          "data-board-replaced-only-after-confirmation": "false",
+          "data-board-replacement-observed": "false",
+          "data-can-import-preview": "true",
+          "data-controlled-local-target-window": "true",
+          "data-full-readboard-parity": "false",
+          "data-legacy-target": "provider-readboard",
+          "data-no-full-ocr-parity": "true",
+          "data-no-release-parity": "true",
+          "data-no-target-client-parity": "true",
+          "data-preview-before-confirmation": "false",
+          "data-preview-confirmed": "true",
+          "data-preview-has-position": "true",
+          "data-preview-kind": "controlled_target",
+          "data-preview-only-before-confirmation": "false",
+          "data-release-parity": "false",
+          "data-target-client-parity": "false",
+          "data-testid": "controlled-board-image-import-mvp",
+          "data-user-confirmed": "true"
+        },
+        "className": "provider-readboard",
+        "id": null,
+        "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+        "tagName": "div",
+        "testId": "controlled-board-image-import-mvp",
+        "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+        "visible": true
+      },
+      "userConfirmed": true
+    },
+    "afterConfirmationControl": {
+      "attributes": {
+        "class": "migration-result",
+        "data-can-import-preview": "true",
+        "data-legacy-target": "provider-readboard-confirmation",
+        "data-testid": "readboard-import-confirmation",
+        "data-user-confirmed": "true"
+      },
+      "className": "migration-result",
+      "id": null,
+      "selector": "[data-testid=\"readboard-import-confirmation\"]",
+      "tagName": "div",
+      "testId": "readboard-import-confirmation",
+      "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+      "visible": true
+    },
+    "afterImport": {
+      "boardReplacedOnlyAfterConfirmation": true,
+      "boardReplacementObserved": true,
+      "statusbar": {
+        "attributes": {
+          "class": "legacy-statusbar",
+          "data-menu-target": "backend-status",
+          "data-testid": "legacy-statusbar",
+          "id": "legacy-menu-target-backend-status",
+          "role": "status"
+        },
+        "className": "legacy-statusbar",
+        "id": "legacy-menu-target-backend-status",
+        "selector": "[data-testid=\"legacy-statusbar\"]",
+        "tagName": "footer",
+        "testId": "legacy-statusbar",
+        "text": "Imported Readboard snapshot provider payload from external-capture-preview: 0 moves. 5 provider warning(s). No cached review yet.",
+        "visible": true
+      },
+      "surface": {
+        "attributes": {
+          "class": "provider-readboard",
+          "data-arbitrary-ocr-parity": "false",
+          "data-board-replaced-before-confirmation": "false",
+          "data-board-replaced-only-after-confirmation": "true",
+          "data-board-replacement-observed": "true",
+          "data-can-import-preview": "false",
+          "data-controlled-local-target-window": "true",
+          "data-full-readboard-parity": "false",
+          "data-legacy-target": "provider-readboard",
+          "data-no-full-ocr-parity": "true",
+          "data-no-release-parity": "true",
+          "data-no-target-client-parity": "true",
+          "data-preview-before-confirmation": "false",
+          "data-preview-confirmed": "false",
+          "data-preview-has-position": "true",
+          "data-preview-kind": "controlled_target",
+          "data-preview-only-before-confirmation": "false",
+          "data-release-parity": "false",
+          "data-target-client-parity": "false",
+          "data-testid": "controlled-board-image-import-mvp",
+          "data-user-confirmed": "true"
+        },
+        "className": "provider-readboard",
+        "id": null,
+        "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+        "tagName": "div",
+        "testId": "controlled-board-image-import-mvp",
+        "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+        "visible": true
+      }
+    },
+    "afterImportSurface": {
+      "attributes": {
+        "class": "provider-readboard",
+        "data-arbitrary-ocr-parity": "false",
+        "data-board-replaced-before-confirmation": "false",
+        "data-board-replaced-only-after-confirmation": "true",
+        "data-board-replacement-observed": "true",
+        "data-can-import-preview": "false",
+        "data-controlled-local-target-window": "true",
+        "data-full-readboard-parity": "false",
+        "data-legacy-target": "provider-readboard",
+        "data-no-full-ocr-parity": "true",
+        "data-no-release-parity": "true",
+        "data-no-target-client-parity": "true",
+        "data-preview-before-confirmation": "false",
+        "data-preview-confirmed": "false",
+        "data-preview-has-position": "true",
+        "data-preview-kind": "controlled_target",
+        "data-preview-only-before-confirmation": "false",
+        "data-release-parity": "false",
+        "data-target-client-parity": "false",
+        "data-testid": "controlled-board-image-import-mvp",
+        "data-user-confirmed": "true"
+      },
+      "className": "provider-readboard",
+      "id": null,
+      "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+      "tagName": "div",
+      "testId": "controlled-board-image-import-mvp",
+      "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+      "visible": true
+    },
+    "arbitraryOcrParity": false,
+    "beforeConfirmation": {
+      "canImportPreview": false,
+      "confirmationControl": {
+        "attributes": {
+          "class": "migration-result",
+          "data-can-import-preview": "false",
+          "data-legacy-target": "provider-readboard-confirmation",
+          "data-testid": "readboard-import-confirmation",
+          "data-user-confirmed": "false"
+        },
+        "className": "migration-result",
+        "id": null,
+        "selector": "[data-testid=\"readboard-import-confirmation\"]",
+        "tagName": "div",
+        "testId": "readboard-import-confirmation",
+        "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+        "visible": true
+      },
+      "importButton": {
+        "attributes": {
+          "data-testid": "readboard-import-image-snapshot"
+        },
+        "className": null,
+        "id": null,
+        "selector": "[data-testid=\"readboard-import-image-snapshot\"]",
+        "tagName": "button",
+        "testId": "readboard-import-image-snapshot",
+        "text": "Import confirmed preview",
+        "visible": true
+      },
+      "importDisabled": true,
+      "surface": {
+        "attributes": {
+          "class": "provider-readboard",
+          "data-arbitrary-ocr-parity": "false",
+          "data-board-replaced-before-confirmation": "false",
+          "data-board-replaced-only-after-confirmation": "false",
+          "data-board-replacement-observed": "false",
+          "data-can-import-preview": "false",
+          "data-controlled-local-target-window": "true",
+          "data-full-readboard-parity": "false",
+          "data-legacy-target": "provider-readboard",
+          "data-no-full-ocr-parity": "true",
+          "data-no-release-parity": "true",
+          "data-no-target-client-parity": "true",
+          "data-preview-before-confirmation": "true",
+          "data-preview-confirmed": "false",
+          "data-preview-has-position": "true",
+          "data-preview-kind": "controlled_target",
+          "data-preview-only-before-confirmation": "true",
+          "data-release-parity": "false",
+          "data-target-client-parity": "false",
+          "data-testid": "controlled-board-image-import-mvp",
+          "data-user-confirmed": "false"
+        },
+        "className": "provider-readboard",
+        "id": null,
+        "selector": "[data-testid=\"controlled-board-image-import-mvp\"]",
+        "tagName": "div",
+        "testId": "controlled-board-image-import-mvp",
+        "text": "Readboard preview and controlled image importReadboard probe ready.Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base...",
+        "visible": true
+      },
+      "userConfirmed": false
+    },
+    "beforeConfirmationControl": {
+      "attributes": {
+        "class": "migration-result",
+        "data-can-import-preview": "false",
+        "data-legacy-target": "provider-readboard-confirmation",
+        "data-testid": "readboard-import-confirmation",
+        "data-user-confirmed": "false"
+      },
+      "className": "migration-result",
+      "id": null,
+      "selector": "[data-testid=\"readboard-import-confirmation\"]",
+      "tagName": "div",
+      "testId": "readboard-import-confirmation",
+      "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+      "visible": true
+    },
+    "boardReplacedBeforeConfirmation": false,
+    "boardReplacedOnlyAfterConfirmation": true,
+    "boardReplacementObserved": true,
+    "confirmationControl": {
+      "attributes": {
+        "class": "migration-result",
+        "data-can-import-preview": "true",
+        "data-legacy-target": "provider-readboard-confirmation",
+        "data-testid": "readboard-import-confirmation",
+        "data-user-confirmed": "true"
+      },
+      "className": "migration-result",
+      "id": null,
+      "selector": "[data-testid=\"readboard-import-confirmation\"]",
+      "tagName": "div",
+      "testId": "readboard-import-confirmation",
+      "text": "Confirm current-position importImport replaces the current board with the previewed snapshot SGF only after this confirmation. It does not reconstruct full game history or exter...",
+      "visible": true
+    },
+    "fullOcrParity": false,
+    "fullReadboardParity": false,
+    "previewConfirmationObserved": true,
+    "previewOnlyBeforeConfirmation": true,
+    "previewSummary": {
+      "attributes": {
+        "class": "provider-preview",
+        "data-controlled-local-target-window": "true",
+        "data-legacy-target": "provider-readboard-preview",
+        "data-preview-has-position": "true",
+        "data-preview-kind": "controlled_target",
+        "data-preview-stone-count": "3",
+        "data-testid": "readboard-snapshot-preview-summary"
+      },
+      "className": "provider-preview",
+      "id": null,
+      "selector": "[data-testid=\"readboard-snapshot-preview-summary\"]",
+      "tagName": "dl",
+      "testId": "readboard-snapshot-preview-summary",
+      "text": "Snapshotexternal-capture-previewHash41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922Board size19x19Move3Stones3Confidencenot reportedTo playWhiteSourcecontrolled...",
+      "visible": true
+    },
+    "releaseParity": false,
+    "statusbar": {
+      "attributes": {
+        "class": "legacy-statusbar",
+        "data-menu-target": "backend-status",
+        "data-testid": "legacy-statusbar",
+        "id": "legacy-menu-target-backend-status",
+        "role": "status"
+      },
+      "className": "legacy-statusbar",
+      "id": "legacy-menu-target-backend-status",
+      "selector": "[data-testid=\"legacy-statusbar\"]",
+      "tagName": "footer",
+      "testId": "legacy-statusbar",
+      "text": "Imported Readboard snapshot provider payload from external-capture-preview: 0 moves. 5 provider warning(s). No cached review yet.",
+      "visible": true
+    },
+    "targetClientParity": false,
+    "userConfirmed": true
+  },
+  "previewOnlyBeforeConfirmation": true,
+  "rawBackendResult": {
+    "artifact": {
+      "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "sanitized": true,
+      "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "sizeBytes": 480015
+    },
+    "artifactPath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+    "artifactSha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "artifactSizeBytes": 480015,
+    "backendCommand": "readboard_external_capture",
+    "boardReplacedBeforeConfirmation": false,
+    "boardReplacement": "none",
+    "boundaries": {
+      "automaticBoardReplacement": false,
+      "fullOcrParity": false,
+      "fullReadboardParity": false,
+      "providerParity": false,
+      "readboardParity": false,
+      "realClientCapture": false,
+      "targetClientDiscovery": false
+    },
+    "captureSource": "controlled_local_target_window",
+    "decode": {
+      "attempted": true,
+      "blackStones": 2,
+      "boardSize": 19,
+      "status": "success",
+      "stoneCount": 3,
+      "whiteStones": 1
+    },
+    "errorMessage": null,
+    "hash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "message": null,
+    "metadata": {
+      "controlledLocalTargetWindow": "true",
+      "fixtureId": "target-window-scale",
+      "fixture_id": "target-window-scale",
+      "height": "480",
+      "phase": "readboard_controlled_target_proof",
+      "process_id": "4242",
+      "scope": "controlled_target_screenshot_proof_not_full_ocr_readboard_or_target_client_parity",
+      "screenshotPath": "controlled-local-target-window:target-window-scale.ppm",
+      "screenshotSha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "screenshotSize": "480015",
+      "source": "runtime_smoke",
+      "targetProcessId": "4242",
+      "targetWindowTitle": "Controlled Readboard Target Window",
+      "width": "640",
+      "window_title": "Controlled Readboard Target Window"
+    },
+    "operatorInitiated": false,
+    "phase": "readboard_controlled_target_proof",
+    "position": {
+      "board_size": 19,
+      "captures_black": 0,
+      "captures_white": 0,
+      "errors": [],
+      "last_move": null,
+      "move_number": 3,
+      "stones": [
+        {
+          "color": "black",
+          "x": 3,
+          "y": 3
+        },
+        {
+          "color": "black",
+          "x": 10,
+          "y": 4
+        },
+        {
+          "color": "white",
+          "x": 15,
+          "y": 15
+        }
+      ],
+      "to_play": "white"
+    },
+    "recoverable": false,
+    "sanitizedPath": "controlled-local-target-window:target-window-scale.ppm",
+    "schema": "lizzieyzy.readboard-external-capture.v1",
+    "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "size": 480015,
+    "snapshot": {
+      "positionMoveNumber": 3,
+      "snapshotId": "external-capture-preview",
+      "toPlay": "White",
+      "warnings": [
+        "UnsupportedProvider: scoped controlled image import decoded a synthetic/controlled board image",
+        "UnsupportedProvider: this is not full OCR and does not support arbitrary client screenshots"
+      ]
+    },
+    "snapshotHash": "41bc57f408b78d7c5f21f954e43840a2ee256007c70b30105c84b9c7447eb922",
+    "snapshotId": "external-capture-preview",
+    "source": "runtime_smoke",
+    "sourceMetadata": {
+      "appName": "LizzieYzy Next Fixture Host",
+      "bounds": {
+        "height": 480,
+        "width": 640,
+        "x": 16,
+        "y": 24
+      },
+      "captureSource": "controlled_local_target_window",
+      "controlledFixture": true,
+      "controlledLocalTargetWindow": "true",
+      "fixtureId": "target-window-scale",
+      "fixtureSize": "640x480",
+      "fixture_id": "target-window-scale",
+      "height": "480",
+      "imagePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "phase": "readboard_controlled_target_proof",
+      "processId": 4242,
+      "processName": "readboard-fixture-host",
+      "process_id": "4242",
+      "scope": "controlled_target_screenshot_proof_not_full_ocr_readboard_or_target_client_parity",
+      "screenshotPath": "controlled-local-target-window:target-window-scale.ppm",
+      "screenshotSha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "screenshotSize": "480015",
+      "source": "runtime_smoke",
+      "targetClientDiscovery": false,
+      "targetProcessId": "4242",
+      "targetWindowTitle": "Controlled Readboard Target Window",
+      "title": "Controlled Readboard Target Window",
+      "width": "640",
+      "windowIdSanitized": true,
+      "window_title": "Controlled Readboard Target Window"
+    },
+    "source_metadata": {
+      "appName": "LizzieYzy Next Fixture Host",
+      "bounds": {
+        "height": 480,
+        "width": 640,
+        "x": 16,
+        "y": 24
+      },
+      "captureSource": "controlled_local_target_window",
+      "controlledFixture": true,
+      "controlledLocalTargetWindow": "true",
+      "fixtureId": "target-window-scale",
+      "fixtureSize": "640x480",
+      "fixture_id": "target-window-scale",
+      "height": "480",
+      "imagePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "phase": "readboard_controlled_target_proof",
+      "processId": 4242,
+      "processName": "readboard-fixture-host",
+      "process_id": "4242",
+      "scope": "controlled_target_screenshot_proof_not_full_ocr_readboard_or_target_client_parity",
+      "screenshotPath": "controlled-local-target-window:target-window-scale.ppm",
+      "screenshotSha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "screenshotSize": "480015",
+      "source": "runtime_smoke",
+      "targetClientDiscovery": false,
+      "targetProcessId": "4242",
+      "targetWindowTitle": "Controlled Readboard Target Window",
+      "title": "Controlled Readboard Target Window",
+      "width": "640",
+      "windowIdSanitized": true,
+      "window_title": "Controlled Readboard Target Window"
+    },
+    "status": "captured",
+    "targetMetadata": {
+      "controlledLocalTargetWindow": true,
+      "controlled_local_target_window": true,
+      "fixtureId": "target-window-scale",
+      "fixture_id": "target-window-scale",
+      "height": 480,
+      "imagePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "image_path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "processId": 4242,
+      "process_id": 4242,
+      "width": 640,
+      "windowTitle": "Controlled Readboard Target Window",
+      "window_title": "Controlled Readboard Target Window"
+    },
+    "targetWindowMetadata": {
+      "appName": "LizzieYzy Next Fixture Host",
+      "bounds": {
+        "height": 480,
+        "width": 640,
+        "x": 16,
+        "y": 24
+      },
+      "captureSource": "controlled_local_target_window",
+      "controlledFixture": true,
+      "fixtureId": "target-window-scale",
+      "fixtureSize": "640x480",
+      "imagePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "processId": 4242,
+      "processName": "readboard-fixture-host",
+      "targetClientDiscovery": false,
+      "title": "Controlled Readboard Target Window",
+      "windowIdSanitized": true
+    },
+    "userSelectionRequired": false,
+    "warnings": [
+      "UnsupportedProvider: scoped controlled image import decoded a synthetic/controlled board image",
+      "UnsupportedProvider: this is not full OCR and does not support arbitrary client screenshots",
+      "Readboard external capture decoded an explicit controlled local target-window screenshot fixture only; no real client discovery, arbitrary OCR, or automatic board replacement was performed."
+    ]
+  },
+  "realClientParity": false,
+  "releaseParity": false,
+  "runtimeObserved": true,
+  "runtimeReportKey": "readboardTargetWindowScreenshot",
+  "runtimeReportPhase": "readboard-controlled-target-proof",
+  "schema": "lizzieyzy.readboard-target-window-screenshot-smoke.v1",
+  "scope": {
+    "note": "Controlled local target-window screenshot runtime report only; not real external client discovery or full OCR/readboard parity.",
+    "realClientObserved": false,
+    "targetClientDiscoveryCovered": false
+  },
+  "screenshotArtifacts": [
+    {
+      "kind": "valid_board",
+      "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "sanitized": true,
+      "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "sizeBytes": 480015
+    },
+    {
+      "kind": "non_board",
+      "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+      "sanitized": true,
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "sizeBytes": 97215
+    }
+  ],
+  "sourceRuntimeReport": {
+    "phase": "readboard-controlled-target-proof",
+    "reportKey": "readboardTargetWindowScreenshot",
+    "runtimeObserved": true,
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1"
+  },
+  "sourceStaticOnly": false,
+  "status": "pass",
+  "targetClientDiscoveryParity": false,
+  "targetWindowMetadata": {
+    "appName": "LizzieYzy Next Fixture Host",
+    "bounds": {
+      "height": 480,
+      "width": 640,
+      "x": 16,
+      "y": 24
+    },
+    "captureSource": "controlled_local_target_window",
+    "controlledFixture": true,
+    "fixtureId": "target-window-scale",
+    "fixtureSize": "640x480",
+    "imagePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+    "processId": 4242,
+    "processName": "readboard-fixture-host",
+    "targetClientDiscovery": false,
+    "title": "Controlled Readboard Target Window",
+    "windowIdSanitized": true
+  },
+  "windowsLinuxCaptureCovered": false
+}

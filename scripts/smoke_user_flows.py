@@ -838,6 +838,42 @@ READBOARD_OPERATOR_CAPTURE_REQUIRED_FALSE_FIELDS = [
     "windowsLinuxCaptureCovered",
     "releaseParity",
 ]
+READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE = "docs/qa/readboard-target-window-screenshot-smoke-macos.json"
+READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_SCHEMA = "lizzieyzy.readboard-target-window-screenshot-smoke.v1"
+READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_PHASE = "readboard-controlled-target-proof"
+READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_KEY = "readboardTargetWindowScreenshot"
+READBOARD_TARGET_WINDOW_SCREENSHOT_MIN_DECODABLE_SIDE = 95
+READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_CHECKS = [
+    "controlled_local_target_window",
+    "target_window_metadata",
+    "screenshot_artifacts",
+    "decode_result",
+    "preview_confirmation",
+    "failed_decode_no_replacement",
+    "fixture_manifest",
+    "scope_boundaries",
+]
+READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_TRUE_FIELDS = [
+    "controlledLocalTargetWindow",
+    "runtimeObserved",
+    "backendCommandInvoked",
+    "previewOnlyBeforeConfirmation",
+    "boardReplacedOnlyAfterConfirmation",
+    "nonBoardFailedDecodeNoReplacement",
+]
+READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FALSE_FIELDS = [
+    "sourceStaticOnly",
+    "fullOcrParity",
+    "targetClientDiscoveryParity",
+    "realClientParity",
+    "fullReadboardParity",
+    "windowsLinuxCaptureCovered",
+    "releaseParity",
+]
+READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FIXTURE_KINDS = {
+    "controlled_board",
+    "non_board",
+}
 PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
 PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
 PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -1622,6 +1658,7 @@ class UserFlowSmoke:
         self.check_readboard_image_ocr_corpus_smoke_evidence()
         self.check_readboard_external_capture_mvp_evidence()
         self.check_readboard_operator_capture_evidence()
+        self.check_readboard_target_window_screenshot_smoke_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
@@ -2466,6 +2503,30 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_operator_capture",
             "scoped readboard operator-selected file capture evidence passes with runtime backend capture, preview confirmation, decoded position, no automatic backend replacement, UI replacement only after confirmation, and boundary checks",
+        )
+
+    def check_readboard_target_window_screenshot_smoke_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_target_window_screenshot_smoke",
+                f"TODO gate: record scoped readboard controlled target-window screenshot evidence at {READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_readboard_target_window_screenshot_smoke_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "readboard_target_window_screenshot_smoke",
+                f"{READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE} is present but not valid scoped controlled target-window screenshot PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_target_window_screenshot_smoke",
+            "scoped readboard controlled local target-window screenshot evidence passes with target metadata, screenshot artifacts, decode/import confirmation, failed-decode no-replacement, and boundary checks",
         )
 
     def check_provider_live_smoke_evidence(self) -> None:
@@ -8831,6 +8892,522 @@ def validate_readboard_operator_capture_scope_boundaries(check: Any, root_eviden
     failures: list[str] = []
     boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
     for key in READBOARD_OPERATOR_CAPTURE_REQUIRED_FALSE_FIELDS:
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
+    return failures
+
+
+def validate_readboard_target_window_screenshot_smoke_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    failures.extend(validate_no_readboard_target_window_local_paths(evidence))
+    if evidence.get("schema") != READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_SCHEMA}")
+    if evidence.get("name") != "readboard_target_window_screenshot_smoke":
+        failures.append("name must be readboard_target_window_screenshot_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    if str(evidence.get("platform", "")).lower() not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("collectionMethod") != "controlled_local_target_window_screenshot_fixture":
+        failures.append("collectionMethod must be controlled_local_target_window_screenshot_fixture")
+    for key in READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_TRUE_FIELDS:
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+    if evidence.get("backendCommand") != "readboard_external_capture":
+        failures.append("backendCommand must be readboard_external_capture")
+    failures.extend(validate_readboard_target_window_runtime_facts(evidence))
+    raw_backend = evidence.get("rawBackendResult")
+    if isinstance(raw_backend, dict):
+        failures.extend(validate_readboard_target_window_raw_backend(raw_backend))
+    else:
+        failures.append("rawBackendResult must be an object")
+    capture_source = evidence.get("captureSource")
+    if isinstance(capture_source, dict):
+        failures.extend(validate_readboard_target_window_capture_source(capture_source, "captureSource"))
+    else:
+        failures.append("captureSource must be an object")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    failures.extend(validate_readboard_target_window_controlled_window(check_by_name.get("controlled_local_target_window")))
+    target_metadata = evidence.get("targetWindowMetadata")
+    if isinstance(target_metadata, dict):
+        failures.extend(validate_readboard_target_window_metadata(target_metadata, "targetWindowMetadata"))
+    else:
+        failures.append("targetWindowMetadata must be an object")
+    failures.extend(validate_readboard_target_window_metadata_check(check_by_name.get("target_window_metadata")))
+    screenshot_artifacts = evidence.get("screenshotArtifacts")
+    if isinstance(screenshot_artifacts, list):
+        failures.extend(validate_readboard_target_window_screenshot_artifacts(screenshot_artifacts, root, "screenshotArtifacts"))
+    else:
+        failures.append("screenshotArtifacts must be a list")
+    failures.extend(validate_readboard_target_window_screenshot_artifacts_check(check_by_name.get("screenshot_artifacts"), root))
+    decode_result = evidence.get("decodeResult")
+    if isinstance(decode_result, dict):
+        failures.extend(validate_readboard_target_window_decode_result(decode_result, "decodeResult"))
+    else:
+        failures.append("decodeResult must be an object")
+    failures.extend(validate_readboard_target_window_decode_result_check(check_by_name.get("decode_result")))
+    preview = evidence.get("previewConfirmation")
+    if isinstance(preview, dict):
+        failures.extend(validate_readboard_target_window_preview_confirmation(preview, "previewConfirmation"))
+    else:
+        failures.append("previewConfirmation must be an object")
+    failures.extend(validate_readboard_target_window_preview_confirmation_check(check_by_name.get("preview_confirmation")))
+    failed_decode = evidence.get("failedDecodeNoReplacement")
+    if isinstance(failed_decode, dict):
+        failures.extend(validate_readboard_target_window_failed_decode(failed_decode, "failedDecodeNoReplacement"))
+    else:
+        failures.append("failedDecodeNoReplacement must be an object")
+    failures.extend(validate_readboard_target_window_failed_decode_check(check_by_name.get("failed_decode_no_replacement")))
+    fixture_manifest = evidence.get("fixtureManifest")
+    if isinstance(fixture_manifest, list):
+        failures.extend(validate_readboard_target_window_fixture_manifest(fixture_manifest, root, "fixtureManifest"))
+    else:
+        failures.append("fixtureManifest must be a list")
+    failures.extend(validate_readboard_target_window_fixture_manifest_check(check_by_name.get("fixture_manifest"), root))
+    failures.extend(validate_readboard_target_window_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
+    return failures
+
+
+def validate_no_readboard_target_window_local_paths(value: Any) -> list[str]:
+    failures: list[str] = []
+    forbidden_prefixes = (
+        "/Users/",
+        "/private/",
+        "/var/folders/",
+        "/private/var/folders/",
+        "/tmp/",
+        "/private/tmp/",
+        "~",
+    )
+
+    def visit(node: Any, path: str) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                visit(child, f"{path}.{key}" if path else str(key))
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                visit(child, f"{path}[{index}]")
+        elif isinstance(node, str):
+            stripped = node.strip()
+            if stripped.startswith(forbidden_prefixes) or any(marker in stripped for marker in ("/Users/", "/var/folders/", "/private/var/folders/")):
+                failures.append(f"{path} must not contain a local absolute path")
+
+    visit(value, "evidence")
+    return failures
+
+
+def validate_readboard_target_window_runtime_facts(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    phase = evidence.get("runtimeReportPhase")
+    if phase != READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_PHASE:
+        failures.append(f"runtimeReportPhase must be {READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_PHASE}")
+    key = evidence.get("runtimeReportKey")
+    if key != READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_KEY:
+        failures.append(f"runtimeReportKey must be {READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_KEY}")
+    source_report = evidence.get("sourceRuntimeReport")
+    if not isinstance(source_report, dict):
+        failures.append("sourceRuntimeReport must be an object")
+    else:
+        if source_report.get("phase") != READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_PHASE:
+            failures.append(f"sourceRuntimeReport.phase must be {READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_PHASE}")
+        if source_report.get("reportKey") != READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_KEY:
+            failures.append(f"sourceRuntimeReport.reportKey must be {READBOARD_TARGET_WINDOW_SCREENSHOT_RUNTIME_KEY}")
+        if source_report.get("schema") not in {None, "lizzieyzy.tauri-runtime-ui-smoke.v1"}:
+            failures.append("sourceRuntimeReport.schema must be lizzieyzy.tauri-runtime-ui-smoke.v1 when present")
+    return failures
+
+
+def validate_readboard_target_window_raw_backend(raw: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if raw.get("status") != "captured":
+        failures.append("rawBackendResult.status must be captured")
+    raw_source = normalize_readboard_target_window_source(first_present(raw, "captureSource", "source"))
+    if raw_source != "controlled_local_target_window":
+        failures.append("rawBackendResult.source/captureSource must be controlled_local_target_window")
+    if first_present(raw, "boardReplacement", "board_replacement") not in {None, "none"}:
+        failures.append("rawBackendResult.boardReplacement must be absent or none")
+    metadata = first_present(raw, "sourceMetadata", "source_metadata", "targetMetadata", "targetWindowMetadata")
+    if not isinstance(metadata, dict):
+        failures.append("rawBackendResult.sourceMetadata must be an object")
+    else:
+        failures.extend(validate_readboard_target_window_metadata(metadata, "rawBackendResult.sourceMetadata"))
+        if "selection" in metadata:
+            failures.append("rawBackendResult.sourceMetadata.selection must be absent for controlled target-window proof")
+    position = raw.get("position")
+    if not isinstance(position, dict):
+        failures.append("rawBackendResult.position must be an object")
+    else:
+        board_size = first_present(position, "board_size", "boardSize")
+        if board_size not in {9, 13, 19}:
+            failures.append("rawBackendResult.position.board_size must be 9, 13, or 19")
+        stones = position.get("stones")
+        if not isinstance(stones, list):
+            failures.append("rawBackendResult.position.stones must be a list")
+    snapshot_hash = first_present(raw, "snapshotHash", "snapshot_hash", "hash")
+    if not is_sha256_hex(snapshot_hash):
+        failures.append("rawBackendResult.snapshotHash must be a 64-character hex sha256")
+    return failures
+
+
+def normalize_readboard_target_window_source(value: Any) -> str:
+    source = str(value or "").strip().lower().replace("-", "_")
+    if source in {"controlled_local_target_window", "local_target_window", "target_window_fixture"}:
+        return "controlled_local_target_window"
+    return normalize_readboard_external_capture_source(value)
+
+
+def validate_readboard_target_window_capture_source(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    source_kind = normalize_readboard_target_window_source(first_present(evidence, "sourceKind", "kind", "captureSource"))
+    if source_kind != "controlled_local_target_window":
+        failures.append(f"{label}.sourceKind must be controlled_local_target_window")
+    if evidence.get("controlledLocalTargetWindow") is not True:
+        failures.append(f"{label}.controlledLocalTargetWindow must be true")
+    if evidence.get("operatorInitiated") is not False:
+        failures.append(f"{label}.operatorInitiated must be false")
+    if evidence.get("userSelectionRequired") is not False:
+        failures.append(f"{label}.userSelectionRequired must be false")
+    selection = evidence.get("selection")
+    if selection is not None and selection != {}:
+        failures.append(f"{label}.selection must be absent for controlled target-window proof")
+    if evidence.get("targetClientDiscoveryCovered") is not False:
+        failures.append(f"{label}.targetClientDiscoveryCovered must be false")
+    return failures
+
+
+def validate_readboard_target_window_controlled_window(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["controlled_local_target_window evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("controlledLocalTargetWindow") is not True:
+        failures.append("controlled_local_target_window.controlledLocalTargetWindow must be true")
+    if evidence.get("runtimeObserved") is not True:
+        failures.append("controlled_local_target_window.runtimeObserved must be true")
+    if evidence.get("sourceStaticOnly") is not False:
+        failures.append("controlled_local_target_window.sourceStaticOnly must be false")
+    if evidence.get("realClientObserved") is not False:
+        failures.append("controlled_local_target_window.realClientObserved must be false")
+    if evidence.get("backendCommandInvoked") is not True:
+        failures.append("controlled_local_target_window.backendCommandInvoked must be true")
+    return failures
+
+
+def validate_readboard_target_window_metadata_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["target_window_metadata evidence must be an object"]
+    return validate_readboard_target_window_metadata(evidence, "target_window_metadata")
+
+
+def validate_readboard_target_window_metadata(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("controlledFixture") is not True:
+        failures.append(f"{label}.controlledFixture must be true")
+    if evidence.get("targetClientDiscovery") is not False:
+        failures.append(f"{label}.targetClientDiscovery must be false")
+    if evidence.get("windowIdSanitized") is not True:
+        failures.append(f"{label}.windowIdSanitized must be true")
+    for key in ("title", "appName", "processName", "captureSource"):
+        if not isinstance(evidence.get(key), str) or not evidence.get(key, "").strip():
+            failures.append(f"{label}.{key} must be non-empty")
+    if evidence.get("controlledFixture") is not True:
+        failures.append(f"{label}.controlledFixture must be true")
+    fixture_size = evidence.get("fixtureSize")
+    if not isinstance(fixture_size, str) or not fixture_size.strip():
+        failures.append(f"{label}.fixtureSize must be non-empty")
+    bounds = evidence.get("bounds")
+    if not isinstance(bounds, dict):
+        failures.append(f"{label}.bounds must be an object")
+    else:
+        for key in ("x", "y", "width", "height"):
+            value = bounds.get(key)
+            if not isinstance(value, (int, float)):
+                failures.append(f"{label}.bounds.{key} must be numeric")
+        if isinstance(bounds.get("width"), (int, float)) and bounds["width"] <= 0:
+            failures.append(f"{label}.bounds.width must be positive")
+        if isinstance(bounds.get("height"), (int, float)) and bounds["height"] <= 0:
+            failures.append(f"{label}.bounds.height must be positive")
+    return failures
+
+
+def validate_readboard_target_window_screenshot_artifacts_check(check: Any, root: Path) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["screenshot_artifacts evidence must be an object"]
+    artifacts = evidence.get("artifacts")
+    if not isinstance(artifacts, list):
+        return ["screenshot_artifacts.artifacts must be a list"]
+    return validate_readboard_target_window_screenshot_artifacts(artifacts, root, "screenshot_artifacts.artifacts")
+
+
+def validate_readboard_target_window_screenshot_artifacts(artifacts: list[Any], root: Path, label: str) -> list[str]:
+    failures: list[str] = []
+    if len(artifacts) < 2:
+        failures.append(f"{label} must include at least valid and failed screenshot artifacts")
+    seen_kinds: set[str] = set()
+    for index, item in enumerate(artifacts):
+        item_label = f"{label}[{index}]"
+        if not isinstance(item, dict):
+            failures.append(f"{item_label} must be an object")
+            continue
+        kind = item.get("kind")
+        if isinstance(kind, str):
+            seen_kinds.add(kind)
+        path_value = item.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            failures.append(f"{item_label}.path must be non-empty")
+        else:
+            failures.extend(validate_repo_relative_path_artifact(root, path_value, item, item_label))
+            if item.get("expectedOutcome") == "decode_success" or item.get("kind") == "valid_board":
+                failures.extend(validate_readboard_target_window_decodable_ppm_size(root, path_value, item_label))
+        if item.get("sanitized") is not True:
+            failures.append(f"{item_label}.sanitized must be true")
+    if "valid_board" not in seen_kinds:
+        failures.append(f"{label} must include a valid_board artifact")
+    if "non_board" not in seen_kinds:
+        failures.append(f"{label} must include a non_board artifact")
+    return failures
+
+
+def validate_readboard_target_window_decode_result_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["decode_result evidence must be an object"]
+    return validate_readboard_target_window_decode_result(evidence, "decode_result")
+
+
+def validate_readboard_target_window_decode_result(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("decodeAttempted") is not True:
+        failures.append(f"{label}.decodeAttempted must be true")
+    if evidence.get("decodeSucceeded") is not True:
+        failures.append(f"{label}.decodeSucceeded must be true")
+    if evidence.get("structuredResultProduced") is not True:
+        failures.append(f"{label}.structuredResultProduced must be true")
+    if not is_sha256_hex(evidence.get("snapshotHash")):
+        failures.append(f"{label}.snapshotHash must be a 64-character hex sha256")
+    board_size = evidence.get("boardSize")
+    if board_size not in {9, 13, 19}:
+        failures.append(f"{label}.boardSize must be 9, 13, or 19")
+    stone_count = evidence.get("stoneCount")
+    if not isinstance(stone_count, (int, float)) or stone_count < 0:
+        failures.append(f"{label}.stoneCount must be non-negative")
+    if str(evidence.get("toPlay", "")).lower() not in {"black", "white"}:
+        failures.append(f"{label}.toPlay must be black or white")
+    if evidence.get("previewProduced") is not True:
+        failures.append(f"{label}.previewProduced must be true")
+    if evidence.get("importedAfterConfirmation") is not True:
+        failures.append(f"{label}.importedAfterConfirmation must be true")
+    return failures
+
+
+def validate_readboard_target_window_preview_confirmation_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["preview_confirmation evidence must be an object"]
+    return validate_readboard_target_window_preview_confirmation(evidence, "preview_confirmation")
+
+
+def validate_readboard_target_window_preview_confirmation(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("previewOnlyBeforeConfirmation") is not True:
+        failures.append(f"{label}.previewOnlyBeforeConfirmation must be true")
+    if evidence.get("boardReplacedBeforeConfirmation") is not False:
+        failures.append(f"{label}.boardReplacedBeforeConfirmation must be false")
+    if evidence.get("userConfirmed") is not True:
+        failures.append(f"{label}.userConfirmed must be true")
+    if evidence.get("boardReplacedOnlyAfterConfirmation") is not True:
+        failures.append(f"{label}.boardReplacedOnlyAfterConfirmation must be true")
+    if evidence.get("userConfirmed") is True:
+        failures.extend(validate_no_contradictory_preview_false(evidence, label))
+    return failures
+
+
+def validate_no_contradictory_preview_false(value: Any, label: str) -> list[str]:
+    failures: list[str] = []
+    protected_true_names = {
+        "userConfirmed",
+        "confirmed",
+        "previewOnlyBeforeConfirmation",
+        "boardReplacedOnlyAfterConfirmation",
+        "importedAfterConfirmation",
+        "previewProduced",
+        "boardReplacedAfterConfirmation",
+    }
+    protected_true_attributes = {
+        "data-user-confirmed",
+        "data-can-import-preview",
+    }
+
+    def visit(node: Any, path: str) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                key_text = str(key)
+                next_path = f"{path}.{key_text}" if path else key_text
+                key_lower = key_text.lower()
+                path_lower = next_path.lower()
+                protected = key_text in protected_true_names or (
+                    key_lower in protected_true_attributes and "confirmationcontrol" in path_lower
+                )
+                false_value = child is False or (isinstance(child, str) and child.strip().lower() == "false")
+                if false_value and protected and "before" not in key_lower and "beforeconfirmation" not in path_lower:
+                    failures.append(f"{next_path} contradicts confirmed preview/import state")
+                visit(child, next_path)
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                visit(child, f"{path}[{index}]")
+
+    visit(value, label)
+    return failures
+
+
+def validate_readboard_target_window_failed_decode_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["failed_decode_no_replacement evidence must be an object"]
+    return validate_readboard_target_window_failed_decode(evidence, "failed_decode_no_replacement")
+
+
+def validate_readboard_target_window_failed_decode(evidence: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("decodeAttempted") is not True:
+        failures.append(f"{label}.decodeAttempted must be true")
+    if evidence.get("decodeSucceeded") is not False:
+        failures.append(f"{label}.decodeSucceeded must be false")
+    if evidence.get("previewProduced") is not False:
+        failures.append(f"{label}.previewProduced must be false")
+    if evidence.get("imported") is not False:
+        failures.append(f"{label}.imported must be false")
+    if evidence.get("boardReplaced") is not False:
+        failures.append(f"{label}.boardReplaced must be false")
+    if not isinstance(evidence.get("errorKind"), str) or not evidence.get("errorKind"):
+        failures.append(f"{label}.errorKind must be non-empty")
+    return failures
+
+
+def validate_readboard_target_window_fixture_manifest_check(check: Any, root: Path) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["fixture_manifest evidence must be an object"]
+    fixtures = evidence.get("fixtures")
+    if not isinstance(fixtures, list):
+        return ["fixture_manifest.fixtures must be a list"]
+    return validate_readboard_target_window_fixture_manifest(fixtures, root, "fixture_manifest.fixtures")
+
+
+def read_ppm_dimensions(path: Path) -> tuple[int, int] | None:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    tokens: list[bytes] = []
+    index = 0
+    while index < len(data) and len(tokens) < 3:
+        while index < len(data) and data[index] in b" \t\r\n":
+            index += 1
+        if index < len(data) and data[index:index + 1] == b"#":
+            while index < len(data) and data[index] not in b"\r\n":
+                index += 1
+            continue
+        start = index
+        while index < len(data) and data[index] not in b" \t\r\n":
+            index += 1
+        if start != index:
+            tokens.append(data[start:index])
+    if len(tokens) < 3 or tokens[0] not in {b"P3", b"P6"}:
+        return None
+    try:
+        return int(tokens[1]), int(tokens[2])
+    except ValueError:
+        return None
+
+
+def validate_readboard_target_window_decodable_ppm_size(root: Path, path_value: str, label: str) -> list[str]:
+    artifact_path = root / Path(path_value)
+    dimensions = read_ppm_dimensions(artifact_path)
+    if dimensions is None:
+        return [f"{label}.path must be a PPM fixture with readable dimensions for decode_success"]
+    width, height = dimensions
+    if min(width, height) < READBOARD_TARGET_WINDOW_SCREENSHOT_MIN_DECODABLE_SIDE:
+        return [
+            f"{label}.fixture side must be at least {READBOARD_TARGET_WINDOW_SCREENSHOT_MIN_DECODABLE_SIDE}px "
+            f"for decode_success, got {width}x{height}"
+        ]
+    return []
+
+
+def validate_readboard_target_window_fixture_manifest(fixtures: list[Any], root: Path, label: str) -> list[str]:
+    failures: list[str] = []
+    if len(fixtures) < len(READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FIXTURE_KINDS):
+        failures.append(f"{label} must include at least {len(READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FIXTURE_KINDS)} fixtures")
+    kinds: set[str] = set()
+    for index, item in enumerate(fixtures):
+        item_label = f"{label}[{index}]"
+        if not isinstance(item, dict):
+            failures.append(f"{item_label} must be an object")
+            continue
+        kind = item.get("kind")
+        if isinstance(kind, str):
+            kinds.add(kind)
+        path_value = item.get("path")
+        if not isinstance(path_value, str) or not path_value.strip():
+            failures.append(f"{item_label}.path must be non-empty")
+        else:
+            failures.extend(validate_repo_relative_path_artifact(root, path_value, item, item_label))
+        if item.get("sanitized") is not True:
+            failures.append(f"{item_label}.sanitized must be true")
+        expected_outcome = item.get("expectedOutcome")
+        if kind == "non_board":
+            if expected_outcome != "decode_error":
+                failures.append(f"{item_label}.expectedOutcome must be decode_error for non_board")
+            if item.get("boardReplaced") is not False:
+                failures.append(f"{item_label}.boardReplaced must be false for non_board")
+        elif expected_outcome != "decode_success":
+            failures.append(f"{item_label}.expectedOutcome must be decode_success")
+        elif isinstance(path_value, str):
+            failures.extend(validate_readboard_target_window_decodable_ppm_size(root, path_value, item_label))
+    missing = sorted(READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FIXTURE_KINDS - kinds)
+    if missing:
+        failures.append(f"{label} missing fixture kinds: " + ", ".join(missing))
+    return failures
+
+
+def validate_readboard_target_window_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
+    for key in READBOARD_TARGET_WINDOW_SCREENSHOT_REQUIRED_FALSE_FIELDS:
         if root_evidence.get(key) is not False:
             failures.append(f"{key} must be false")
         if boundaries.get(key) is not False:

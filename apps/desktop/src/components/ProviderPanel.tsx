@@ -9,6 +9,7 @@ import {
   probeReadboardSidecar,
   syncReadboardSidecarSnapshot
 } from "../api/providers";
+import { discoverReadboardCaptureTargets } from "../api/backend";
 import {
   emptyProviderMetadata,
   providerLabel,
@@ -20,6 +21,8 @@ import {
   type ProviderImportResult,
   type ProviderKind,
   type ReadboardControlledTargetMetadata,
+  type ReadboardCaptureTargetCandidate,
+  type ReadboardCaptureTargetDiscoveryResult,
   type ReadboardExternalCaptureResult,
   type ReadboardExternalCaptureSource,
   type LegacyImportCaptureHelperKind,
@@ -80,6 +83,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardControlledProcessId, setReadboardControlledProcessId] = useState("");
   const [readboardControlledWidth, setReadboardControlledWidth] = useState("");
   const [readboardControlledHeight, setReadboardControlledHeight] = useState("");
+  const [readboardTargetDiscovery, setReadboardTargetDiscovery] = useState<ReadboardCaptureTargetDiscoveryResult | null>(null);
+  const [readboardSelectedTargetIndex, setReadboardSelectedTargetIndex] = useState<number | null>(null);
   const [readboardCaptureResult, setReadboardCaptureResult] = useState<ReadboardExternalCaptureResult | null>(null);
   const [readboardProbeResult, setReadboardProbeResult] = useState<ReadboardSidecarProbeResult | null>(null);
   const [readboardSyncResult, setReadboardSyncResult] = useState<ReadboardSidecarSyncSnapshotResult | null>(null);
@@ -100,6 +105,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canCaptureReadboardExternal = !disabled;
   const canPreviewControlledTarget = !disabled && readboardImagePath.trim().length > 0;
   const canPreviewScreenshotRegion = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
+  const canDiscoverReadboardTargets = !disabled;
+  const selectedReadboardTarget = readboardSelectedTargetIndex === null ? null : readboardTargetDiscovery?.candidates[readboardSelectedTargetIndex] ?? null;
   const canConfirmReadboardImport = !disabled && readboardSyncResult?.position != null;
   const canImportReadboardSnapshot = canConfirmReadboardImport && readboardImportConfirmed;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
@@ -259,6 +266,45 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     }
   }
 
+  async function handleDiscoverReadboardTargets() {
+    if (!canDiscoverReadboardTargets) return;
+    setOperationStatus("readboardSync", "Discovering target windows for scoped readboard capture...");
+    try {
+      const result = await discoverReadboardCaptureTargets({
+        title: optionalTrimmed(readboardCaptureWindowTitle),
+        windowTitle: optionalTrimmed(readboardCaptureWindowTitle),
+        titleHint: optionalTrimmed(readboardCaptureWindowTitle),
+        filter: optionalTrimmed(readboardCaptureWindowTitle),
+        minWidth: positiveIntegerOrNull(readboardControlledWidth),
+        minHeight: positiveIntegerOrNull(readboardControlledHeight),
+        timeoutMs: readboardTimeoutMs,
+        metadata: {
+          source: "provider_panel",
+          scope: "scoped_target_window_discovery_not_real_provider_or_full_client_parity"
+        }
+      });
+      setReadboardTargetDiscovery(result);
+      setReadboardSelectedTargetIndex(result.candidates.length > 0 ? 0 : null);
+      const status = normalizeDiscoveryStatus(result.status);
+      setOperationStatus(
+        "readboardSync",
+        result.candidates.length > 0
+          ? `Discovered ${result.candidates.length} target candidate(s). Select one, preview, then confirm before import.`
+          : `Target discovery ${status}: ${result.message ?? result.errorMessage ?? "no candidates; no capture or import performed."}`
+      );
+    } catch (error) {
+      setReadboardTargetDiscovery({
+        status: "error",
+        candidates: [],
+        warnings: ["Target discovery failed recoverably. No capture, import, or board replacement was performed."],
+        message: errorMessage(error),
+        errorMessage: errorMessage(error)
+      });
+      setReadboardSelectedTargetIndex(null);
+      setOperationStatus("readboardSync", `Target discovery failed recoverably: ${errorMessage(error)} No import performed.`);
+    }
+  }
+
   async function handleReadboardExternalCapture(source: ReadboardExternalCaptureSource) {
     if (!canCaptureReadboardExternal) return;
     setOperationStatus("readboardSync", `Starting operator-selected ${source} capture preview...`);
@@ -342,14 +388,16 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     resetReadboardPreviewState();
     try {
       const imagePath = readboardImagePath.trim();
-      const targetMetadata = readboardControlledTargetMetadata(
-        readboardCaptureWindowTitle,
-        readboardControlledProcessId,
-        readboardControlledFixtureId,
-        readboardControlledWidth,
-        readboardControlledHeight,
-        imagePath
-      );
+      const targetMetadata = selectedReadboardTarget
+        ? readboardControlledTargetMetadataFromCandidate(selectedReadboardTarget, imagePath, readboardControlledFixtureId)
+        : readboardControlledTargetMetadata(
+          readboardCaptureWindowTitle,
+          readboardControlledProcessId,
+          readboardControlledFixtureId,
+          readboardControlledWidth,
+          readboardControlledHeight,
+          imagePath
+        );
       const capture = await captureReadboardExternal({
         source: "controlled_local_target_window",
         endpoint: optionalTrimmed(readboardEndpoint),
@@ -361,8 +409,25 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         processId: targetMetadata.processId ?? null,
         fixture_id: targetMetadata.fixture_id ?? null,
         fixtureId: targetMetadata.fixtureId ?? null,
+        id: targetMetadata.id ?? null,
+        targetId: targetMetadata.targetId ?? targetMetadata.target_id ?? targetMetadata.captureTargetId ?? targetMetadata.id ?? null,
+        target_id: targetMetadata.target_id ?? targetMetadata.targetId ?? targetMetadata.captureTargetId ?? targetMetadata.id ?? null,
+        captureTargetId: targetMetadata.captureTargetId ?? targetMetadata.targetId ?? targetMetadata.target_id ?? targetMetadata.id ?? null,
+        windowId: targetMetadata.windowId ?? targetMetadata.window_id ?? null,
+        appName: targetMetadata.appName ?? targetMetadata.app_name ?? null,
+        processName: targetMetadata.processName ?? targetMetadata.process_name ?? null,
+        x: targetMetadata.x ?? targetMetadata.bounds?.x ?? null,
+        y: targetMetadata.y ?? targetMetadata.bounds?.y ?? null,
+        targetX: targetMetadata.targetX ?? targetMetadata.x ?? targetMetadata.bounds?.x ?? null,
+        targetY: targetMetadata.targetY ?? targetMetadata.y ?? targetMetadata.bounds?.y ?? null,
+        targetWidth: targetMetadata.targetWidth ?? targetMetadata.width ?? targetMetadata.bounds?.width ?? null,
+        targetHeight: targetMetadata.targetHeight ?? targetMetadata.height ?? targetMetadata.bounds?.height ?? null,
         width: targetMetadata.width ?? null,
         height: targetMetadata.height ?? null,
+        bounds: targetMetadata.bounds ?? targetMetadata.targetBounds ?? targetMetadata.target_bounds ?? null,
+        targetBounds: targetMetadata.targetBounds ?? targetMetadata.bounds ?? targetMetadata.target_bounds ?? null,
+        captureTiedToSelectedTarget: selectedReadboardTarget !== null,
+        capture_tied_to_selected_target: selectedReadboardTarget !== null,
         controlledLocalTargetWindow: true,
         controlled_local_target_window: true,
         controlledTarget: targetMetadata,
@@ -376,7 +441,18 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           window_title: targetMetadata.window_title ?? "",
           process_id: targetMetadata.process_id === null || targetMetadata.process_id === undefined ? "" : String(targetMetadata.process_id),
           width: targetMetadata.width === null || targetMetadata.width === undefined ? "" : String(targetMetadata.width),
-          height: targetMetadata.height === null || targetMetadata.height === undefined ? "" : String(targetMetadata.height)
+          height: targetMetadata.height === null || targetMetadata.height === undefined ? "" : String(targetMetadata.height),
+          target_discovery_selected: selectedReadboardTarget ? "true" : "false",
+          capture_tied_to_selected_target: selectedReadboardTarget ? "true" : "false",
+          captureTiedToSelectedTarget: selectedReadboardTarget ? "true" : "false",
+          target_candidate_id: selectedReadboardTarget ? readboardTargetCandidateId(selectedReadboardTarget) : "",
+          target_candidate_window_id: selectedReadboardTarget?.windowId === null || selectedReadboardTarget?.windowId === undefined
+            ? selectedReadboardTarget?.window_id === null || selectedReadboardTarget?.window_id === undefined ? "" : String(selectedReadboardTarget.window_id)
+            : String(selectedReadboardTarget.windowId),
+          target_candidate_title: selectedReadboardTarget?.title ?? "",
+          target_candidate_app_name: selectedReadboardTarget ? readboardTargetAppName(selectedReadboardTarget) ?? "" : "",
+          target_candidate_process_name: selectedReadboardTarget ? readboardTargetProcessName(selectedReadboardTarget) ?? "" : "",
+          target_candidate_bounds: selectedReadboardTarget ? readboardTargetBoundsSummary(selectedReadboardTarget) : ""
         }
       });
       setReadboardCaptureResult(capture);
@@ -875,6 +951,57 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             }}
           />
         </label>
+        <section
+          className="provider-target-discovery"
+          data-testid="readboard-target-window-discovery"
+          data-target-window-discovery-status={readboardTargetDiscovery ? normalizeDiscoveryStatus(readboardTargetDiscovery.status) : "ready"}
+          data-target-window-candidate-count={readboardTargetDiscovery?.candidates.length ?? 0}
+          data-target-window-selected={String(selectedReadboardTarget !== null)}
+          data-target-client-parity="false"
+          data-real-fox-yike-parity="false"
+          data-automatic-replacement="false"
+        >
+          <div className="provider-subheader">
+            <h4>Target-window discovery</h4>
+            <span data-testid="readboard-target-window-discovery-status">
+              {readboardTargetDiscovery ? normalizeDiscoveryStatus(readboardTargetDiscovery.status) : "scoped"}
+            </span>
+          </div>
+          <p className="provider-status">
+            Lists visible window candidates for operator-selected readboard capture metadata. This does not automate Fox/Yike clients, discover real provider state, or import without preview and confirmation.
+          </p>
+          <button
+            type="button"
+            data-testid="readboard-discover-target-windows"
+            onClick={() => void handleDiscoverReadboardTargets()}
+            disabled={!canDiscoverReadboardTargets}
+          >
+            Discover target windows
+          </button>
+          {readboardTargetDiscovery ? (
+            <div className="provider-target-candidates" data-testid="readboard-target-window-candidates">
+              {readboardTargetDiscovery.candidates.length > 0 ? readboardTargetDiscovery.candidates.slice(0, 6).map((candidate, index) => (
+                <button
+                  type="button"
+                  key={`${index}:${candidate.title}:${readboardTargetCandidateId(candidate)}`}
+                  data-testid="readboard-target-window-candidate"
+                  data-selected={String(readboardSelectedTargetIndex === index)}
+                  data-window-title={candidate.title}
+                  data-app-name={readboardTargetAppName(candidate) ?? ""}
+                  data-process-name={readboardTargetProcessName(candidate) ?? ""}
+                  onClick={() => setReadboardSelectedTargetIndex(index)}
+                >
+                  <strong>{candidate.title || "Untitled window"}</strong>
+                  <span>{readboardTargetCandidateSummary(candidate)}</span>
+                </button>
+              )) : (
+                <p className="provider-status" data-testid="readboard-target-window-unavailable">
+                  {readboardTargetDiscovery.message ?? readboardTargetDiscovery.errorMessage ?? "No target windows discovered; capture remains preview-only and unavailable here."}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </section>
         <section
           className="provider-controlled-target"
           data-testid="readboard-controlled-target-proof"
@@ -1659,6 +1786,97 @@ function readboardControlledTargetMetadata(
     imagePath,
     image_path: imagePath
   };
+}
+
+function readboardControlledTargetMetadataFromCandidate(
+  candidate: ReadboardCaptureTargetCandidate,
+  imagePath: string,
+  fixtureId: string
+): ReadboardControlledTargetMetadata {
+  const bounds = candidate.bounds ?? {};
+  const normalizedFixtureId = optionalTrimmed(fixtureId) ?? `discovered:${readboardTargetCandidateId(candidate)}`;
+  const processId = numberFromUnknown(candidate.processId) ?? numberFromUnknown(candidate.process_id);
+  const windowId = candidate.windowId ?? candidate.window_id ?? null;
+  const appName = readboardTargetAppName(candidate);
+  const processName = readboardTargetProcessName(candidate);
+  return {
+    id: candidate.id ?? null,
+    targetId: readboardTargetCandidateId(candidate),
+    target_id: readboardTargetCandidateId(candidate),
+    captureTargetId: readboardTargetCandidateId(candidate),
+    controlledLocalTargetWindow: true,
+    controlled_local_target_window: true,
+    captureTiedToSelectedTarget: true,
+    capture_tied_to_selected_target: true,
+    appName,
+    app_name: appName,
+    processName,
+    process_name: processName,
+    windowTitle: candidate.title || null,
+    window_title: candidate.title || null,
+    windowId,
+    window_id: windowId,
+    processId,
+    process_id: processId,
+    fixtureId: normalizedFixtureId,
+    fixture_id: normalizedFixtureId,
+    x: numberFromUnknown(bounds.x),
+    y: numberFromUnknown(bounds.y),
+    targetX: numberFromUnknown(bounds.x),
+    targetY: numberFromUnknown(bounds.y),
+    targetWidth: numberFromUnknown(bounds.width),
+    targetHeight: numberFromUnknown(bounds.height),
+    width: numberFromUnknown(bounds.width),
+    height: numberFromUnknown(bounds.height),
+    bounds,
+    targetBounds: bounds,
+    target_bounds: bounds,
+    imagePath,
+    image_path: imagePath
+  };
+}
+
+function readboardTargetCandidateId(candidate: ReadboardCaptureTargetCandidate): string {
+  return String(candidate.id ?? candidate.windowId ?? candidate.window_id ?? candidate.processId ?? candidate.process_id ?? candidate.title ?? "target");
+}
+
+function readboardTargetAppName(candidate: ReadboardCaptureTargetCandidate): string | null {
+  return stringFromUnknown(candidate.appName) ?? stringFromUnknown(candidate.app_name);
+}
+
+function readboardTargetProcessName(candidate: ReadboardCaptureTargetCandidate): string | null {
+  return stringFromUnknown(candidate.processName) ?? stringFromUnknown(candidate.process_name);
+}
+
+function readboardTargetCandidateSummary(candidate: ReadboardCaptureTargetCandidate): string {
+  const bounds = candidate.bounds;
+  const parts = [
+    readboardTargetAppName(candidate),
+    readboardTargetProcessName(candidate),
+    candidate.processId ?? candidate.process_id ? `pid ${candidate.processId ?? candidate.process_id}` : "",
+    candidate.windowId ?? candidate.window_id ? `window ${candidate.windowId ?? candidate.window_id}` : "",
+    bounds?.width && bounds?.height ? `${bounds.width}x${bounds.height}` : "",
+    candidate.confidence !== null && candidate.confidence !== undefined ? `confidence ${candidate.confidence}` : ""
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("; ") : "candidate metadata not reported";
+}
+
+function readboardTargetBoundsSummary(candidate: ReadboardCaptureTargetCandidate): string {
+  const bounds = candidate.bounds;
+  if (!bounds) return "";
+  const x = bounds.x === null || bounds.x === undefined ? "" : String(bounds.x);
+  const y = bounds.y === null || bounds.y === undefined ? "" : String(bounds.y);
+  const width = bounds.width === null || bounds.width === undefined ? "" : String(bounds.width);
+  const height = bounds.height === null || bounds.height === undefined ? "" : String(bounds.height);
+  return [x, y, width, height].join(",");
+}
+
+function normalizeDiscoveryStatus(value: unknown): string {
+  const status = typeof value === "string" ? value.toLowerCase() : "";
+  if (status.includes("available") || status.includes("ok") || status.includes("success")) return "available";
+  if (status.includes("unsupported") || status.includes("browser preview") || status.includes("unknown command")) return "unsupported";
+  if (status.includes("error") || status.includes("fail")) return "error";
+  return status || "ready";
 }
 
 function readboardControlledTargetMetadataFromResult(

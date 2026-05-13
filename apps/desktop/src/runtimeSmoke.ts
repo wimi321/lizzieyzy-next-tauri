@@ -6,6 +6,7 @@ import {
   checkEngineAssets,
   classifyProblems,
   deleteSgfNode,
+  discoverReadboardCaptureTargets,
   editSgfMove,
   installedAppRuntimeProof,
   isTauriRuntime,
@@ -35,6 +36,7 @@ import {
 } from "./api/providers";
 import { computeGameCacheKey, loadAnalysisCache, saveAnalysisCache } from "./api/analysisCache";
 import type { JsonValue } from "./domain/cache";
+import type { ReadboardCaptureTargetCandidate } from "./domain/providers";
 import type { AnalysisFrameDto, AssetCheckDto, EngineProfileDto, KataGoLiveSmokeConfigDto, MoveVertex, PlayerColor, SgfTreeDto, SgfTreeNodeDto } from "./domain/types";
 
 type RuntimeSmokeStatus = "pass" | "fail";
@@ -68,6 +70,7 @@ type RuntimeSmokeCheckName =
   | "readboard_operator_capture"
   | "readboard_controlled_target_proof"
   | "readboard_screenshot_region_detection"
+  | "readboard_target_window_discovery"
   | "backend_runtime_proof_observed"
   | "runtime_source_observed"
   | "backend_availability_observed"
@@ -128,6 +131,7 @@ type RuntimeSmokeReport = {
   readboardOperatorCapture?: ReadboardExternalCaptureMvpEvidence;
   readboardTargetWindowScreenshot?: ReadboardExternalCaptureMvpEvidence;
   readboardScreenshotRegionDetection?: ReadboardExternalCaptureMvpEvidence;
+  readboardTargetWindowDiscovery?: ReadboardTargetWindowDiscoveryEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
   installedAppRuntimeProof?: InstalledAppRuntimeProofEvidence;
@@ -135,7 +139,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "readboard-controlled-target-proof" | "readboard-screenshot-region-detection" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "readboard-controlled-target-proof" | "readboard-screenshot-region-detection" | "readboard-target-window-discovery" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -444,6 +448,35 @@ type ReadboardExternalCaptureMvpEvidence = {
     rawBackendResult?: Record<string, unknown>;
   };
 };
+type ReadboardTargetWindowDiscoveryEvidence = {
+  runtimeObserved: true;
+  runtimeReportPhase: "readboard-target-window-discovery";
+  backendCommandInvoked: "readboard_list_capture_targets";
+  backendCommand: "readboard_list_capture_targets";
+  status: string;
+  candidates: ReadboardCaptureTargetCandidate[];
+  selectedTarget: Record<string, unknown>;
+  captureArtifact?: ReadboardExternalCaptureMvpEvidence["captureArtifact"];
+  rawCaptureResult?: Record<string, unknown>;
+  failedDecodeNoReplacement?: ReadboardExternalCaptureMvpEvidence["failedDecodeNoReplacement"];
+  previewConfirmation?: ReadboardExternalCaptureMvpEvidence["previewConfirmation"];
+  captureSourceTrace: {
+    captureSource: "controlled_local_target_window";
+    selectedFromDiscovery: true;
+    captureTiedToSelectedTarget: true;
+    previewOnly: true;
+    explicitImportConfirmationRequired: true;
+  };
+  boundaries: {
+    targetClientDiscoveryParity: false;
+    realFoxYikeParity: false;
+    fullOcrParity: false;
+    automaticBoardReplacement: false;
+    releaseParity: false;
+  };
+  warnings: string[];
+  rawBackendResult: Record<string, unknown>;
+};
 type ReadboardProtocolLineEvidence = {
   snapshotId: string;
   boardSize: number;
@@ -653,6 +686,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runReadboardControlledTargetProofPhase(report);
     } else if (resolvedConfig.phase === "readboard-screenshot-region-detection") {
       await runReadboardScreenshotRegionDetectionPhase(report);
+    } else if (resolvedConfig.phase === "readboard-target-window-discovery") {
+      await runReadboardTargetWindowDiscoveryPhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "katago-live-workflow-cache") {
@@ -2160,6 +2195,347 @@ async function runReadboardScreenshotRegionDetectionPhase(report: RuntimeSmokeRe
   });
 }
 
+async function runReadboardTargetWindowDiscoveryPhase(report: RuntimeSmokeReport) {
+  if (!isTauriRuntime()) throw new Error("readboard-target-window-discovery must run inside the real Tauri runtime.");
+  const endpoint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ENDPOINT");
+  const imagePath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH");
+  if (!imagePath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH is required for readboard-target-window-discovery.");
+  const titleHint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_TARGET_WINDOW_TITLE");
+  const width = positiveEnvInteger("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_TARGET_WIDTH") ?? 1;
+  const height = positiveEnvInteger("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_TARGET_HEIGHT") ?? 1;
+  await check(report, "readboard_target_window_discovery", async () => {
+    const result = await discoverReadboardCaptureTargets({
+      title: titleHint,
+      windowTitle: titleHint,
+      titleHint,
+      filter: titleHint,
+      minWidth: width,
+      minHeight: height,
+      timeoutMs: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_target_window_discovery",
+        scope: "scoped_target_window_discovery_not_real_provider_or_full_client_parity"
+      }
+    });
+    const status = normalizeDiscoveryStatus(result.status);
+    if (status !== "available") {
+      throw new Error(`Readboard target-window discovery expected available status, got ${String(result.status || "empty")}.`);
+    }
+    if (!Array.isArray(result.candidates) || result.candidates.length === 0) {
+      throw new Error("Readboard target-window discovery returned no candidates.");
+    }
+    const selected = selectReadboardTargetCandidate(result.candidates, titleHint);
+    const selectedMetadata = readboardTargetCandidateMetadata(selected, imagePath);
+    const captureResult = await captureReadboardExternal({
+      source: "controlled_local_target_window",
+      endpoint,
+      image_path: imagePath,
+      imagePath,
+      window_title: selectedMetadata.windowTitle,
+      windowTitle: selectedMetadata.windowTitle,
+      process_id: selectedMetadata.processId,
+      processId: selectedMetadata.processId,
+      fixture_id: selectedMetadata.fixtureId,
+      fixtureId: selectedMetadata.fixtureId,
+      id: selectedMetadata.id,
+      windowId: selectedMetadata.windowId,
+      appName: selectedMetadata.appName,
+      processName: selectedMetadata.processName,
+      x: selectedMetadata.x,
+      y: selectedMetadata.y,
+      width: selectedMetadata.width,
+      height: selectedMetadata.height,
+      bounds: selectedMetadata.bounds,
+      targetBounds: selectedMetadata.targetBounds,
+      captureTiedToSelectedTarget: true,
+      capture_tied_to_selected_target: true,
+      controlledLocalTargetWindow: true,
+      controlled_local_target_window: true,
+      controlledTarget: selectedMetadata,
+      controlled_target: selectedMetadata,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_target_window_discovery_capture",
+        scope: "discovered_target_controlled_capture_preview_only",
+        capture_tied_to_selected_target: "true",
+        target_candidate_id: String(selectedMetadata.id ?? ""),
+        target_candidate_window_id: String(selectedMetadata.windowId ?? ""),
+        target_candidate_title: selectedMetadata.windowTitle ?? "",
+        target_candidate_app_name: selectedMetadata.appName ?? "",
+        target_candidate_process_name: selectedMetadata.processName ?? "",
+        target_candidate_bounds: selectedMetadata.bounds ? `${selectedMetadata.bounds.x ?? ""},${selectedMetadata.bounds.y ?? ""},${selectedMetadata.bounds.width ?? ""},${selectedMetadata.bounds.height ?? ""}` : ""
+      }
+    });
+    const captureStatus = normalizeCaptureStatus(captureResult.status);
+    if (captureStatus !== "captured") {
+      throw new Error(`Readboard target-window discovery capture expected captured status, got ${String(captureResult.status || "empty")}.`);
+    }
+    const captureArtifact = summarizeReadboardCaptureArtifact(captureResult as Record<string, unknown>, imagePath);
+    if (!captureArtifact) throw new Error("Readboard target-window discovery capture did not produce artifact evidence.");
+    const stableImagePath = stableReadboardCapturePath(imagePath);
+    const sanitizedCaptureResult = sanitizeReadboardEvidenceValue(captureResult as Record<string, unknown>, stableImagePath, imagePath) as Record<string, unknown>;
+
+    const nonBoardImagePath = controlledReadboardNonBoardFixturePath(
+      imagePath,
+      runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_NON_BOARD_IMAGE_PATH")
+    );
+    const nonBoardResult = await captureReadboardExternal({
+      source: "controlled_local_target_window",
+      endpoint,
+      image_path: nonBoardImagePath,
+      imagePath: nonBoardImagePath,
+      window_title: `${selectedMetadata.windowTitle ?? "Discovered target"} Non-board`,
+      windowTitle: `${selectedMetadata.windowTitle ?? "Discovered target"} Non-board`,
+      process_id: selectedMetadata.processId,
+      processId: selectedMetadata.processId,
+      fixture_id: `${selectedMetadata.fixtureId ?? "discovered-target"}-non-board`,
+      fixtureId: `${selectedMetadata.fixtureId ?? "discovered-target"}-non-board`,
+      id: selectedMetadata.id,
+      windowId: selectedMetadata.windowId,
+      appName: selectedMetadata.appName,
+      processName: selectedMetadata.processName,
+      x: selectedMetadata.x,
+      y: selectedMetadata.y,
+      width: selectedMetadata.width,
+      height: selectedMetadata.height,
+      bounds: selectedMetadata.bounds,
+      targetBounds: selectedMetadata.targetBounds,
+      captureTiedToSelectedTarget: true,
+      capture_tied_to_selected_target: true,
+      controlledLocalTargetWindow: true,
+      controlled_local_target_window: true,
+      controlledTarget: selectedMetadata,
+      controlled_target: selectedMetadata,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_target_window_discovery_failed_decode",
+        scope: "discovered_target_non_board_decode_failure_no_preview_or_import",
+        fixture_kind: "non_board",
+        capture_tied_to_selected_target: "true"
+      }
+    });
+    const nonBoardStatus = normalizeCaptureStatus(nonBoardResult.status);
+    const nonBoardHasPosition = isRecord((nonBoardResult as Record<string, unknown>).position)
+      || isRecord((nonBoardResult as Record<string, unknown>).positionDto)
+      || isRecord((nonBoardResult as Record<string, unknown>).position_dto);
+    if (nonBoardStatus !== "decode_error" || nonBoardHasPosition) {
+      throw new Error(`Readboard target-window discovery non-board fixture expected decode_error without position, got ${String(nonBoardResult.status || "empty")}.`);
+    }
+    const stableNonBoardPath = stableReadboardCapturePath(nonBoardImagePath);
+    const sanitizedNonBoardResult = sanitizeReadboardEvidenceValue(nonBoardResult as Record<string, unknown>, stableNonBoardPath, nonBoardImagePath) as Record<string, unknown>;
+    const nonBoardArtifact = summarizeReadboardCaptureArtifact(nonBoardResult as Record<string, unknown>, nonBoardImagePath);
+    if (!nonBoardArtifact) throw new Error("Readboard target-window discovery non-board fixture did not produce artifact evidence.");
+
+    const previewConfirmation = await exerciseReadboardControlledTargetDomImport({
+      imagePath,
+      windowTitle: selectedMetadata.windowTitle ?? titleHint ?? "Discovered target",
+      fixtureId: String(selectedMetadata.fixtureId ?? selectedMetadata.id ?? selectedMetadata.windowId ?? "discovered-target"),
+      processId: selectedMetadata.processId ?? null,
+      width: selectedMetadata.width ?? width,
+      height: selectedMetadata.height ?? height,
+      clickDiscovery: true
+    });
+    const evidence: ReadboardTargetWindowDiscoveryEvidence = {
+      runtimeObserved: true,
+      runtimeReportPhase: "readboard-target-window-discovery",
+      backendCommandInvoked: "readboard_list_capture_targets",
+      backendCommand: "readboard_list_capture_targets",
+      status,
+      candidates: result.candidates,
+      selectedTarget: summarizeReadboardTargetCandidate(selected),
+      captureArtifact,
+      rawCaptureResult: sanitizedCaptureResult,
+      failedDecodeNoReplacement: {
+        fixtureKind: "non_board",
+        decodeAttempted: true,
+        decodeSucceeded: false,
+        previewProduced: false,
+        imported: false,
+        boardReplaced: false,
+        errorKind: nonBoardStatus,
+        message: readStringField(nonBoardResult as Record<string, unknown>, "message")
+          ?? readStringField(nonBoardResult as Record<string, unknown>, "errorMessage")
+          ?? readStringField(nonBoardResult as Record<string, unknown>, "error_message"),
+        status: nonBoardStatus,
+        targetClientDiscovery: false,
+        fullOcrParity: false,
+        fullReadboardParity: false,
+        releaseParity: false,
+        artifact: nonBoardArtifact,
+        rawBackendResult: sanitizedNonBoardResult
+      },
+      previewConfirmation,
+      captureSourceTrace: {
+        captureSource: "controlled_local_target_window",
+        selectedFromDiscovery: true,
+        captureTiedToSelectedTarget: true,
+        previewOnly: true,
+        explicitImportConfirmationRequired: true
+      },
+      boundaries: {
+        targetClientDiscoveryParity: false,
+        realFoxYikeParity: false,
+        fullOcrParity: false,
+        automaticBoardReplacement: false,
+        releaseParity: false
+      },
+      warnings: result.warnings ?? [],
+      rawBackendResult: result as Record<string, unknown>
+    };
+    report.readboardTargetWindowDiscovery = evidence;
+    return evidence;
+  });
+}
+
+async function exerciseReadboardControlledTargetDomImport({
+  imagePath,
+  windowTitle,
+  fixtureId,
+  processId,
+  width,
+  height,
+  clickDiscovery
+}: {
+  imagePath: string;
+  windowTitle: string;
+  fixtureId: string;
+  processId: number | null;
+  width: number;
+  height: number;
+  clickDiscovery?: boolean;
+}): Promise<NonNullable<ReadboardExternalCaptureMvpEvidence["previewConfirmation"]>> {
+  await openProviderPanelForRuntime();
+  const readboardRoot = await waitForVisibleElement('[data-testid="controlled-board-image-import-mvp"]', "controlled readboard import surface");
+  const pathInput = await waitForVisibleElement('[data-testid="readboard-image-path-input"]', "readboard image path input");
+  setTextInputValue(pathInput, imagePath);
+  setTextInputValue(await waitForVisibleElement('[data-testid="readboard-capture-window-title-input"]', "readboard controlled target window title"), windowTitle);
+  setTextInputValue(await waitForVisibleElement('[data-testid="readboard-controlled-target-fixture-id-input"]', "readboard controlled target fixture id"), fixtureId);
+  if (processId !== null) {
+    setTextInputValue(await waitForVisibleElement('[data-testid="readboard-controlled-target-process-id-input"]', "readboard controlled target process id"), String(processId));
+  }
+  setTextInputValue(await waitForVisibleElement('[data-testid="readboard-controlled-target-width-input"]', "readboard controlled target width"), String(width));
+  setTextInputValue(await waitForVisibleElement('[data-testid="readboard-controlled-target-height-input"]', "readboard controlled target height"), String(height));
+
+  if (clickDiscovery) {
+    const discoverButton = await waitForElementState(
+      '[data-testid="readboard-discover-target-windows"]',
+      "readboard target-window discovery button",
+      (element) => element instanceof HTMLButtonElement && !element.disabled
+    ) as HTMLButtonElement;
+    discoverButton.click();
+    await waitForElementState(
+      '[data-testid="readboard-target-window-discovery"]',
+      "readboard target-window discovery candidate selection",
+      (element) => element.dataset.targetWindowSelected === "true" && Number(element.dataset.targetWindowCandidateCount ?? "0") > 0
+    );
+  }
+
+  const previewButton = await waitForElementState(
+    '[data-testid="readboard-preview-controlled-target"]',
+    "readboard controlled target preview button to become enabled",
+    (element) => element instanceof HTMLButtonElement && !element.disabled
+  ) as HTMLButtonElement;
+  previewButton.click();
+
+  const previewSummary = await waitForElementState(
+    '[data-testid="readboard-snapshot-preview-summary"]',
+    "readboard controlled target preview summary",
+    (element) => isElementVisible(element) && readboardRoot.dataset.previewHasPosition === "true" && readboardRoot.dataset.controlledLocalTargetWindow === "true"
+  );
+  const confirmation = await waitForVisibleElement('[data-testid="readboard-import-confirmation"]', "readboard import confirmation");
+  const importBeforeConfirm = await waitForVisibleElement('[data-testid="readboard-import-image-snapshot"]', "readboard import preview button") as HTMLButtonElement;
+  const rootBeforeConfirm = queryRequiredElement('[data-testid="controlled-board-image-import-mvp"]', "controlled readboard import surface before confirmation");
+  const previewOnlyBeforeConfirmation = rootBeforeConfirm.dataset.previewOnlyBeforeConfirmation === "true" || rootBeforeConfirm.dataset.previewBeforeConfirmation === "true";
+  const boardReplacedBeforeConfirmation = rootBeforeConfirm.dataset.boardReplacedBeforeConfirmation === "true";
+  const userConfirmedBeforeConfirmation = rootBeforeConfirm.dataset.userConfirmed === "true";
+  const canImportPreviewBeforeConfirmation = rootBeforeConfirm.dataset.canImportPreview === "true";
+  if (!importBeforeConfirm.disabled) throw new Error("Readboard import button was enabled before explicit confirmation.");
+  if (!previewOnlyBeforeConfirmation) throw new Error("Controlled target UI did not expose preview before confirmation.");
+  if (boardReplacedBeforeConfirmation) throw new Error("Controlled target UI must expose boardReplacedBeforeConfirmation=false.");
+  if (userConfirmedBeforeConfirmation || canImportPreviewBeforeConfirmation) {
+    throw new Error("Controlled target UI must expose unconfirmed, non-importable preview state before confirmation.");
+  }
+  const beforeConfirmationSurface = elementSmokeEvidence(rootBeforeConfirm, '[data-testid="controlled-board-image-import-mvp"]');
+  const beforeConfirmationControl = elementSmokeEvidence(confirmation, '[data-testid="readboard-import-confirmation"]');
+  const beforeImportButton = elementSmokeEvidence(importBeforeConfirm, '[data-testid="readboard-import-image-snapshot"]');
+
+  const checkbox = await waitForVisibleElement('[data-testid="readboard-confirm-import"]', "readboard confirm import checkbox") as HTMLInputElement;
+  if (checkbox.disabled) throw new Error("Readboard confirmation checkbox was disabled despite a valid controlled target preview.");
+  checkbox.click();
+  const rootAfterConfirm = await waitForElementState(
+    '[data-testid="controlled-board-image-import-mvp"]',
+    "readboard controlled target confirmation to be recorded",
+    (element) => element.dataset.userConfirmed === "true" && element.dataset.canImportPreview === "true"
+  );
+  const confirmationAfterConfirm = await waitForVisibleElement('[data-testid="readboard-import-confirmation"]', "confirmed readboard import confirmation");
+  const importAfterConfirm = await waitForVisibleElement('[data-testid="readboard-import-image-snapshot"]', "confirmed readboard controlled target import button") as HTMLButtonElement;
+  if (importAfterConfirm.disabled) throw new Error("Readboard import button remained disabled after explicit confirmation.");
+  const afterConfirmationSurface = elementSmokeEvidence(rootAfterConfirm, '[data-testid="controlled-board-image-import-mvp"]');
+  const afterConfirmationControl = elementSmokeEvidence(confirmationAfterConfirm, '[data-testid="readboard-import-confirmation"]');
+  const afterImportButton = elementSmokeEvidence(importAfterConfirm, '[data-testid="readboard-import-image-snapshot"]');
+  importAfterConfirm.click();
+  const rootAfterImport = await waitForElementState(
+    '[data-testid="controlled-board-image-import-mvp"]',
+    "readboard controlled target replacement after confirmation",
+    (element) => element.dataset.boardReplacementObserved === "true" && element.dataset.boardReplacedOnlyAfterConfirmation === "true"
+  );
+  const statusbar = await waitForElementState(
+    '[data-testid="legacy-statusbar"]',
+    "readboard controlled target import statusbar confirmation",
+    (element) => normalizeText(element.textContent ?? "").toLowerCase().includes("imported readboard snapshot")
+  );
+
+  const userConfirmed = rootAfterConfirm.dataset.userConfirmed === "true";
+  const boardReplacedOnlyAfterConfirmation = rootAfterImport.dataset.boardReplacedOnlyAfterConfirmation === "true";
+  const boardReplacementObserved = rootAfterImport.dataset.boardReplacementObserved === "true";
+  const afterImportSurface = elementSmokeEvidence(rootAfterImport, '[data-testid="controlled-board-image-import-mvp"]');
+  const statusbarEvidence = elementSmokeEvidence(statusbar, '[data-testid="legacy-statusbar"]');
+  return {
+    previewOnlyBeforeConfirmation,
+    boardReplacedBeforeConfirmation: false,
+    userConfirmed,
+    boardReplacedOnlyAfterConfirmation,
+    previewConfirmationObserved: true,
+    boardReplacementObserved,
+    beforeConfirmation: {
+      userConfirmed: false,
+      canImportPreview: false,
+      importDisabled: true,
+      surface: beforeConfirmationSurface,
+      confirmationControl: beforeConfirmationControl,
+      importButton: beforeImportButton
+    },
+    afterConfirmation: {
+      userConfirmed: true,
+      canImportPreview: true,
+      importDisabled: false,
+      surface: afterConfirmationSurface,
+      confirmationControl: afterConfirmationControl,
+      importButton: afterImportButton
+    },
+    afterImport: {
+      boardReplacementObserved: true,
+      boardReplacedOnlyAfterConfirmation: true,
+      surface: afterImportSurface,
+      statusbar: statusbarEvidence
+    },
+    beforeConfirmationControl,
+    afterConfirmationControl,
+    afterImportSurface,
+    previewSummary: elementSmokeEvidence(previewSummary, '[data-testid="readboard-snapshot-preview-summary"]'),
+    confirmationControl: afterConfirmationControl,
+    statusbar: statusbarEvidence,
+    fullOcrParity: false,
+    fullReadboardParity: false,
+    targetClientParity: false,
+    arbitraryOcrParity: false,
+    releaseParity: false
+  };
+}
+
 async function runProviderLivePhase(report: RuntimeSmokeReport) {
   const baseUrl = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL")
     ?? runtimeSmokeEnv("TAURI_LIZZIEYZY_RUNTIME_SMOKE_PROVIDER_BASE_URL");
@@ -3305,6 +3681,7 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "readboard-operator-capture" ||
     value === "readboard-controlled-target-proof" ||
     value === "readboard-screenshot-region-detection" ||
+    value === "readboard-target-window-discovery" ||
     value === "provider-live" ||
     value === "webview-dom-click" ||
     value === "installed-app-runtime-proof" ||
@@ -3321,6 +3698,7 @@ function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
     phase !== "readboard-operator-capture" &&
     phase !== "readboard-controlled-target-proof" &&
     phase !== "readboard-screenshot-region-detection" &&
+    phase !== "readboard-target-window-discovery" &&
     phase !== "webview-dom-click" &&
     phase !== "installed-app-runtime-proof";
 }
@@ -3685,6 +4063,14 @@ function normalizeCaptureStatus(value: unknown): string {
   return status || "error";
 }
 
+function normalizeDiscoveryStatus(value: unknown): string {
+  const status = typeof value === "string" ? value.toLowerCase() : "";
+  if (status.includes("available") || status.includes("ok") || status.includes("success")) return "available";
+  if (status.includes("unsupported") || status.includes("browser preview") || status.includes("unknown command")) return "unsupported";
+  if (status.includes("error") || status.includes("fail")) return "error";
+  return status || "error";
+}
+
 function summarizeReadboardCaptureArtifact(
   result: Record<string, unknown>,
   inputPath: string
@@ -3756,6 +4142,67 @@ function arbitraryScreenshotNonBoardFixturePath(capturedPath: string, configured
   return "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm";
 }
 
+function summarizeReadboardTargetCandidate(candidate: ReadboardCaptureTargetCandidate): Record<string, unknown> {
+  return {
+    title: candidate.title,
+    appName: candidate.appName ?? candidate.app_name ?? null,
+    processName: candidate.processName ?? candidate.process_name ?? null,
+    processId: candidate.processId ?? candidate.process_id ?? null,
+    id: candidate.id ?? null,
+    windowId: candidate.windowId ?? candidate.window_id ?? null,
+    bounds: candidate.bounds ?? null,
+    screenId: candidate.screenId ?? candidate.screen_id ?? null,
+    confidence: candidate.confidence ?? null,
+    warnings: candidate.warnings ?? []
+  };
+}
+
+function selectReadboardTargetCandidate(candidates: ReadboardCaptureTargetCandidate[], titleHint: string | null): ReadboardCaptureTargetCandidate {
+  if (titleHint) {
+    const normalizedTitleHint = titleHint.toLowerCase();
+    const match = candidates.find((candidate) => candidate.title.toLowerCase().includes(normalizedTitleHint));
+    if (match) return match;
+  }
+  return candidates[0];
+}
+
+function readboardTargetCandidateMetadata(candidate: ReadboardCaptureTargetCandidate, imagePath: string) {
+  const bounds = candidate.bounds ?? null;
+  const processId = numberFromUnknown(candidate.processId) ?? numberFromUnknown(candidate.process_id);
+  const windowId = candidate.windowId ?? candidate.window_id ?? null;
+  const appName = stringFromUnknown(candidate.appName) ?? stringFromUnknown(candidate.app_name);
+  const processName = stringFromUnknown(candidate.processName) ?? stringFromUnknown(candidate.process_name);
+  const id = candidate.id ?? windowId ?? processId ?? candidate.title;
+  return {
+    id,
+    controlledLocalTargetWindow: true,
+    controlled_local_target_window: true,
+    captureTiedToSelectedTarget: true,
+    capture_tied_to_selected_target: true,
+    appName,
+    app_name: appName,
+    processName,
+    process_name: processName,
+    windowTitle: candidate.title,
+    window_title: candidate.title,
+    windowId,
+    window_id: windowId,
+    processId,
+    process_id: processId,
+    fixtureId: `discovered:${id}`,
+    fixture_id: `discovered:${id}`,
+    x: bounds?.x ?? null,
+    y: bounds?.y ?? null,
+    width: bounds?.width ?? null,
+    height: bounds?.height ?? null,
+    bounds,
+    targetBounds: bounds,
+    target_bounds: bounds,
+    imagePath,
+    image_path: imagePath
+  };
+}
+
 function readboardScreenshotRegionFromResult(result: Record<string, unknown>): Record<string, unknown> {
   const rawRegion = result.boardRegion ?? result.board_region ?? result.detectedBoardRegion ?? result.detected_board_region;
   if (isRecord(rawRegion)) return rawRegion;
@@ -3801,6 +4248,14 @@ function readNumberField(record: Record<string, unknown>, key: string): number |
   const value = record[key];
   const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringFromUnknown(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function summarizeReadboardProtocolSync(result: { snapshot_id: string; position?: { board_size: number; move_number: number; stones: unknown[]; to_play: PlayerColor } | null; warnings: string[] }): ReadboardProtocolLineEvidence {

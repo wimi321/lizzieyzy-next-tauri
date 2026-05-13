@@ -125,8 +125,23 @@ function normalizeReadboardExternalCaptureRequest(request: ReadboardExternalCapt
     windowTitle: request.windowTitle ?? request.window_title ?? null,
     processId: request.processId ?? request.process_id ?? null,
     fixtureId: request.fixtureId ?? request.fixture_id ?? null,
+    id: request.id ?? null,
+    targetId: request.targetId ?? request.target_id ?? request.captureTargetId ?? request.id ?? null,
+    captureTargetId: request.captureTargetId ?? request.targetId ?? request.target_id ?? request.id ?? null,
+    windowId: request.windowId ?? request.window_id ?? null,
+    appName: request.appName ?? request.app_name ?? null,
+    processName: request.processName ?? request.process_name ?? null,
+    x: request.x ?? null,
+    y: request.y ?? null,
+    targetX: request.targetX ?? request.x ?? request.bounds?.x ?? request.targetBounds?.x ?? request.target_bounds?.x ?? null,
+    targetY: request.targetY ?? request.y ?? request.bounds?.y ?? request.targetBounds?.y ?? request.target_bounds?.y ?? null,
+    targetWidth: request.targetWidth ?? request.width ?? request.bounds?.width ?? request.targetBounds?.width ?? request.target_bounds?.width ?? null,
+    targetHeight: request.targetHeight ?? request.height ?? request.bounds?.height ?? request.targetBounds?.height ?? request.target_bounds?.height ?? null,
     width: request.width ?? null,
     height: request.height ?? null,
+    bounds: normalizeTargetBounds(request.bounds ?? null),
+    targetBounds: normalizeTargetBounds(request.targetBounds ?? request.target_bounds ?? request.bounds ?? null),
+    captureTiedToSelectedTarget: request.captureTiedToSelectedTarget ?? request.capture_tied_to_selected_target ?? false,
     controlledLocalTargetWindow: request.controlledLocalTargetWindow ?? request.controlled_local_target_window ?? false,
     arbitraryScreenshot: request.arbitraryScreenshot ?? request.arbitrary_screenshot ?? false,
     boardRegionDetection: request.boardRegionDetection ?? request.board_region_detection ?? false,
@@ -153,13 +168,38 @@ function normalizeBoardRegion(region: ReadboardExternalCaptureRequest["boardRegi
 function normalizeControlledTarget(target: ReadboardExternalCaptureRequest["controlledTarget"] | ReadboardExternalCaptureRequest["controlled_target"]) {
   if (!target) return null;
   return {
+    id: target.id ?? null,
+    targetId: target.targetId ?? target.target_id ?? target.captureTargetId ?? target.id ?? null,
+    captureTargetId: target.captureTargetId ?? target.targetId ?? target.target_id ?? target.id ?? null,
     controlledLocalTargetWindow: target.controlledLocalTargetWindow ?? target.controlled_local_target_window ?? false,
+    captureTiedToSelectedTarget: target.captureTiedToSelectedTarget ?? target.capture_tied_to_selected_target ?? false,
+    appName: target.appName ?? target.app_name ?? null,
+    processName: target.processName ?? target.process_name ?? null,
     windowTitle: target.windowTitle ?? target.window_title ?? null,
+    windowId: target.windowId ?? target.window_id ?? null,
     processId: target.processId ?? target.process_id ?? null,
     fixtureId: target.fixtureId ?? target.fixture_id ?? null,
+    x: target.x ?? null,
+    y: target.y ?? null,
+    targetX: target.targetX ?? target.x ?? target.bounds?.x ?? target.targetBounds?.x ?? target.target_bounds?.x ?? null,
+    targetY: target.targetY ?? target.y ?? target.bounds?.y ?? target.targetBounds?.y ?? target.target_bounds?.y ?? null,
+    targetWidth: target.targetWidth ?? target.width ?? target.bounds?.width ?? target.targetBounds?.width ?? target.target_bounds?.width ?? null,
+    targetHeight: target.targetHeight ?? target.height ?? target.bounds?.height ?? target.targetBounds?.height ?? target.target_bounds?.height ?? null,
     width: target.width ?? null,
     height: target.height ?? null,
+    bounds: normalizeTargetBounds(target.bounds ?? target.targetBounds ?? target.target_bounds ?? null),
+    targetBounds: normalizeTargetBounds(target.targetBounds ?? target.target_bounds ?? target.bounds ?? null),
     imagePath: target.imagePath ?? target.image_path ?? null
+  };
+}
+
+function normalizeTargetBounds(bounds: ReadboardExternalCaptureRequest["bounds"] | ReadboardExternalCaptureRequest["targetBounds"] | ReadboardExternalCaptureRequest["target_bounds"]) {
+  if (!bounds) return null;
+  return {
+    x: bounds.x ?? null,
+    y: bounds.y ?? null,
+    width: bounds.width ?? null,
+    height: bounds.height ?? null
   };
 }
 

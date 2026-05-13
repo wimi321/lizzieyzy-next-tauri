@@ -22,6 +22,10 @@ import type {
 } from "../domain/types";
 import { ensureInitialPosition, replayGamePositions } from "../domain/board";
 import { normalizeLegacyActionId, type LegacyActionId } from "../domain/legacyActions";
+import type {
+  ReadboardCaptureTargetDiscoveryRequest,
+  ReadboardCaptureTargetDiscoveryResult
+} from "../domain/providers";
 
 const letters = "abcdefghijklmnopqrstuvwxyz";
 const sampleGameId = "browser-sgf";
@@ -218,6 +222,41 @@ export const isTauriRuntime = () => typeof window !== "undefined" && (window.__T
 
 export function frontendRuntimeSource(): FrontendRuntimeSource {
   return isTauriRuntime() ? "tauri" : "browser-fallback";
+}
+
+function normalizeReadboardCaptureTargetDiscoveryRequest(request: ReadboardCaptureTargetDiscoveryRequest) {
+  const title = request.title ?? request.windowTitle ?? request.window_title ?? request.titleHint ?? request.title_hint ?? null;
+  const appName = request.appName ?? request.app_name ?? request.appHint ?? request.app_hint ?? null;
+  return {
+    title,
+    windowTitle: title,
+    titleHint: title,
+    appName,
+    appHint: appName,
+    filter: request.filter ?? title ?? appName ?? null,
+    minWidth: request.minWidth ?? request.min_width ?? null,
+    minHeight: request.minHeight ?? request.min_height ?? null,
+    timeoutMs: request.timeoutMs ?? request.timeout_ms ?? null,
+    metadata: request.metadata ?? {}
+  };
+}
+
+function browserReadboardCaptureTargetDiscovery(
+  request: ReadboardCaptureTargetDiscoveryRequest
+): ReadboardCaptureTargetDiscoveryResult {
+  return {
+    status: "unsupported",
+    candidates: [],
+    warnings: [
+      "Readboard target-window discovery requires the Tauri desktop backend; browser preview does not enumerate windows or provide mock targets."
+    ],
+    message: "Target-window discovery is unavailable in browser fallback.",
+    errorMessage: null,
+    unsupported: true,
+    titleHint: request.titleHint ?? request.title_hint ?? request.title ?? request.windowTitle ?? request.window_title ?? null,
+    appHint: request.appHint ?? request.app_hint ?? request.appName ?? request.app_name ?? null,
+    targetCount: 0
+  };
 }
 
 export async function getHealth(): Promise<AppHealthDto> {
@@ -433,6 +472,45 @@ export async function installedAppRuntimeProof(): Promise<InstalledAppRuntimePro
     throw new Error("Installed app runtime proof requires the Tauri desktop backend; browser fallback cannot provide installed app proof.");
   }
   return await invoke<InstalledAppRuntimeProofDto>("installed_app_runtime_proof");
+}
+
+export async function discoverReadboardCaptureTargets(
+  request: ReadboardCaptureTargetDiscoveryRequest = {}
+): Promise<ReadboardCaptureTargetDiscoveryResult> {
+  if (!isTauriRuntime()) return browserReadboardCaptureTargetDiscovery(request);
+  try {
+    const result = await invoke<ReadboardCaptureTargetDiscoveryResult>("readboard_list_capture_targets", {
+      request: normalizeReadboardCaptureTargetDiscoveryRequest(request)
+    });
+    return normalizeReadboardCaptureTargetDiscoveryResult(result);
+  } catch (error) {
+    return {
+      status: "unsupported",
+      candidates: [],
+      targets: [],
+      targetCount: 0,
+      warnings: ["Readboard target-window discovery command is unavailable or returned an error."],
+      message: error instanceof Error ? error.message : String(error),
+      errorMessage: error instanceof Error ? error.message : String(error),
+      unsupported: true
+    };
+  }
+}
+
+function normalizeReadboardCaptureTargetDiscoveryResult(
+  result: ReadboardCaptureTargetDiscoveryResult
+): ReadboardCaptureTargetDiscoveryResult {
+  const candidates = Array.isArray(result.candidates)
+    ? result.candidates
+    : Array.isArray(result.targets)
+      ? result.targets
+      : [];
+  return {
+    ...result,
+    candidates,
+    targets: result.targets ?? candidates,
+    targetCount: result.targetCount ?? result.target_count ?? candidates.length
+  };
 }
 
 export async function replaySgfPositions(sgfText: string): Promise<PositionDto[]> {

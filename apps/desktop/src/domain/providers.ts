@@ -103,18 +103,102 @@ export type ReadboardSidecarSyncSnapshotResult = {
 };
 
 export type ReadboardControlledTargetMetadata = {
+  id?: string | number | null;
+  targetId?: string | number | null;
+  target_id?: string | number | null;
+  captureTargetId?: string | number | null;
   controlledLocalTargetWindow?: boolean;
   controlled_local_target_window?: boolean;
+  captureTiedToSelectedTarget?: boolean;
+  capture_tied_to_selected_target?: boolean;
+  appName?: string | null;
+  app_name?: string | null;
+  processName?: string | null;
+  process_name?: string | null;
   windowTitle?: string | null;
   window_title?: string | null;
+  windowId?: string | number | null;
+  window_id?: string | number | null;
   processId?: number | null;
   process_id?: number | null;
   fixtureId?: string | null;
   fixture_id?: string | null;
+  x?: number | null;
+  y?: number | null;
+  targetX?: number | null;
+  targetY?: number | null;
+  targetWidth?: number | null;
+  targetHeight?: number | null;
   width?: number | null;
   height?: number | null;
+  bounds?: ReadboardCaptureTargetBounds | null;
+  targetBounds?: ReadboardCaptureTargetBounds | null;
+  target_bounds?: ReadboardCaptureTargetBounds | null;
   imagePath?: string | null;
   image_path?: string | null;
+};
+
+export type ReadboardCaptureTargetBounds = {
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+};
+
+export type ReadboardCaptureTargetCandidate = {
+  id?: string | number | null;
+  title: string;
+  appName?: string | null;
+  app_name?: string | null;
+  processName?: string | null;
+  process_name?: string | null;
+  processId?: number | null;
+  process_id?: number | null;
+  windowId?: string | number | null;
+  window_id?: string | number | null;
+  bounds?: ReadboardCaptureTargetBounds | null;
+  screenId?: string | number | null;
+  screen_id?: string | number | null;
+  confidence?: number | string | null;
+  warnings?: string[];
+  unsupported?: boolean;
+  errorMessage?: string | null;
+  error_message?: string | null;
+  [key: string]: unknown;
+};
+
+export type ReadboardCaptureTargetDiscoveryRequest = {
+  title?: string | null;
+  windowTitle?: string | null;
+  window_title?: string | null;
+  titleHint?: string | null;
+  title_hint?: string | null;
+  appName?: string | null;
+  app_name?: string | null;
+  appHint?: string | null;
+  app_hint?: string | null;
+  filter?: string | null;
+  minWidth?: number | null;
+  min_width?: number | null;
+  minHeight?: number | null;
+  min_height?: number | null;
+  timeoutMs?: number | null;
+  timeout_ms?: number | null;
+  metadata?: Record<string, string>;
+};
+
+export type ReadboardCaptureTargetDiscoveryResult = {
+  status: "available" | "unsupported" | "error" | string;
+  candidates: ReadboardCaptureTargetCandidate[];
+  targets?: ReadboardCaptureTargetCandidate[];
+  targetCount?: number | null;
+  target_count?: number | null;
+  warnings: string[];
+  message?: string | null;
+  errorMessage?: string | null;
+  error_message?: string | null;
+  unsupported?: boolean;
+  [key: string]: unknown;
 };
 
 export type ReadboardBoardRegionMetadata = {
@@ -152,6 +236,27 @@ export type ReadboardExternalCaptureRequest = {
   fixtureId?: string | null;
   width?: number | null;
   height?: number | null;
+  id?: string | number | null;
+  targetId?: string | number | null;
+  target_id?: string | number | null;
+  captureTargetId?: string | number | null;
+  windowId?: string | number | null;
+  window_id?: string | number | null;
+  appName?: string | null;
+  app_name?: string | null;
+  processName?: string | null;
+  process_name?: string | null;
+  x?: number | null;
+  y?: number | null;
+  targetX?: number | null;
+  targetY?: number | null;
+  targetWidth?: number | null;
+  targetHeight?: number | null;
+  bounds?: ReadboardCaptureTargetBounds | null;
+  targetBounds?: ReadboardCaptureTargetBounds | null;
+  target_bounds?: ReadboardCaptureTargetBounds | null;
+  captureTiedToSelectedTarget?: boolean;
+  capture_tied_to_selected_target?: boolean;
   controlledLocalTargetWindow?: boolean;
   controlled_local_target_window?: boolean;
   arbitraryScreenshot?: boolean;
@@ -191,6 +296,27 @@ export type ReadboardExternalCaptureResult = {
   processId?: number | null;
   fixture_id?: string | null;
   fixtureId?: string | null;
+  id?: string | number | null;
+  targetId?: string | number | null;
+  target_id?: string | number | null;
+  captureTargetId?: string | number | null;
+  windowId?: string | number | null;
+  window_id?: string | number | null;
+  appName?: string | null;
+  app_name?: string | null;
+  processName?: string | null;
+  process_name?: string | null;
+  x?: number | null;
+  y?: number | null;
+  targetX?: number | null;
+  targetY?: number | null;
+  targetWidth?: number | null;
+  targetHeight?: number | null;
+  bounds?: ReadboardCaptureTargetBounds | null;
+  targetBounds?: ReadboardCaptureTargetBounds | null;
+  target_bounds?: ReadboardCaptureTargetBounds | null;
+  captureTiedToSelectedTarget?: boolean;
+  capture_tied_to_selected_target?: boolean;
   controlledLocalTargetWindow?: boolean;
   controlled_local_target_window?: boolean;
   arbitraryScreenshot?: boolean;

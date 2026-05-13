@@ -840,7 +840,8 @@ textarea {
 .provider-panel > button,
 .provider-readboard > button,
 .provider-controlled-target > button,
-.provider-screenshot-region > button {
+.provider-screenshot-region > button,
+.provider-target-discovery > button {
   min-width: 0;
   height: 32px;
   padding: 6px 8px;
@@ -851,7 +852,8 @@ textarea {
 .provider-panel > button,
 .provider-readboard > button,
 .provider-controlled-target > button,
-.provider-screenshot-region > button {
+.provider-screenshot-region > button,
+.provider-target-discovery > button {
   width: 100%;
 }
 
@@ -949,7 +951,8 @@ textarea {
 }
 
 .provider-controlled-target,
-.provider-screenshot-region {
+.provider-screenshot-region,
+.provider-target-discovery {
   display: grid;
   gap: 8px;
   min-width: 0;
@@ -957,6 +960,33 @@ textarea {
   border: 1px solid #dbe5f0;
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.provider-target-candidates {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.provider-target-candidates button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  height: auto;
+  padding: 7px 8px;
+  text-align: left;
+  white-space: normal;
+}
+
+.provider-target-candidates button[data-selected="true"] {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.provider-target-candidates span {
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 11px;
 }
 
 .legacy-import-helper {

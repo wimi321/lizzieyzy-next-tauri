@@ -996,6 +996,15 @@ struct ReadboardExternalCaptureRequestDto {
     metadata: Option<BTreeMap<String, Value>>,
     #[serde(default, alias = "targetId", alias = "target_id", alias = "captureTargetId")]
     target_id: Option<Value>,
+    #[serde(
+        default,
+        alias = "windowId",
+        alias = "window_id",
+        alias = "targetWindowId",
+        alias = "target_window_id",
+        alias = "captureWindowId"
+    )]
+    window_id: Option<Value>,
     #[serde(default, alias = "appName", alias = "app_name", alias = "applicationName")]
     app_name: Option<Value>,
     #[serde(default, alias = "targetX", alias = "target_x")]
@@ -1063,6 +1072,7 @@ struct ReadboardCaptureTargetDto {
     app_name: String,
     process_name: String,
     process_id: Option<i32>,
+    window_id: Option<u32>,
     bounds: Option<ReadboardCaptureTargetBoundsDto>,
     visible: bool,
     source: String,
@@ -2120,7 +2130,11 @@ fn readboard_sidecar_sync_snapshot(
 fn readboard_external_capture(
     request: ReadboardExternalCaptureRequestDto,
 ) -> Result<ReadboardExternalCaptureResultDto, ProviderError> {
-    readboard_external_capture_with_runner(request, run_macos_interactive_screencapture)
+    readboard_external_capture_with_runners(
+        request,
+        run_macos_interactive_screencapture,
+        run_macos_selected_window_capture,
+    )
 }
 
 #[tauri::command]
@@ -2181,12 +2195,23 @@ fn readboard_list_capture_targets_with_runner(
     }
 }
 
+#[cfg(test)]
 fn readboard_external_capture_with_runner(
     request: ReadboardExternalCaptureRequestDto,
     screencapture_runner: fn(Duration) -> ReadboardCaptureFileOutcome,
 ) -> Result<ReadboardExternalCaptureResultDto, ProviderError> {
+    readboard_external_capture_with_runners(request, screencapture_runner, run_macos_selected_window_capture)
+}
+
+fn readboard_external_capture_with_runners(
+    request: ReadboardExternalCaptureRequestDto,
+    screencapture_runner: fn(Duration) -> ReadboardCaptureFileOutcome,
+    selected_window_runner: fn(u32, Duration) -> ReadboardCaptureFileOutcome,
+) -> Result<ReadboardExternalCaptureResultDto, ProviderError> {
     #[cfg(not(target_os = "macos"))]
     let _ = screencapture_runner;
+    #[cfg(not(target_os = "macos"))]
+    let _ = selected_window_runner;
     let capture_source = request.capture_source.trim().to_ascii_lowercase();
     if capture_source.is_empty() {
         return Err(invalid_request(
@@ -2280,6 +2305,100 @@ fn readboard_external_capture_with_runner(
                 metadata,
             ))
         }
+        "selected_window_capture" | "selected_capture_target" | "target_window_capture" => {
+            let mut metadata = metadata;
+            let window_id = readboard_capture_window_id(&request, &metadata)?;
+            metadata
+                .entry("targetWindowId".to_string())
+                .or_insert_with(|| window_id.to_string());
+            metadata
+                .entry("selectedCaptureTarget".to_string())
+                .or_insert_with(|| "true".to_string());
+            #[cfg(not(target_os = "macos"))]
+            {
+                Ok(readboard_external_capture_status(
+                    "unsupported",
+                    true,
+                    false,
+                    false,
+                    "selected_window_capture",
+                    metadata,
+                    Some("selected window capture is only supported on macOS".to_string()),
+                ))
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let timeout =
+                    Duration::from_millis(request.timeout_ms.unwrap_or(30_000).clamp(1_000, 120_000));
+                match selected_window_runner(window_id, timeout) {
+                    ReadboardCaptureFileOutcome::Captured { path } => {
+                        Ok(readboard_external_capture_decode_path(
+                            &path,
+                            "selected_window_capture",
+                            false,
+                            false,
+                            metadata,
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::PermissionDenied { message } => {
+                        Ok(readboard_external_capture_status(
+                            "permission_denied",
+                            true,
+                            false,
+                            false,
+                            "selected_window_capture",
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::WindowNotFound { message } => {
+                        Ok(readboard_external_capture_status(
+                            "window_not_found",
+                            true,
+                            false,
+                            false,
+                            "selected_window_capture",
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::CaptureFailed { message } => {
+                        Ok(readboard_external_capture_status(
+                            "capture_failed",
+                            true,
+                            false,
+                            false,
+                            "selected_window_capture",
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::Timeout { message } => {
+                        Ok(readboard_external_capture_status(
+                            "timeout",
+                            true,
+                            false,
+                            false,
+                            "selected_window_capture",
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                    ReadboardCaptureFileOutcome::Unsupported { message }
+                    | ReadboardCaptureFileOutcome::Cancelled { message } => {
+                        Ok(readboard_external_capture_status(
+                            "capture_failed",
+                            true,
+                            false,
+                            false,
+                            "selected_window_capture",
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
+                }
+            }
+        }
         "screen"
         | "window"
         | "macos_interactive_capture"
@@ -2351,6 +2470,18 @@ fn readboard_external_capture_with_runner(
                             Some(sanitize_capture_message(&message)),
                         ))
                     }
+                    ReadboardCaptureFileOutcome::WindowNotFound { message }
+                    | ReadboardCaptureFileOutcome::CaptureFailed { message } => {
+                        Ok(readboard_external_capture_status(
+                            "capture_failed",
+                            true,
+                            true,
+                            true,
+                            source,
+                            metadata,
+                            Some(sanitize_capture_message(&message)),
+                        ))
+                    }
                 }
             }
         }
@@ -2365,6 +2496,8 @@ enum ReadboardCaptureFileOutcome {
     Captured { path: PathBuf },
     Cancelled { message: String },
     PermissionDenied { message: String },
+    WindowNotFound { message: String },
+    CaptureFailed { message: String },
     Timeout { message: String },
     Unsupported { message: String },
 }
@@ -2451,7 +2584,101 @@ fn run_macos_interactive_screencapture(timeout: Duration) -> ReadboardCaptureFil
 }
 
 #[cfg(target_os = "macos")]
+fn run_macos_selected_window_capture(window_id: u32, timeout: Duration) -> ReadboardCaptureFileOutcome {
+    let path = std::env::temp_dir().join(format!(
+        "readboard-selected-window-{window_id}-{}.png",
+        Uuid::new_v4()
+    ));
+    let mut child = match Command::new("screencapture")
+        .arg("-x")
+        .arg("-l")
+        .arg(window_id.to_string())
+        .arg(&path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) => {
+            return ReadboardCaptureFileOutcome::Unsupported {
+                message: format!("failed to start macOS selected-window capture: {err}"),
+            };
+        }
+    };
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let output = child.wait_with_output();
+                let stderr = output
+                    .as_ref()
+                    .ok()
+                    .map(|output| String::from_utf8_lossy(&output.stderr).to_string())
+                    .unwrap_or_default();
+                let success = output.as_ref().is_ok_and(|output| output.status.success())
+                    && fs::metadata(&path)
+                        .map(|metadata| metadata.len() > 0)
+                        .unwrap_or(false);
+                if success {
+                    return ReadboardCaptureFileOutcome::Captured { path };
+                }
+                let _ = fs::remove_file(&path);
+                return classify_selected_window_capture_failure(window_id, &stderr);
+            }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait_with_output();
+                let _ = fs::remove_file(&path);
+                return ReadboardCaptureFileOutcome::Timeout {
+                    message: format!(
+                        "selected window capture timed out after {}ms",
+                        timeout.as_millis()
+                    ),
+                };
+            }
+            Err(err) => {
+                let _ = child.kill();
+                let _ = fs::remove_file(&path);
+                return ReadboardCaptureFileOutcome::CaptureFailed {
+                    message: format!("failed while waiting for selected window capture: {err}"),
+                };
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn classify_selected_window_capture_failure(window_id: u32, stderr: &str) -> ReadboardCaptureFileOutcome {
+    let lower = stderr.to_ascii_lowercase();
+    if lower.contains("permission") || lower.contains("not authorized") {
+        return ReadboardCaptureFileOutcome::PermissionDenied {
+            message: sanitize_capture_error(stderr, "macOS screen recording permission was denied"),
+        };
+    }
+    if lower.contains("window") && (lower.contains("not found") || lower.contains("invalid")) {
+        return ReadboardCaptureFileOutcome::WindowNotFound {
+            message: sanitize_capture_error(
+                stderr,
+                &format!("selected macOS window id {window_id} was not found"),
+            ),
+        };
+    }
+    ReadboardCaptureFileOutcome::CaptureFailed {
+        message: sanitize_capture_error(stderr, "selected macOS window capture failed"),
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn run_capture_target_list() -> ReadboardCaptureTargetListOutcome {
+    match run_coregraphics_capture_target_list() {
+        ReadboardCaptureTargetListOutcome::Available { raw } if !raw.trim().is_empty() => {
+            return ReadboardCaptureTargetListOutcome::Available { raw };
+        }
+        _ => {}
+    }
     let script = r#"
 set AppleScript's text item delimiters to linefeed
 set rows to {}
@@ -2489,6 +2716,48 @@ return rows as text
     }
 }
 
+#[cfg(target_os = "macos")]
+fn run_coregraphics_capture_target_list() -> ReadboardCaptureTargetListOutcome {
+    let script = r#"
+import CoreGraphics
+import Foundation
+
+let options = CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements])
+let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+for window in windows {
+    let appName = window[kCGWindowOwnerName as String] as? String ?? ""
+    let pid = window[kCGWindowOwnerPID as String] as? Int ?? 0
+    let title = window[kCGWindowName as String] as? String ?? ""
+    let windowId = window[kCGWindowNumber as String] as? UInt32 ?? 0
+    guard !appName.isEmpty, !title.isEmpty, windowId > 0 else { continue }
+    guard let boundsValue = window[kCGWindowBounds as String] as? NSDictionary,
+          let bounds = CGRect(dictionaryRepresentation: boundsValue) else { continue }
+    let fields = [
+        appName,
+        String(pid),
+        title,
+        String(Int(bounds.origin.x.rounded())),
+        String(Int(bounds.origin.y.rounded())),
+        String(Int(bounds.size.width.rounded())),
+        String(Int(bounds.size.height.rounded())),
+        String(windowId)
+    ]
+    print(fields.joined(separator: "\t"))
+}
+"#;
+    match Command::new("/usr/bin/swift").arg("-e").arg(script).output() {
+        Ok(output) if output.status.success() => ReadboardCaptureTargetListOutcome::Available {
+            raw: String::from_utf8_lossy(&output.stdout).to_string(),
+        },
+        Ok(output) => ReadboardCaptureTargetListOutcome::Failed {
+            message: sanitize_capture_message(&String::from_utf8_lossy(&output.stderr)),
+        },
+        Err(err) => ReadboardCaptureTargetListOutcome::Unsupported {
+            message: format!("failed to start CoreGraphics capture target inventory: {err}"),
+        },
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 fn run_macos_interactive_screencapture(_timeout: Duration) -> ReadboardCaptureFileOutcome {
     match std::env::var("LIZZIEYZY_READBOARD_CAPTURE_TEST_STATUS")
@@ -2504,12 +2773,25 @@ fn run_macos_interactive_screencapture(_timeout: Duration) -> ReadboardCaptureFi
         "permission_denied" => ReadboardCaptureFileOutcome::PermissionDenied {
             message: "macOS screen recording permission was denied".to_string(),
         },
+        "window_not_found" => ReadboardCaptureFileOutcome::WindowNotFound {
+            message: "selected macOS window was not found".to_string(),
+        },
+        "capture_failed" => ReadboardCaptureFileOutcome::CaptureFailed {
+            message: "selected macOS window capture failed".to_string(),
+        },
         "timeout" => ReadboardCaptureFileOutcome::Timeout {
             message: "interactive screencapture timed out".to_string(),
         },
         _ => ReadboardCaptureFileOutcome::Unsupported {
             message: "interactive screencapture is only supported on macOS".to_string(),
         },
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_macos_selected_window_capture(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
+    ReadboardCaptureFileOutcome::Unsupported {
+        message: "selected window capture is only supported on macOS".to_string(),
     }
 }
 
@@ -2568,6 +2850,7 @@ fn parse_capture_target_line(line: &str, warnings: &mut Vec<String>) -> Option<R
     let app_name = sanitize_capture_metadata_value(fields[0].trim());
     let process_id = fields[1].trim().parse::<i32>().ok();
     let title = sanitize_capture_metadata_value(fields[2].trim());
+    let window_id = fields.get(7).and_then(|value| value.trim().parse::<u32>().ok());
     let bounds = match (
         fields[3].trim().parse::<i32>(),
         fields[4].trim().parse::<i32>(),
@@ -2585,15 +2868,24 @@ fn parse_capture_target_line(line: &str, warnings: &mut Vec<String>) -> Option<R
     if app_name.is_empty() || title.is_empty() {
         return None;
     }
-    let id = capture_target_id(&app_name, process_id, &title, bounds);
+    let id = capture_target_id(&app_name, process_id, window_id, &title, bounds);
     let mut metadata = BTreeMap::from([
         (
             "captureMetadataSource".to_string(),
-            "macos_system_events".to_string(),
+            if window_id.is_some() {
+                "core_graphics"
+            } else {
+                "macos_system_events"
+            }
+            .to_string(),
         ),
         ("previewOnly".to_string(), "true".to_string()),
         ("automaticBoardReplacement".to_string(), "false".to_string()),
     ]);
+    if let Some(window_id) = window_id {
+        metadata.insert("windowId".to_string(), window_id.to_string());
+        metadata.insert("targetWindowId".to_string(), window_id.to_string());
+    }
     if let Some(bounds) = bounds {
         metadata.insert("targetX".to_string(), bounds.x.to_string());
         metadata.insert("targetY".to_string(), bounds.y.to_string());
@@ -2606,6 +2898,7 @@ fn parse_capture_target_line(line: &str, warnings: &mut Vec<String>) -> Option<R
         app_name: app_name.clone(),
         process_name: app_name,
         process_id,
+        window_id,
         bounds,
         visible: true,
         source: "macos_visible_window".to_string(),
@@ -2616,9 +2909,13 @@ fn parse_capture_target_line(line: &str, warnings: &mut Vec<String>) -> Option<R
 fn capture_target_id(
     app_name: &str,
     process_id: Option<i32>,
+    window_id: Option<u32>,
     title: &str,
     bounds: Option<ReadboardCaptureTargetBoundsDto>,
 ) -> String {
+    if let Some(window_id) = window_id {
+        return format!("readboard-window-{window_id}");
+    }
     let bounds_key = bounds
         .map(|bounds| format!("{}:{}:{}:{}", bounds.x, bounds.y, bounds.width, bounds.height))
         .unwrap_or_else(|| "unknown-bounds".to_string());
@@ -2729,6 +3026,7 @@ fn readboard_external_capture_metadata(
     );
     insert_optional_value_metadata(&mut metadata, "targetProcess", request.process.as_ref());
     insert_optional_value_metadata(&mut metadata, "targetProcessId", request.process_id.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetWindowId", request.window_id.as_ref());
     insert_optional_value_metadata(&mut metadata, "targetId", request.target_id.as_ref());
     insert_optional_value_metadata(&mut metadata, "targetAppName", request.app_name.as_ref());
     insert_optional_value_metadata(&mut metadata, "targetX", request.target_x.as_ref());
@@ -2739,7 +3037,10 @@ fn readboard_external_capture_metadata(
     insert_optional_value_metadata(&mut metadata, "fixtureId", request.fixture_id.as_ref());
     insert_optional_value_metadata(&mut metadata, "width", request.width.as_ref());
     insert_optional_value_metadata(&mut metadata, "height", request.height.as_ref());
-    if metadata.contains_key("targetId") || metadata.contains_key("targetBounds") {
+    if metadata.contains_key("targetId")
+        || metadata.contains_key("targetWindowId")
+        || metadata.contains_key("targetBounds")
+    {
         metadata
             .entry("selectedCaptureTarget".to_string())
             .or_insert_with(|| "true".to_string());
@@ -2766,6 +3067,71 @@ fn insert_optional_value_metadata(metadata: &mut BTreeMap<String, String>, key: 
             .entry(key.to_string())
             .or_insert_with(|| sanitize_capture_metadata_value(&value));
     }
+}
+
+fn readboard_capture_window_id(
+    request: &ReadboardExternalCaptureRequestDto,
+    metadata: &BTreeMap<String, String>,
+) -> Result<u32, ProviderError> {
+    for value in [
+        request.window_id.as_ref(),
+        request.target_id.as_ref(),
+        request.metadata.as_ref().and_then(|metadata| {
+            metadata
+                .get("targetWindowId")
+                .or_else(|| metadata.get("windowId"))
+                .or_else(|| metadata.get("window_id"))
+                .or_else(|| metadata.get("captureWindowId"))
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(window_id) = json_value_to_window_id(value) {
+            return Ok(window_id);
+        }
+    }
+    for value in [
+        metadata.get("targetWindowId"),
+        metadata.get("windowId"),
+        metadata.get("window_id"),
+        metadata.get("captureWindowId"),
+        metadata.get("targetId"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(window_id) = parse_capture_window_id(value) {
+            return Ok(window_id);
+        }
+    }
+    Err(invalid_request(
+        "readboard_external_capture selected_window_capture requires targetWindowId/windowId",
+    ))
+}
+
+fn json_value_to_window_id(value: &Value) -> Option<u32> {
+    match value {
+        Value::Number(number) => number.as_u64().and_then(|value| u32::try_from(value).ok()),
+        Value::String(value) => parse_capture_window_id(value),
+        _ => None,
+    }
+    .filter(|value| *value > 0)
+}
+
+fn parse_capture_window_id(value: &str) -> Option<u32> {
+    let trimmed = value.trim();
+    let numeric = trimmed
+        .strip_prefix("readboard-window-")
+        .or_else(|| trimmed.strip_prefix("window-"))
+        .or_else(|| trimmed.strip_prefix("window:"))
+        .unwrap_or(trimmed);
+    numeric
+        .chars()
+        .all(|ch| ch.is_ascii_digit())
+        .then(|| numeric.parse::<u32>().ok())
+        .flatten()
+        .filter(|value| *value > 0)
 }
 
 fn json_value_to_metadata_string(value: &Value) -> Option<String> {
@@ -3047,6 +3413,7 @@ fn sanitize_capture_path_for_source(path: &Path, source: &str) -> String {
         "operator_selected_file" => "operator-selected-file",
         "controlled_local_target_window" | "controlled_target_window" => "controlled-local-target-window",
         "arbitrary_screenshot_board_region" => "arbitrary-screenshot-board-region",
+        "selected_window_capture" => "selected-window-capture",
         "macos_interactive_capture" | "macos_interactive_screencapture" => "macos-interactive-capture",
         _ => "local-image",
     };
@@ -3068,6 +3435,9 @@ fn normalize_capture_source(source: &str) -> &'static str {
         | "interactive_screencapture"
         | "external_window_capture" => "macos_interactive_capture",
         "operator_selected_file" | "selected_file" | "file" => "operator_selected_file",
+        "selected_window_capture" | "selected_capture_target" | "target_window_capture" => {
+            "selected_window_capture"
+        }
         "arbitrary_screenshot_board_region" | "screenshot_board_region" | "board_region_screenshot" => {
             "arbitrary_screenshot_board_region"
         }
@@ -3081,6 +3451,7 @@ fn readboard_external_capture_scope_warning(source: &str) -> String {
         "operator_selected_file" => "Readboard external capture decoded an operator-selected image file only; no target-client discovery or automatic board replacement was performed.".to_string(),
         "controlled_local_target_window" | "controlled_target_window" => "Readboard external capture decoded an explicit controlled local target-window screenshot fixture only; no real client discovery, arbitrary OCR, or automatic board replacement was performed.".to_string(),
         "arbitrary_screenshot_board_region" => "Readboard external capture decoded a scoped arbitrary screenshot board-region preview only; this is not full OCR, real client discovery, or automatic board replacement parity.".to_string(),
+        "selected_window_capture" => "Readboard external capture used a selected macOS window id for scoped screenshot preview only; this is not Fox/Yike parity, full OCR, or automatic board replacement.".to_string(),
         "macos_interactive_capture" => "Readboard external capture used operator-selected macOS interactive capture only; this is not arbitrary OCR or external client parity.".to_string(),
         _ => "Readboard external capture is scoped preview-only proof; no arbitrary OCR, target-client parity, or automatic board replacement is claimed.".to_string(),
     }
@@ -9511,6 +9882,7 @@ mod tests {
             ReadboardCaptureTargetListOutcome::Available {
                 raw: [
                     "LizzieYzy Next\t123\tReview Board\t10\t20\t900\t700",
+                    "Window Id App\t126\tReal Window Board\t11\t22\t640\t480\t8765",
                     "Tiny App\t124\tTiny Board\t0\t0\t80\t70",
                     "Private App\t125\t/Users/example/private game\t1\t2\t640\t480",
                     "malformed-row",
@@ -9539,6 +9911,7 @@ mod tests {
         assert_eq!(target.title, "Review Board");
         assert_eq!(target.app_name, "LizzieYzy Next");
         assert_eq!(target.process_id, Some(123));
+        assert_eq!(target.window_id, None);
         assert_eq!(
             target.bounds,
             Some(ReadboardCaptureTargetBoundsDto {
@@ -9562,6 +9935,40 @@ mod tests {
         let serialized = serde_json::to_string(&result).unwrap();
         assert!(!serialized.contains("/Users/"));
         assert!(!serialized.contains("/private/"));
+    }
+
+    #[test]
+    fn readboard_list_capture_targets_preserves_coregraphics_window_id() {
+        fn fake_targets() -> ReadboardCaptureTargetListOutcome {
+            ReadboardCaptureTargetListOutcome::Available {
+                raw: "Window Id App\t126\tReal Window Board\t11\t22\t640\t480\t8765".to_string(),
+            }
+        }
+
+        let result = readboard_list_capture_targets_with_runner(
+            ReadboardListCaptureTargetsRequestDto {
+                title: Some("real window".to_string()),
+                ..Default::default()
+            },
+            fake_targets,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, "available");
+        assert_eq!(result.target_count, 1);
+        assert_eq!(result.targets[0].id, "readboard-window-8765");
+        assert_eq!(result.targets[0].window_id, Some(8765));
+        assert_eq!(
+            result.targets[0].metadata.get("windowId").map(String::as_str),
+            Some("8765")
+        );
+        assert_eq!(
+            result.targets[0]
+                .metadata
+                .get("captureMetadataSource")
+                .map(String::as_str),
+            Some("core_graphics")
+        );
     }
 
     #[test]
@@ -10049,6 +10456,160 @@ mod tests {
         assert!(!serialized.contains("/Users/"));
         assert!(!serialized.contains("/private/"));
         assert!(!serialized.contains("/var/folders/"));
+    }
+
+    fn fake_interactive_unused(_timeout: Duration) -> ReadboardCaptureFileOutcome {
+        ReadboardCaptureFileOutcome::Unsupported {
+            message: "unused interactive runner".to_string(),
+        }
+    }
+
+    fn fake_selected_window_success(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
+        ReadboardCaptureFileOutcome::Captured {
+            path: readboard_image_fixture("controlled-19-three-stones.ppm"),
+        }
+    }
+
+    fn fake_selected_window_permission(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
+        ReadboardCaptureFileOutcome::PermissionDenied {
+            message: "permission denied for /Users/example/private-window.png".to_string(),
+        }
+    }
+
+    fn fake_selected_window_not_found(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
+        ReadboardCaptureFileOutcome::WindowNotFound {
+            message: "window id 404 was not found".to_string(),
+        }
+    }
+
+    fn fake_selected_window_capture_failed(
+        _window_id: u32,
+        _timeout: Duration,
+    ) -> ReadboardCaptureFileOutcome {
+        ReadboardCaptureFileOutcome::CaptureFailed {
+            message: "capture failed for /Users/example/private-window.png".to_string(),
+        }
+    }
+
+    fn fake_selected_window_unsupported(_window_id: u32, _timeout: Duration) -> ReadboardCaptureFileOutcome {
+        ReadboardCaptureFileOutcome::Unsupported {
+            message: "selected window capture is only supported on macOS".to_string(),
+        }
+    }
+
+    #[test]
+    fn readboard_external_capture_selected_window_success_uses_window_id_metadata() {
+        let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(serde_json::json!({
+            "captureSource": "selected_capture_target",
+            "targetId": "readboard-window-8765",
+            "windowTitle": "Live Board",
+            "processId": 126,
+            "appName": "Window Id App",
+            "targetX": 11,
+            "targetY": 22,
+            "targetWidth": 640,
+            "targetHeight": 480,
+            "timeoutMs": 1000
+        }))
+        .unwrap();
+
+        let result = readboard_external_capture_with_runners(
+            request,
+            fake_interactive_unused,
+            fake_selected_window_success,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, "captured");
+        assert_eq!(result.source, "selected_window_capture");
+        assert_eq!(result.capture_source, "selected_window_capture");
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("selected-window-capture:controlled-19-three-stones.ppm")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetWindowId").map(String::as_str),
+            Some("8765")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("targetWindowTitle")
+                .map(String::as_str),
+            Some("Live Board")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("selectedCaptureTarget")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetAppName").map(String::as_str),
+            Some("Window Id App")
+        );
+        assert_eq!(result.decode.status, "success");
+        assert_eq!(result.decode.stone_count, Some(3));
+        assert_eq!(result.board_replacement, "none");
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("selected macOS window id")));
+    }
+
+    #[test]
+    fn readboard_external_capture_selected_window_requires_window_id() {
+        let error = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "target_window_capture".to_string(),
+            ..Default::default()
+        })
+        .unwrap_err();
+
+        assert_eq!(error.kind, ProviderErrorKind::InvalidRequest);
+        assert!(error.message.contains("requires targetWindowId/windowId"));
+    }
+
+    #[test]
+    fn readboard_external_capture_selected_window_structured_failures_are_recoverable() {
+        for (runner, status) in [
+            (
+                fake_selected_window_permission as fn(u32, Duration) -> ReadboardCaptureFileOutcome,
+                "permission_denied",
+            ),
+            (fake_selected_window_not_found, "window_not_found"),
+            (fake_selected_window_capture_failed, "capture_failed"),
+            (fake_selected_window_unsupported, "capture_failed"),
+        ] {
+            let result = readboard_external_capture_with_runners(
+                ReadboardExternalCaptureRequestDto {
+                    capture_source: "selected_window_capture".to_string(),
+                    window_id: Some(Value::Number(8765.into())),
+                    window_title: Some("/Users/example/private window".to_string()),
+                    ..Default::default()
+                },
+                fake_interactive_unused,
+                runner,
+            )
+            .unwrap();
+
+            assert_eq!(result.status, status);
+            assert!(result.recoverable);
+            assert_eq!(result.source, "selected_window_capture");
+            assert!(result.position.is_none());
+            assert!(result.snapshot.is_none());
+            assert!(result.board_region.is_none());
+            assert_eq!(result.board_replacement, "none");
+            assert_eq!(
+                result.source_metadata.get("targetWindowId").map(String::as_str),
+                Some("8765")
+            );
+            let serialized = serde_json::to_string(&result).unwrap();
+            assert!(!serialized.contains("/Users/"));
+            assert!(!serialized.contains("/private/"));
+        }
     }
 
     #[test]

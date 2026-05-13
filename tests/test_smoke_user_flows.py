@@ -3416,6 +3416,183 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_arbitrary_screenshot_ocr_smoke", pending)
             self.assertIn(expected_detail, pending["readboard_arbitrary_screenshot_ocr_smoke"])
 
+    def test_valid_readboard_target_window_discovery_evidence_passes_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_target_window_discovery_smoke", pass_names)
+            self.assertNotIn("readboard_target_window_discovery_smoke", pending_names)
+
+    def test_readboard_target_window_discovery_rejects_static_only(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["runtimeObserved"] = False
+            evidence["collectionMethod"] = "static_fixture_only"
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "runtimeObserved must be true",
+        )
+
+    def test_readboard_target_window_discovery_requires_candidates(self) -> None:
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            lambda evidence: evidence.__setitem__("candidateTargets", []),
+            "candidateTargets must include at least one discovered target",
+        )
+
+    def test_readboard_target_window_discovery_requires_list_targets_command(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["discoveryBackendCommand"] = "readboard_external_capture"
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "discoveryBackendCommand must be readboard_list_capture_targets",
+        )
+
+    def test_readboard_target_window_discovery_requires_runtime_report_phase(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("runtimeReportPhase", None)
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "runtimeReportPhase must be readboard-target-window-discovery",
+        )
+
+    def test_readboard_target_window_discovery_requires_runtime_report_key(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("runtimeReportKey", None)
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "runtimeReportKey must be readboardTargetWindowDiscovery",
+        )
+
+    def test_readboard_target_window_discovery_requires_source_runtime_report(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("sourceRuntimeReport", None)
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "sourceRuntimeReport must be an object",
+        )
+
+    def test_readboard_target_window_discovery_rejects_wrong_source_report(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            source = evidence["sourceRuntimeReport"]
+            assert isinstance(source, dict)
+            source["phase"] = "readboard-external-capture-mvp"
+            source["reportKey"] = "readboardExternalCaptureMvp"
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "sourceRuntimeReport.phase must be readboard-target-window-discovery",
+        )
+
+    def test_readboard_target_window_discovery_requires_candidates_from_targets(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            discovery = evidence["discoveryResult"]
+            assert isinstance(discovery, dict)
+            discovery["targets"] = [
+                {
+                    "targetId": "different-target",
+                    "title": "Different Target",
+                    "appName": "Fixture",
+                    "processName": "fixture",
+                    "controlledTargetWindow": True,
+                    "bounds": {"x": 0, "y": 0, "width": 100, "height": 100},
+                }
+            ]
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "candidateTargets must be normalized from discoveryResult.targets",
+        )
+
+    def test_readboard_target_window_discovery_requires_selected_candidate_match(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            selected = evidence["selectedTarget"]
+            assert isinstance(selected, dict)
+            selected["targetId"] = "missing-target"
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "selectedTarget.targetId must match a discovered candidate",
+        )
+
+    def test_readboard_target_window_discovery_requires_hash_size(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            artifact = evidence["captureArtifact"]
+            assert isinstance(artifact, dict)
+            artifact.pop("sha256", None)
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "captureArtifact.sha256 must be a 64-character hex sha256",
+        )
+
+    def test_readboard_target_window_discovery_requires_capture_tied_to_selected_target(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            artifact = evidence["captureArtifact"]
+            assert isinstance(artifact, dict)
+            artifact["targetId"] = "other-target"
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "captureArtifact.targetId must match selectedTarget.targetId",
+        )
+
+    def test_readboard_target_window_discovery_rejects_raw_capture_target_mismatch(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            raw = evidence["rawBackendResult"]
+            assert isinstance(raw, dict)
+            raw["targetId"] = "other-target"
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "rawBackendResult target id must match selectedTarget.targetId",
+        )
+
+    def test_readboard_target_window_discovery_rejects_failed_decode_import(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            failed = evidence["failedDecodeNoReplacement"]
+            assert isinstance(failed, dict)
+            failed["imported"] = True
+
+        self.assert_invalid_readboard_target_window_discovery_pending(
+            mutate,
+            "failedDecodeNoReplacement.imported must be false",
+        )
+
+    def test_readboard_target_window_discovery_rejects_overclaim(self) -> None:
+        for field in smoke_user_flows.READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_FALSE_FIELDS:
+            with self.subTest(field=field):
+                self.assert_invalid_readboard_target_window_discovery_pending(
+                    lambda evidence, field=field: evidence.__setitem__(field, True),
+                    f"{field} must be false",
+                )
+
+    def assert_invalid_readboard_target_window_discovery_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_target_window_discovery_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_target_window_discovery_smoke", failures)
+            self.assertIn("readboard_target_window_discovery_smoke", pending)
+            self.assertIn(expected_detail, pending["readboard_target_window_discovery_smoke"])
+
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4594,6 +4771,7 @@ def create_complete_smoke_fixture(
     write_valid_katago_analysis_stale_guard_evidence(root)
     write_valid_readboard_target_window_screenshot_evidence(root)
     write_valid_readboard_arbitrary_screenshot_ocr_evidence(root)
+    write_valid_readboard_target_window_discovery_evidence(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -4877,6 +5055,14 @@ def write_valid_readboard_arbitrary_screenshot_ocr_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_target_window_discovery_evidence(root: Path) -> None:
+    create_readboard_target_window_discovery_fixtures(root)
+    write_json(
+        root / smoke_user_flows.READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE,
+        valid_readboard_target_window_discovery_evidence(),
+    )
+
+
 def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
@@ -4937,6 +5123,18 @@ def create_readboard_arbitrary_screenshot_ocr_fixtures(root: Path) -> None:
         "arbitrary-border-board.ppm",
         "arbitrary-slight-noise-board.ppm",
         "arbitrary-non-board.ppm",
+    ):
+        source = source_root / filename
+        target = root / "tests/fixtures/readboard-screenshots" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+
+
+def create_readboard_target_window_discovery_fixtures(root: Path) -> None:
+    source_root = Path(__file__).resolve().parents[1] / "tests/fixtures/readboard-screenshots"
+    for filename in (
+        "target-window-scale.ppm",
+        "target-window-non-board.ppm",
     ):
         source = source_root / filename
         target = root / "tests/fixtures/readboard-screenshots" / filename
@@ -6320,6 +6518,11 @@ def valid_readboard_target_window_screenshot_evidence() -> dict[str, object]:
 
 def valid_readboard_arbitrary_screenshot_ocr_evidence() -> dict[str, object]:
     evidence_path = Path(__file__).resolve().parents[1] / smoke_user_flows.READBOARD_ARBITRARY_SCREENSHOT_OCR_SMOKE_EVIDENCE
+    return json.loads(evidence_path.read_text(encoding="utf-8"))
+
+
+def valid_readboard_target_window_discovery_evidence() -> dict[str, object]:
+    evidence_path = Path(__file__).resolve().parents[1] / smoke_user_flows.READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE
     return json.loads(evidence_path.read_text(encoding="utf-8"))
 
 

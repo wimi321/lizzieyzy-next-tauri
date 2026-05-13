@@ -901,6 +901,28 @@ READBOARD_ARBITRARY_SCREENSHOT_OCR_REQUIRED_FALSE_FIELDS = [
     "fullReadboardParity",
     "releaseParity",
 ]
+READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE = "docs/qa/readboard-target-window-discovery-smoke-macos.json"
+READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_SCHEMA = "lizzieyzy.readboard-target-window-discovery-smoke.v1"
+READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_PHASE = "readboard-target-window-discovery"
+READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY = "readboardTargetWindowDiscovery"
+READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND = "readboard_list_capture_targets"
+READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND = "readboard_external_capture"
+READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_CHECKS = [
+    "target_discovery",
+    "target_selection",
+    "capture_artifact",
+    "decode_snapshot",
+    "preview_confirmation",
+    "failed_decode_no_replacement",
+    "scope_boundaries",
+]
+READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_FALSE_FIELDS = [
+    "targetClientDiscoveryParity",
+    "realClientParity",
+    "fullReadboardParity",
+    "fullOcrParity",
+    "windowsLinuxCaptureCovered",
+]
 PROVIDER_LIVE_SMOKE_EVIDENCE = "docs/qa/provider-live-smoke-macos.json"
 PROVIDER_LIVE_SMOKE_SCHEMA = "lizzieyzy.provider-live-smoke.v1"
 PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
@@ -1687,6 +1709,7 @@ class UserFlowSmoke:
         self.check_readboard_operator_capture_evidence()
         self.check_readboard_target_window_screenshot_smoke_evidence()
         self.check_readboard_arbitrary_screenshot_ocr_smoke_evidence()
+        self.check_readboard_target_window_discovery_smoke_evidence()
         self.check_provider_live_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
@@ -2579,6 +2602,30 @@ class UserFlowSmoke:
         self.pass_(
             "readboard_arbitrary_screenshot_ocr_smoke",
             "scoped readboard arbitrary screenshot OCR runtime-backed evidence passes with board-region screenshots, failure no-replacement semantics, and false full-parity boundaries",
+        )
+
+    def check_readboard_target_window_discovery_smoke_evidence(self) -> None:
+        evidence_path = self.path(READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "readboard_target_window_discovery_smoke",
+                f"TODO gate: record scoped readboard target-window discovery evidence at {READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_readboard_target_window_discovery_smoke_evidence(evidence, self.root)
+        if failures:
+            self.pending(
+                "readboard_target_window_discovery_smoke",
+                f"{READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_EVIDENCE} is present but not valid scoped target-window discovery PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "readboard_target_window_discovery_smoke",
+            "scoped readboard controlled target-window discovery evidence passes with candidate selection, target-tied capture, decode snapshot, confirmation, and false full-parity boundaries",
         )
 
     def check_provider_live_smoke_evidence(self) -> None:
@@ -9862,6 +9909,344 @@ def validate_readboard_arbitrary_screenshot_scope_boundaries(check: Any, root_ev
     failures: list[str] = []
     boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
     for key in READBOARD_ARBITRARY_SCREENSHOT_OCR_REQUIRED_FALSE_FIELDS:
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
+    return failures
+
+
+def validate_readboard_target_window_discovery_smoke_evidence(evidence: Any, root: Path = ROOT) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    failures.extend(validate_no_readboard_target_window_local_paths(evidence))
+    if evidence.get("schema") != READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_SCHEMA:
+        failures.append(f"schema must be {READBOARD_TARGET_WINDOW_DISCOVERY_SMOKE_SCHEMA}")
+    if evidence.get("name") != "readboard_target_window_discovery_smoke":
+        failures.append("name must be readboard_target_window_discovery_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    if str(evidence.get("platform", "")).lower() not in {"macos", "darwin"}:
+        failures.append("platform must be macos/darwin")
+    if evidence.get("collectionMethod") != "runtime_backend_controlled_target_window_discovery":
+        failures.append("collectionMethod must be runtime_backend_controlled_target_window_discovery")
+    for key in ("runtimeObserved", "backendCommandInvoked", "discoveryBackendCommandInvoked", "controlledTargetWindow", "previewOnlyBeforeConfirmation", "boardReplacedOnlyAfterConfirmation"):
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    if evidence.get("discoveryBackendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND:
+        failures.append(f"discoveryBackendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND}")
+    if evidence.get("backendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND:
+        failures.append(f"backendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND}")
+    failures.extend(validate_readboard_target_window_discovery_runtime_trace(evidence))
+    for key in READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    candidates = evidence.get("candidateTargets")
+    selected = evidence.get("selectedTarget")
+    if isinstance(candidates, list) and isinstance(selected, dict):
+        failures.extend(validate_readboard_target_window_candidates(candidates, selected, "candidateTargets"))
+    else:
+        failures.append("candidateTargets must be a list and selectedTarget must be an object")
+    discovery_result = evidence.get("discoveryResult")
+    if isinstance(discovery_result, dict) and isinstance(candidates, list):
+        failures.extend(validate_readboard_target_window_discovery_result(discovery_result, candidates))
+    else:
+        failures.append("discoveryResult must be an object")
+    failures.extend(validate_readboard_target_window_discovery_check(check_by_name.get("target_discovery")))
+    failures.extend(validate_readboard_target_window_selection_check(check_by_name.get("target_selection")))
+
+    selected_id = selected.get("targetId") if isinstance(selected, dict) else None
+    raw_backend = evidence.get("rawBackendResult")
+    if isinstance(raw_backend, dict):
+        failures.extend(validate_readboard_target_window_discovery_raw_backend(raw_backend, selected_id))
+    else:
+        failures.append("rawBackendResult must be an object")
+
+    artifact = evidence.get("captureArtifact")
+    if isinstance(artifact, dict):
+        failures.extend(validate_readboard_target_window_discovery_artifact(artifact, root, selected_id, "captureArtifact"))
+    else:
+        failures.append("captureArtifact must be an object")
+    failures.extend(validate_readboard_target_window_discovery_artifact_check(check_by_name.get("capture_artifact"), root, selected_id))
+
+    snapshot = evidence.get("decodeSnapshot")
+    if isinstance(snapshot, dict):
+        failures.extend(validate_readboard_target_window_decode_snapshot(snapshot, "decodeSnapshot"))
+    else:
+        failures.append("decodeSnapshot must be an object")
+    failures.extend(validate_readboard_target_window_decode_snapshot_check(check_by_name.get("decode_snapshot")))
+
+    preview = evidence.get("previewConfirmation")
+    if isinstance(preview, dict):
+        failures.extend(validate_readboard_target_window_discovery_preview(preview, "previewConfirmation"))
+    else:
+        failures.append("previewConfirmation must be an object")
+    failures.extend(validate_readboard_target_window_discovery_preview_check(check_by_name.get("preview_confirmation")))
+
+    failed = evidence.get("failedDecodeNoReplacement")
+    if isinstance(failed, dict):
+        failures.extend(validate_readboard_arbitrary_screenshot_failed_decode(failed, root, "failedDecodeNoReplacement"))
+    else:
+        failures.append("failedDecodeNoReplacement must be an object")
+    failures.extend(validate_readboard_arbitrary_screenshot_failed_decode_check(check_by_name.get("failed_decode_no_replacement"), root))
+    failures.extend(validate_readboard_target_window_discovery_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
+    return failures
+
+
+def validate_readboard_target_window_discovery_runtime_trace(evidence: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if evidence.get("runtimeReportPhase") != READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_PHASE:
+        failures.append(f"runtimeReportPhase must be {READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_PHASE}")
+    if evidence.get("runtimeReportKey") != READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY:
+        failures.append(f"runtimeReportKey must be {READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}")
+    source_report = evidence.get("sourceRuntimeReport")
+    if not isinstance(source_report, dict):
+        failures.append("sourceRuntimeReport must be an object")
+        return failures
+    if source_report.get("schema") != "lizzieyzy.tauri-runtime-ui-smoke.v1":
+        failures.append("sourceRuntimeReport.schema must be lizzieyzy.tauri-runtime-ui-smoke.v1")
+    if source_report.get("phase") != READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_PHASE:
+        failures.append(f"sourceRuntimeReport.phase must be {READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_PHASE}")
+    if source_report.get("reportKey") != READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY:
+        failures.append(f"sourceRuntimeReport.reportKey must be {READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}")
+    if source_report.get("runtimeObserved") is not True:
+        failures.append("sourceRuntimeReport.runtimeObserved must be true")
+    if source_report.get("backendCommandInvoked") is not True:
+        failures.append("sourceRuntimeReport.backendCommandInvoked must be true")
+    if source_report.get("discoveryBackendCommandInvoked") is not True:
+        failures.append("sourceRuntimeReport.discoveryBackendCommandInvoked must be true")
+    if source_report.get("discoveryBackendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND:
+        failures.append(f"sourceRuntimeReport.discoveryBackendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND}")
+    if source_report.get("backendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND:
+        failures.append(f"sourceRuntimeReport.backendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND}")
+    payload = source_report.get(READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY)
+    if not isinstance(payload, dict):
+        failures.append(f"sourceRuntimeReport.{READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY} must be an object")
+        return failures
+    if payload.get("discoveryBackendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND:
+        failures.append(f"sourceRuntimeReport.{READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}.discoveryBackendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND}")
+    if payload.get("backendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND:
+        failures.append(f"sourceRuntimeReport.{READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}.backendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_CAPTURE_BACKEND_COMMAND}")
+    if payload.get("runtimeObserved") is not True:
+        failures.append(f"sourceRuntimeReport.{READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}.runtimeObserved must be true")
+    if payload.get("backendCommandInvoked") is not True:
+        failures.append(f"sourceRuntimeReport.{READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}.backendCommandInvoked must be true")
+    if payload.get("discoveryBackendCommandInvoked") is not True:
+        failures.append(f"sourceRuntimeReport.{READBOARD_TARGET_WINDOW_DISCOVERY_RUNTIME_KEY}.discoveryBackendCommandInvoked must be true")
+    return failures
+
+
+def validate_readboard_target_window_discovery_raw_backend(raw: dict[str, Any], selected_id: Any) -> list[str]:
+    failures: list[str] = []
+    if raw.get("status") != "captured":
+        failures.append("rawBackendResult.status must be captured")
+    source = first_present(raw, "source", "captureSource")
+    source_kind = source.get("sourceKind") if isinstance(source, dict) else source
+    if normalize_readboard_target_window_source(source_kind) != "controlled_local_target_window":
+        failures.append("rawBackendResult.source/captureSource must be controlled_local_target_window")
+    raw_target_id = first_present(raw, "targetId", "target_id")
+    metadata = first_present(raw, "targetMetadata", "targetWindowMetadata", "sourceMetadata", "source_metadata")
+    if isinstance(metadata, dict):
+        raw_target_id = raw_target_id or metadata.get("targetId") or metadata.get("target_id")
+        failures.extend(validate_readboard_target_window_metadata(metadata, "rawBackendResult.targetMetadata"))
+    else:
+        failures.append("rawBackendResult.targetMetadata/sourceMetadata must be an object")
+    if selected_id is not None and raw_target_id != selected_id:
+        failures.append("rawBackendResult target id must match selectedTarget.targetId")
+    if first_present(raw, "captureTiedToSelectedTarget", "capture_tied_to_selected_target") is not True:
+        failures.append("rawBackendResult.captureTiedToSelectedTarget must be true")
+    board_replacement = first_present(raw, "boardReplacement", "board_replacement")
+    if board_replacement not in (None, "none"):
+        failures.append("rawBackendResult.boardReplacement must be absent or none before confirmation")
+    snapshot_hash = first_present(raw, "snapshotHash", "snapshot_hash", "hash")
+    if not is_sha256_hex(snapshot_hash):
+        failures.append("rawBackendResult.snapshotHash/hash must be a 64-character hex sha256")
+    position = raw.get("position")
+    if not isinstance(position, dict):
+        failures.append("rawBackendResult.position must be an object")
+    else:
+        board_size = first_present(position, "boardSize", "board_size")
+        if board_size not in {9, 13, 19}:
+            failures.append("rawBackendResult.position.boardSize must be 9, 13, or 19")
+        stones = position.get("stones")
+        if not isinstance(stones, list):
+            failures.append("rawBackendResult.position.stones must be a list")
+    return failures
+
+
+def validate_readboard_target_window_candidates(candidates: list[Any], selected: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if not candidates:
+        failures.append(f"{label} must include at least one discovered target")
+    selected_id = selected.get("targetId")
+    candidate_ids: set[Any] = set()
+    for index, candidate in enumerate(candidates):
+        item_label = f"{label}[{index}]"
+        if not isinstance(candidate, dict):
+            failures.append(f"{item_label} must be an object")
+            continue
+        candidate_id = candidate.get("targetId")
+        candidate_ids.add(candidate_id)
+        for key in ("targetId", "title", "appName", "processName"):
+            if not isinstance(candidate.get(key), str) or not candidate.get(key, "").strip():
+                failures.append(f"{item_label}.{key} must be non-empty")
+        if candidate.get("controlledTargetWindow") is not True:
+            failures.append(f"{item_label}.controlledTargetWindow must be true")
+        if not isinstance(candidate.get("bounds"), dict):
+            failures.append(f"{item_label}.bounds must be an object")
+    if selected_id not in candidate_ids:
+        failures.append("selectedTarget.targetId must match a discovered candidate")
+    for key in ("targetId", "title", "appName", "processName"):
+        if not isinstance(selected.get(key), str) or not selected.get(key, "").strip():
+            failures.append(f"selectedTarget.{key} must be non-empty")
+    if selected.get("controlledTargetWindow") is not True:
+        failures.append("selectedTarget.controlledTargetWindow must be true")
+    if not isinstance(selected.get("bounds"), dict):
+        failures.append("selectedTarget.bounds must be an object")
+    return failures
+
+
+def validate_readboard_target_window_discovery_result(discovery_result: dict[str, Any], candidates: list[Any]) -> list[str]:
+    failures: list[str] = []
+    if discovery_result.get("backendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND:
+        failures.append(f"discoveryResult.backendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND}")
+    if discovery_result.get("status") not in {"ok", "success", "targets_listed"}:
+        failures.append("discoveryResult.status must be ok/success/targets_listed")
+    targets = first_present(discovery_result, "targets", "candidates")
+    if not isinstance(targets, list) or not targets:
+        failures.append("discoveryResult.targets must include at least one target")
+        return failures
+    candidate_ids = {candidate.get("targetId") for candidate in candidates if isinstance(candidate, dict)}
+    target_ids = {target.get("targetId") for target in targets if isinstance(target, dict)}
+    if not target_ids:
+        failures.append("discoveryResult.targets must include targetId values")
+    if candidate_ids and target_ids and not candidate_ids.issubset(target_ids):
+        failures.append("candidateTargets must be normalized from discoveryResult.targets")
+    return failures
+
+
+def validate_readboard_target_window_discovery_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["target_discovery evidence must be an object"]
+    if evidence.get("backendCommand") != READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND:
+        return [f"target_discovery.backendCommand must be {READBOARD_TARGET_WINDOW_DISCOVERY_BACKEND_COMMAND}"]
+    candidates = evidence.get("candidates")
+    targets = evidence.get("targets")
+    if not isinstance(candidates, list) or not candidates:
+        return ["target_discovery.candidates must include at least one target"]
+    if not isinstance(targets, list) or not targets:
+        return ["target_discovery.targets must include at least one raw target"]
+    return []
+
+
+def validate_readboard_target_window_selection_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["target_selection evidence must be an object"]
+    if evidence.get("selectedTargetInCandidates") is not True:
+        return ["target_selection.selectedTargetInCandidates must be true"]
+    if evidence.get("controlledTargetWindow") is not True:
+        return ["target_selection.controlledTargetWindow must be true"]
+    return []
+
+
+def validate_readboard_target_window_discovery_artifact_check(check: Any, root: Path, selected_id: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["capture_artifact evidence must be an object"]
+    return validate_readboard_target_window_discovery_artifact(evidence, root, selected_id, "capture_artifact")
+
+
+def validate_readboard_target_window_discovery_artifact(artifact: dict[str, Any], root: Path, selected_id: Any, label: str) -> list[str]:
+    failures: list[str] = []
+    if selected_id is not None and artifact.get("targetId") != selected_id:
+        failures.append(f"{label}.targetId must match selectedTarget.targetId")
+    path_value = artifact.get("path")
+    if not isinstance(path_value, str) or not path_value.strip():
+        failures.append(f"{label}.path must be non-empty")
+    else:
+        failures.extend(validate_repo_relative_path_artifact(root, path_value, artifact, label))
+        failures.extend(validate_readboard_target_window_decodable_ppm_size(root, path_value, label))
+    if artifact.get("sanitized") is not True:
+        failures.append(f"{label}.sanitized must be true")
+    if artifact.get("captureTiedToSelectedTarget") is not True:
+        failures.append(f"{label}.captureTiedToSelectedTarget must be true")
+    return failures
+
+
+def validate_readboard_target_window_decode_snapshot_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["decode_snapshot evidence must be an object"]
+    return validate_readboard_target_window_decode_snapshot(evidence, "decode_snapshot")
+
+
+def validate_readboard_target_window_decode_snapshot(snapshot: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if not isinstance(snapshot.get("snapshotId"), str) or not snapshot.get("snapshotId"):
+        failures.append(f"{label}.snapshotId must be non-empty")
+    if not is_sha256_hex(snapshot.get("snapshotHash")):
+        failures.append(f"{label}.snapshotHash must be a 64-character hex sha256")
+    if snapshot.get("boardSize") not in {9, 13, 19}:
+        failures.append(f"{label}.boardSize must be 9, 13, or 19")
+    if not isinstance(snapshot.get("stoneCount"), (int, float)) or snapshot.get("stoneCount") < 0:
+        failures.append(f"{label}.stoneCount must be non-negative")
+    if snapshot.get("decodeSucceeded") is not True:
+        failures.append(f"{label}.decodeSucceeded must be true")
+    return failures
+
+
+def validate_readboard_target_window_discovery_preview_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["preview_confirmation evidence must be an object"]
+    return validate_readboard_target_window_discovery_preview(evidence, "preview_confirmation")
+
+
+def validate_readboard_target_window_discovery_preview(preview: dict[str, Any], label: str) -> list[str]:
+    failures: list[str] = []
+    if preview.get("previewOnlyBeforeConfirmation") is not True:
+        failures.append(f"{label}.previewOnlyBeforeConfirmation must be true")
+    if preview.get("boardReplacedBeforeConfirmation") is not False:
+        failures.append(f"{label}.boardReplacedBeforeConfirmation must be false")
+    if preview.get("boardReplacedOnlyAfterConfirmation") is not True:
+        failures.append(f"{label}.boardReplacedOnlyAfterConfirmation must be true")
+    if preview.get("importOnlyAfterConfirmation") is not True:
+        failures.append(f"{label}.importOnlyAfterConfirmation must be true")
+    return failures
+
+
+def validate_readboard_target_window_discovery_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
+    for key in READBOARD_TARGET_WINDOW_DISCOVERY_REQUIRED_FALSE_FIELDS:
         if root_evidence.get(key) is not False:
             failures.append(f"{key} must be false")
         if boundaries.get(key) is not False:

@@ -1,0 +1,709 @@
+{
+  "schema": "lizzieyzy.readboard-target-window-discovery-smoke.v1",
+  "name": "readboard_target_window_discovery_smoke",
+  "status": "pass",
+  "platform": "macos",
+  "collectionMethod": "runtime_backend_controlled_target_window_discovery",
+  "runtimeObserved": true,
+  "backendCommandInvoked": true,
+  "backendCommand": "readboard_external_capture",
+  "controlledTargetWindow": true,
+  "previewOnlyBeforeConfirmation": true,
+  "boardReplacedOnlyAfterConfirmation": true,
+  "candidateTargets": [
+    {
+      "targetId": "controlled-readboard-window-001",
+      "title": "Controlled Readboard Target Window",
+      "appName": "LizzieYzy Test Harness",
+      "processName": "readboard-target-fixture",
+      "controlledTargetWindow": true,
+      "bounds": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 400
+      },
+      "displayScale": 2,
+      "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "controlledFixture": true,
+      "targetClientDiscovery": false,
+      "windowIdSanitized": true,
+      "captureSource": "controlled_local_target_window",
+      "fixtureSize": "400x400"
+    },
+    {
+      "targetId": "controlled-readboard-window-background",
+      "title": "Background Non-board Fixture",
+      "appName": "LizzieYzy Test Harness",
+      "processName": "readboard-target-fixture",
+      "controlledTargetWindow": true,
+      "bounds": {
+        "x": 560,
+        "y": 96,
+        "width": 180,
+        "height": 180
+      },
+      "displayScale": 2,
+      "fixturePath": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+      "controlledFixture": true,
+      "targetClientDiscovery": false,
+      "windowIdSanitized": true,
+      "captureSource": "controlled_local_target_window",
+      "fixtureSize": "180x180"
+    }
+  ],
+  "selectedTarget": {
+    "targetId": "controlled-readboard-window-001",
+    "title": "Controlled Readboard Target Window",
+    "appName": "LizzieYzy Test Harness",
+    "processName": "readboard-target-fixture",
+    "controlledTargetWindow": true,
+    "bounds": {
+      "x": 120,
+      "y": 96,
+      "width": 400,
+      "height": 400
+    },
+    "displayScale": 2,
+    "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+    "controlledFixture": true,
+    "targetClientDiscovery": false,
+    "windowIdSanitized": true,
+    "captureSource": "controlled_local_target_window",
+    "fixtureSize": "400x400"
+  },
+  "rawBackendResult": {
+    "status": "captured",
+    "source": "controlled_local_target_window",
+    "targetId": "controlled-readboard-window-001",
+    "targetMetadata": {
+      "targetId": "controlled-readboard-window-001",
+      "title": "Controlled Readboard Target Window",
+      "appName": "LizzieYzy Test Harness",
+      "processName": "readboard-target-fixture",
+      "controlledTargetWindow": true,
+      "bounds": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 400
+      },
+      "displayScale": 2,
+      "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "controlledFixture": true,
+      "targetClientDiscovery": false,
+      "windowIdSanitized": true,
+      "captureSource": "controlled_local_target_window",
+      "fixtureSize": "400x400"
+    },
+    "captureTiedToSelectedTarget": true,
+    "boardReplacement": "none",
+    "snapshotId": "controlled-target-window-snapshot-001",
+    "snapshotHash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "position": {
+      "boardSize": 19,
+      "moveNumber": 0,
+      "toPlay": "black",
+      "stones": [
+        {
+          "color": "black",
+          "x": 3,
+          "y": 3
+        },
+        {
+          "color": "black",
+          "x": 15,
+          "y": 15
+        },
+        {
+          "color": "white",
+          "x": 10,
+          "y": 10
+        }
+      ]
+    },
+    "decode": {
+      "attempted": true,
+      "status": "success",
+      "boardSize": 19,
+      "stoneCount": 3
+    },
+    "captureArtifact": {
+      "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+      "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+      "sizeBytes": 480015,
+      "sanitized": true,
+      "targetId": "controlled-readboard-window-001",
+      "captureTiedToSelectedTarget": true,
+      "sourceKind": "controlled_local_target_window",
+      "controlledFixture": true,
+      "targetClientDiscovery": false,
+      "windowIdSanitized": true,
+      "captureSource": "controlled_local_target_window",
+      "fixtureSize": "400x400"
+    },
+    "controlledFixture": true,
+    "targetClientDiscovery": false,
+    "windowIdSanitized": true,
+    "captureSource": "controlled_local_target_window",
+    "fixtureSize": "400x400"
+  },
+  "captureArtifact": {
+    "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+    "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "sizeBytes": 480015,
+    "sanitized": true,
+    "targetId": "controlled-readboard-window-001",
+    "captureTiedToSelectedTarget": true,
+    "sourceKind": "controlled_local_target_window",
+    "controlledFixture": true,
+    "targetClientDiscovery": false,
+    "windowIdSanitized": true,
+    "captureSource": "controlled_local_target_window",
+    "fixtureSize": "400x400"
+  },
+  "decodeSnapshot": {
+    "snapshotId": "controlled-target-window-snapshot-001",
+    "snapshotHash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+    "decodeSucceeded": true,
+    "boardSize": 19,
+    "stoneCount": 3,
+    "blackStones": 2,
+    "whiteStones": 1,
+    "targetId": "controlled-readboard-window-001",
+    "controlledFixture": true,
+    "targetClientDiscovery": false,
+    "windowIdSanitized": true,
+    "captureSource": "controlled_local_target_window",
+    "fixtureSize": "400x400"
+  },
+  "previewConfirmation": {
+    "previewOnlyBeforeConfirmation": true,
+    "boardReplacedBeforeConfirmation": false,
+    "importOnlyAfterConfirmation": true,
+    "boardReplacedOnlyAfterConfirmation": true,
+    "userConfirmed": true
+  },
+  "failedDecodeNoReplacement": {
+    "kind": "non_board",
+    "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+    "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+    "sizeBytes": 97215,
+    "decodeAttempted": true,
+    "decodeSucceeded": false,
+    "imported": false,
+    "boardReplaced": false,
+    "errorKind": "ImageLowConfidence"
+  },
+  "targetClientDiscoveryParity": false,
+  "realClientParity": false,
+  "fullReadboardParity": false,
+  "fullOcrParity": false,
+  "windowsLinuxCaptureCovered": false,
+  "checks": [
+    {
+      "name": "target_discovery",
+      "status": "pass",
+      "details": {
+        "candidates": [
+          {
+            "targetId": "controlled-readboard-window-001",
+            "title": "Controlled Readboard Target Window",
+            "appName": "LizzieYzy Test Harness",
+            "processName": "readboard-target-fixture",
+            "controlledTargetWindow": true,
+            "bounds": {
+              "x": 120,
+              "y": 96,
+              "width": 400,
+              "height": 400
+            },
+            "displayScale": 2,
+            "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+            "controlledFixture": true,
+            "targetClientDiscovery": false,
+            "windowIdSanitized": true,
+            "captureSource": "controlled_local_target_window",
+            "fixtureSize": "400x400"
+          },
+          {
+            "targetId": "controlled-readboard-window-background",
+            "title": "Background Non-board Fixture",
+            "appName": "LizzieYzy Test Harness",
+            "processName": "readboard-target-fixture",
+            "controlledTargetWindow": true,
+            "bounds": {
+              "x": 560,
+              "y": 96,
+              "width": 180,
+              "height": 180
+            },
+            "displayScale": 2,
+            "fixturePath": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+            "controlledFixture": true,
+            "targetClientDiscovery": false,
+            "windowIdSanitized": true,
+            "captureSource": "controlled_local_target_window",
+            "fixtureSize": "180x180"
+          }
+        ],
+        "candidateCount": 2,
+        "controlledTargetWindow": true,
+        "backendCommand": "readboard_list_capture_targets",
+        "targets": [
+          {
+            "targetId": "controlled-readboard-window-001",
+            "title": "Controlled Readboard Target Window",
+            "appName": "LizzieYzy Test Harness",
+            "processName": "readboard-target-fixture",
+            "controlledTargetWindow": true,
+            "bounds": {
+              "x": 120,
+              "y": 96,
+              "width": 400,
+              "height": 400
+            },
+            "displayScale": 2,
+            "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+            "controlledFixture": true,
+            "targetClientDiscovery": false,
+            "windowIdSanitized": true,
+            "captureSource": "controlled_local_target_window",
+            "fixtureSize": "400x400"
+          },
+          {
+            "targetId": "controlled-readboard-window-background",
+            "title": "Background Non-board Fixture",
+            "appName": "LizzieYzy Test Harness",
+            "processName": "readboard-target-fixture",
+            "controlledTargetWindow": true,
+            "bounds": {
+              "x": 560,
+              "y": 96,
+              "width": 180,
+              "height": 180
+            },
+            "displayScale": 2,
+            "fixturePath": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+            "controlledFixture": true,
+            "targetClientDiscovery": false,
+            "windowIdSanitized": true,
+            "captureSource": "controlled_local_target_window",
+            "fixtureSize": "180x180"
+          }
+        ],
+        "normalizedCandidates": true
+      }
+    },
+    {
+      "name": "target_selection",
+      "status": "pass",
+      "details": {
+        "selectedTarget": {
+          "targetId": "controlled-readboard-window-001",
+          "title": "Controlled Readboard Target Window",
+          "appName": "LizzieYzy Test Harness",
+          "processName": "readboard-target-fixture",
+          "controlledTargetWindow": true,
+          "bounds": {
+            "x": 120,
+            "y": 96,
+            "width": 400,
+            "height": 400
+          },
+          "displayScale": 2,
+          "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+          "controlledFixture": true,
+          "targetClientDiscovery": false,
+          "windowIdSanitized": true,
+          "captureSource": "controlled_local_target_window",
+          "fixtureSize": "400x400"
+        },
+        "selectedTargetInCandidates": true,
+        "controlledTargetWindow": true
+      }
+    },
+    {
+      "name": "capture_artifact",
+      "status": "pass",
+      "details": {
+        "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+        "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "sizeBytes": 480015,
+        "sanitized": true,
+        "targetId": "controlled-readboard-window-001",
+        "captureTiedToSelectedTarget": true,
+        "sourceKind": "controlled_local_target_window",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400",
+        "backendCommand": "readboard_external_capture"
+      }
+    },
+    {
+      "name": "decode_snapshot",
+      "status": "pass",
+      "details": {
+        "snapshotId": "controlled-target-window-snapshot-001",
+        "snapshotHash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "decodeSucceeded": true,
+        "boardSize": 19,
+        "stoneCount": 3,
+        "blackStones": 2,
+        "whiteStones": 1,
+        "targetId": "controlled-readboard-window-001",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400"
+      }
+    },
+    {
+      "name": "preview_confirmation",
+      "status": "pass",
+      "details": {
+        "previewOnlyBeforeConfirmation": true,
+        "boardReplacedBeforeConfirmation": false,
+        "importOnlyAfterConfirmation": true,
+        "boardReplacedOnlyAfterConfirmation": true,
+        "userConfirmed": true
+      }
+    },
+    {
+      "name": "failed_decode_no_replacement",
+      "status": "pass",
+      "details": {
+        "kind": "non_board",
+        "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+        "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "sizeBytes": 97215,
+        "decodeAttempted": true,
+        "decodeSucceeded": false,
+        "imported": false,
+        "boardReplaced": false,
+        "errorKind": "ImageLowConfidence"
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "boundaries": {
+          "targetClientDiscoveryParity": false,
+          "realClientParity": false,
+          "fullReadboardParity": false,
+          "fullOcrParity": false,
+          "windowsLinuxCaptureCovered": false
+        }
+      }
+    }
+  ],
+  "discoveryBackendCommandInvoked": true,
+  "discoveryBackendCommand": "readboard_list_capture_targets",
+  "discoveryResult": {
+    "backendCommand": "readboard_list_capture_targets",
+    "status": "targets_listed",
+    "targets": [
+      {
+        "targetId": "controlled-readboard-window-001",
+        "title": "Controlled Readboard Target Window",
+        "appName": "LizzieYzy Test Harness",
+        "processName": "readboard-target-fixture",
+        "controlledTargetWindow": true,
+        "bounds": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 400
+        },
+        "displayScale": 2,
+        "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400"
+      },
+      {
+        "targetId": "controlled-readboard-window-background",
+        "title": "Background Non-board Fixture",
+        "appName": "LizzieYzy Test Harness",
+        "processName": "readboard-target-fixture",
+        "controlledTargetWindow": true,
+        "bounds": {
+          "x": 560,
+          "y": 96,
+          "width": 180,
+          "height": 180
+        },
+        "displayScale": 2,
+        "fixturePath": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "180x180"
+      }
+    ],
+    "targetCount": 2,
+    "normalizedCandidates": true
+  },
+  "runtimeReportPhase": "readboard-target-window-discovery",
+  "runtimeReportKey": "readboardTargetWindowDiscovery",
+  "sourceRuntimeReport": {
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+    "status": "pass",
+    "platform": "macos",
+    "phase": "readboard-target-window-discovery",
+    "reportKey": "readboardTargetWindowDiscovery",
+    "runtimeObserved": true,
+    "backendCommandInvoked": true,
+    "backendCommand": "readboard_external_capture",
+    "discoveryBackendCommandInvoked": true,
+    "discoveryBackendCommand": "readboard_list_capture_targets",
+    "readboardTargetWindowDiscovery": {
+      "runtimeObserved": true,
+      "backendCommandInvoked": true,
+      "backendCommand": "readboard_external_capture",
+      "discoveryBackendCommandInvoked": true,
+      "discoveryBackendCommand": "readboard_list_capture_targets",
+      "controlledTargetWindow": true,
+      "candidateTargets": [
+        {
+          "targetId": "controlled-readboard-window-001",
+          "title": "Controlled Readboard Target Window",
+          "appName": "LizzieYzy Test Harness",
+          "processName": "readboard-target-fixture",
+          "controlledTargetWindow": true,
+          "bounds": {
+            "x": 120,
+            "y": 96,
+            "width": 400,
+            "height": 400
+          },
+          "displayScale": 2,
+          "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+          "controlledFixture": true,
+          "targetClientDiscovery": false,
+          "windowIdSanitized": true,
+          "captureSource": "controlled_local_target_window",
+          "fixtureSize": "400x400"
+        },
+        {
+          "targetId": "controlled-readboard-window-background",
+          "title": "Background Non-board Fixture",
+          "appName": "LizzieYzy Test Harness",
+          "processName": "readboard-target-fixture",
+          "controlledTargetWindow": true,
+          "bounds": {
+            "x": 560,
+            "y": 96,
+            "width": 180,
+            "height": 180
+          },
+          "displayScale": 2,
+          "fixturePath": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+          "controlledFixture": true,
+          "targetClientDiscovery": false,
+          "windowIdSanitized": true,
+          "captureSource": "controlled_local_target_window",
+          "fixtureSize": "180x180"
+        }
+      ],
+      "discoveryResult": {
+        "backendCommand": "readboard_list_capture_targets",
+        "status": "targets_listed",
+        "targets": [
+          {
+            "targetId": "controlled-readboard-window-001",
+            "title": "Controlled Readboard Target Window",
+            "appName": "LizzieYzy Test Harness",
+            "processName": "readboard-target-fixture",
+            "controlledTargetWindow": true,
+            "bounds": {
+              "x": 120,
+              "y": 96,
+              "width": 400,
+              "height": 400
+            },
+            "displayScale": 2,
+            "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+            "controlledFixture": true,
+            "targetClientDiscovery": false,
+            "windowIdSanitized": true,
+            "captureSource": "controlled_local_target_window",
+            "fixtureSize": "400x400"
+          },
+          {
+            "targetId": "controlled-readboard-window-background",
+            "title": "Background Non-board Fixture",
+            "appName": "LizzieYzy Test Harness",
+            "processName": "readboard-target-fixture",
+            "controlledTargetWindow": true,
+            "bounds": {
+              "x": 560,
+              "y": 96,
+              "width": 180,
+              "height": 180
+            },
+            "displayScale": 2,
+            "fixturePath": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+            "controlledFixture": true,
+            "targetClientDiscovery": false,
+            "windowIdSanitized": true,
+            "captureSource": "controlled_local_target_window",
+            "fixtureSize": "180x180"
+          }
+        ],
+        "targetCount": 2,
+        "normalizedCandidates": true
+      },
+      "selectedTarget": {
+        "targetId": "controlled-readboard-window-001",
+        "title": "Controlled Readboard Target Window",
+        "appName": "LizzieYzy Test Harness",
+        "processName": "readboard-target-fixture",
+        "controlledTargetWindow": true,
+        "bounds": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 400
+        },
+        "displayScale": 2,
+        "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400"
+      },
+      "rawBackendResult": {
+        "status": "captured",
+        "source": "controlled_local_target_window",
+        "targetId": "controlled-readboard-window-001",
+        "targetMetadata": {
+          "targetId": "controlled-readboard-window-001",
+          "title": "Controlled Readboard Target Window",
+          "appName": "LizzieYzy Test Harness",
+          "processName": "readboard-target-fixture",
+          "controlledTargetWindow": true,
+          "bounds": {
+            "x": 120,
+            "y": 96,
+            "width": 400,
+            "height": 400
+          },
+          "displayScale": 2,
+          "fixturePath": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+          "controlledFixture": true,
+          "targetClientDiscovery": false,
+          "windowIdSanitized": true,
+          "captureSource": "controlled_local_target_window",
+          "fixtureSize": "400x400"
+        },
+        "captureTiedToSelectedTarget": true,
+        "boardReplacement": "none",
+        "snapshotId": "controlled-target-window-snapshot-001",
+        "snapshotHash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "position": {
+          "boardSize": 19,
+          "moveNumber": 0,
+          "toPlay": "black",
+          "stones": [
+            {
+              "color": "black",
+              "x": 3,
+              "y": 3
+            },
+            {
+              "color": "black",
+              "x": 15,
+              "y": 15
+            },
+            {
+              "color": "white",
+              "x": 10,
+              "y": 10
+            }
+          ]
+        },
+        "decode": {
+          "attempted": true,
+          "status": "success",
+          "boardSize": 19,
+          "stoneCount": 3
+        },
+        "captureArtifact": {
+          "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+          "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+          "sizeBytes": 480015,
+          "sanitized": true,
+          "targetId": "controlled-readboard-window-001",
+          "captureTiedToSelectedTarget": true,
+          "sourceKind": "controlled_local_target_window",
+          "controlledFixture": true,
+          "targetClientDiscovery": false,
+          "windowIdSanitized": true,
+          "captureSource": "controlled_local_target_window",
+          "fixtureSize": "400x400"
+        },
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400"
+      },
+      "captureArtifact": {
+        "path": "tests/fixtures/readboard-screenshots/target-window-scale.ppm",
+        "sha256": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "sizeBytes": 480015,
+        "sanitized": true,
+        "targetId": "controlled-readboard-window-001",
+        "captureTiedToSelectedTarget": true,
+        "sourceKind": "controlled_local_target_window",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400"
+      },
+      "decodeSnapshot": {
+        "snapshotId": "controlled-target-window-snapshot-001",
+        "snapshotHash": "1c910bea940043ee171b36dbc9ad3d6c9365d7b317f437b563be84e8583e3f0d",
+        "decodeSucceeded": true,
+        "boardSize": 19,
+        "stoneCount": 3,
+        "blackStones": 2,
+        "whiteStones": 1,
+        "targetId": "controlled-readboard-window-001",
+        "controlledFixture": true,
+        "targetClientDiscovery": false,
+        "windowIdSanitized": true,
+        "captureSource": "controlled_local_target_window",
+        "fixtureSize": "400x400"
+      },
+      "previewConfirmation": {
+        "previewOnlyBeforeConfirmation": true,
+        "boardReplacedBeforeConfirmation": false,
+        "importOnlyAfterConfirmation": true,
+        "boardReplacedOnlyAfterConfirmation": true,
+        "userConfirmed": true
+      },
+      "failedDecodeNoReplacement": {
+        "kind": "non_board",
+        "path": "tests/fixtures/readboard-screenshots/target-window-non-board.ppm",
+        "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "sizeBytes": 97215,
+        "decodeAttempted": true,
+        "decodeSucceeded": false,
+        "imported": false,
+        "boardReplaced": false,
+        "errorKind": "ImageLowConfidence"
+      }
+    }
+  }
+}

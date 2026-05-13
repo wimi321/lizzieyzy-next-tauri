@@ -1,6 +1,6 @@
 # Completion Audit
 
-Current as of this docs sync: the repository has strong scoped evidence, but LizzieYzy Next is not fully complete and is not ready to be described as full Java/Swing parity or a production release. The central user-flow smoke gate currently reports `59 passed, 0 failed, 0 pending`; that means the recorded scoped gates are internally consistent, not that every legacy workflow, platform, provider, OCR path, signing path, or release path is finished. `docs/qa/release-readiness-preflight.json` still records the preflight baseline that excludes the completion-audit validation gate itself.
+Current as of this docs sync: the repository has strong scoped evidence, but LizzieYzy Next is not fully complete and is not ready to be described as full Java/Swing parity or a production release. The central user-flow smoke gate currently reports `60 passed, 0 failed, 0 pending`; that means the recorded scoped gates are internally consistent, not that every legacy workflow, platform, provider, OCR path, signing path, or release path is finished. `docs/qa/release-readiness-preflight.json` still records the preflight baseline that excludes the completion-audit validation gate itself.
 
 ## Completion Criteria
 

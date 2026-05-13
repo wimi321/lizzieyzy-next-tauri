@@ -3,8 +3,8 @@ use app_model::{
     ProviderGameSummary, ProviderImportRequest, ProviderImportResult, ProviderKind,
 };
 use provider_core::{
-    first_non_blank, invalid_payload, invalid_url, require_non_blank, transport_failed, ProviderResult,
-    ProviderTransport,
+    first_non_blank, invalid_payload, invalid_url, provider_http_error, provider_payload_preflight,
+    require_non_blank, ProviderResult, ProviderTransport,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -240,25 +240,28 @@ pub fn fetch_live_detail_import_with_signature<T: ProviderTransport>(
 
 pub fn parse_live_list_json(response: &str) -> ProviderResult<YikeLivePage> {
     let root = parse_json(response, "Yike live list")?;
-    let status = object_i64(&root, "Status").unwrap_or(0);
+    let status = object_i64(&root, "Status")
+        .or_else(|| object_i64(&root, "status"))
+        .ok_or_else(|| invalid_payload("Yike live list schema drift: missing Status field"))?;
     if status != 1200 {
-        return Err(invalid_payload(
-            object_string(&root, "Message").unwrap_or_else(|| "Yike live list request failed".to_string()),
-        ));
+        let message = object_string(&root, "Message")
+            .or_else(|| object_string(&root, "message"))
+            .unwrap_or_else(|| "Yike live list request failed".to_string());
+        return Err(invalid_payload(format!(
+            "Yike provider_error status {status}: {message}"
+        )));
     }
 
-    let Some(result) = root.get("Result").and_then(Value::as_object) else {
-        return Ok(YikeLivePage {
-            since: 0,
-            games: Vec::new(),
-        });
-    };
+    let result = root
+        .get("Result")
+        .and_then(Value::as_object)
+        .ok_or_else(|| invalid_payload("Yike live list schema drift: missing Result object"))?;
     let since = result.get("since").and_then(value_u64).unwrap_or(0);
-    let games = result
+    let list = result
         .get("list")
         .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(YikeLiveGame::from_value).collect())
-        .unwrap_or_default();
+        .ok_or_else(|| invalid_payload("Yike live list schema drift: missing Result.list array"))?;
+    let games = list.iter().filter_map(YikeLiveGame::from_value).collect();
     Ok(YikeLivePage { since, games })
 }
 
@@ -407,6 +410,7 @@ fn extract_sgf_payload(payload: &str) -> ProviderResult<(String, ProviderGameMet
         return Ok((payload.trim().to_string(), ProviderGameMetadata::default()));
     }
 
+    let payload = provider_payload_preflight("Yike", "payload", payload)?;
     let json: Value = serde_json::from_str(payload)
         .map_err(|err| invalid_payload(format!("failed to parse Yike payload JSON: {err}")))?;
     if let Some(detail) = extract_live_detail_value(&json)? {
@@ -490,12 +494,14 @@ fn signed_get_request(
 
 fn ensure_http_success(result: &ProviderFetchResult, context: &str) -> ProviderResult<()> {
     if result.status_code >= 400 {
-        return Err(transport_failed(format!(
-            "{context}: HTTP {} {}",
+        return Err(provider_http_error(
+            "Yike",
             result.status_code,
-            result.payload.trim()
-        )));
+            &result.payload,
+            context,
+        ));
     }
+    provider_payload_preflight("Yike", context, &result.payload)?;
     Ok(())
 }
 
@@ -505,7 +511,7 @@ fn detail_to_import_result(
     source_url: Option<String>,
     request_url: Option<String>,
 ) -> ProviderResult<ProviderImportResult> {
-    let sgf_text = require_non_blank(&detail.sgf, "sgf")?.to_string();
+    let sgf_text = provider_payload_preflight("Yike", "live detail sgf", &detail.sgf)?.to_string();
     let game_result = first_non_blank([detail.game_result.as_str()]).map(str::to_string);
     let mut metadata = ProviderGameMetadata {
         source_url,
@@ -533,19 +539,26 @@ fn detail_to_import_result(
 }
 
 fn parse_json(response: &str, label: &str) -> ProviderResult<Value> {
+    let response = provider_payload_preflight("Yike", label, response)?;
     serde_json::from_str(response)
         .map_err(|err| invalid_payload(format!("failed to parse {label} JSON: {err}")))
 }
 
 fn parse_live_detail_value(root: &Value) -> ProviderResult<YikeLiveDetail> {
-    let status = object_i64(root, "status").unwrap_or(-1);
+    let status = object_i64(root, "status")
+        .or_else(|| object_i64(root, "Status"))
+        .unwrap_or(-1);
     if status != 0 {
-        return Err(invalid_payload(
-            object_string(root, "message").unwrap_or_else(|| "Yike live detail request failed".to_string()),
-        ));
+        let message = object_string(root, "message")
+            .or_else(|| object_string(root, "Message"))
+            .unwrap_or_else(|| "Yike live detail request failed".to_string());
+        return Err(invalid_payload(format!(
+            "Yike provider_error status {status}: {message}"
+        )));
     }
     let result = root
         .get("result")
+        .or_else(|| root.get("Result"))
         .ok_or_else(|| invalid_payload("Yike live detail response does not contain result"))?;
     Ok(YikeLiveDetail::from_value(result))
 }
@@ -1156,6 +1169,101 @@ mod tests {
             result.metadata.extra.get("provider_result").map(String::as_str),
             Some("W+2.5")
         );
+    }
+
+    #[test]
+    fn provider_fixtures_cover_yike_success_and_empty_list_shapes() {
+        let page = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/live_list_success.json"
+        ))
+        .unwrap();
+
+        assert_eq!(page.since, 99);
+        assert_eq!(page.games.len(), 1);
+        assert_eq!(page.games[0].id, 186_031);
+        assert_eq!(page.games[0].status_text(), "B+R");
+
+        let detail = import_live_detail_json(
+            include_str!("../../../tests/fixtures/provider/yike/live_detail_success.json"),
+            Some("fixture-detail".to_string()),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(detail.summary.source_id.as_deref(), Some("fixture-detail"));
+        assert_eq!(detail.summary.result.as_deref(), Some("W+R"));
+        assert_eq!(
+            detail.sgf_text,
+            "(;GM[1]SZ[19]PB[Black Fixture]PW[White Fixture]RE[W+R];B[dd];W[pq])"
+        );
+
+        let empty = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/empty_result.json"
+        ))
+        .unwrap();
+        assert_eq!(empty.since, 100);
+        assert!(empty.games.is_empty());
+    }
+
+    #[test]
+    fn provider_fixtures_reject_yike_session_rate_limit_antibot_schema_and_malformed() {
+        let unauthorized = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/unauthorized.json"
+        ))
+        .unwrap_err();
+        assert_eq!(unauthorized.kind, ProviderErrorKind::InvalidPayload);
+        assert!(unauthorized.message.contains("session expired"));
+
+        let rate_limit = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/rate_limit.json"
+        ))
+        .unwrap_err();
+        assert_eq!(rate_limit.kind, ProviderErrorKind::InvalidPayload);
+        assert!(rate_limit.message.contains("too many requests"));
+
+        let html = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/anti_bot.html"
+        ))
+        .unwrap_err();
+        assert_eq!(html.kind, ProviderErrorKind::InvalidPayload);
+        assert!(html.message.contains("anti_bot_html_challenge"));
+
+        let schema = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/schema_drift.json"
+        ))
+        .unwrap_err();
+        assert_eq!(schema.kind, ProviderErrorKind::InvalidPayload);
+        assert!(schema.message.contains("schema drift"));
+
+        let malformed = parse_live_list_json(include_str!(
+            "../../../tests/fixtures/provider/yike/malformed.json"
+        ))
+        .unwrap_err();
+        assert_eq!(malformed.kind, ProviderErrorKind::InvalidPayload);
+        assert!(malformed.message.contains("failed to parse Yike live list JSON"));
+    }
+
+    #[test]
+    fn yike_http_status_failures_are_typed_without_empty_success() {
+        let signature = YikeRequestSignature {
+            current_time_millis: 1,
+            nonce: 2,
+        };
+        let unauthorized = StaticProviderTransport::ok(fetch_result(
+            401,
+            include_str!("../../../tests/fixtures/provider/yike/unauthorized.json"),
+        ));
+        let error = fetch_live_detail_import_with_signature(&unauthorized, "186031", signature).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::TransportFailed);
+        assert!(error.message.contains("unauthorized_or_session_expired"));
+
+        let rate_limited = StaticProviderTransport::ok(fetch_result(
+            429,
+            include_str!("../../../tests/fixtures/provider/yike/rate_limit.json"),
+        ));
+        let error = fetch_live_detail_import_with_signature(&rate_limited, "186031", signature).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::TransportFailed);
+        assert!(error.message.contains("rate_limited"));
     }
 
     #[test]

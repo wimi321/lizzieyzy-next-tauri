@@ -1,0 +1,9 @@
+{
+  "status": 0,
+  "result": {
+    "sgf": "",
+    "clean_sgf": "(;GM[1]SZ[19]PB[Black Fixture]PW[White Fixture]RE[W+R];B[dd](;W[pq])(;W[qq]))",
+    "status": 3,
+    "game_result": "W+R"
+  }
+}

@@ -3,8 +3,8 @@ use app_model::{
     ProviderGameSummary, ProviderImportRequest, ProviderImportResult, ProviderKind,
 };
 use provider_core::{
-    first_non_blank, invalid_payload, invalid_request, require_non_blank, transport_failed, ProviderResult,
-    ProviderTransport,
+    first_non_blank, invalid_payload, invalid_request, provider_http_error, provider_payload_preflight,
+    require_non_blank, ProviderResult, ProviderTransport,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -176,7 +176,7 @@ pub fn import_payload(request: ProviderImportRequest) -> ProviderResult<Provider
 }
 
 pub fn normalize_payload(payload: &str) -> ProviderResult<FoxNormalizedPayload> {
-    let payload = require_non_blank(payload, "payload")?;
+    let payload = provider_payload_preflight("Fox", "payload", payload)?;
     if payload.trim_start().starts_with('(') {
         let sgf_text = normalize_sgf(payload);
         let metadata = metadata_from_sgf(&sgf_text);
@@ -185,6 +185,7 @@ pub fn normalize_payload(payload: &str) -> ProviderResult<FoxNormalizedPayload> 
 
     let json: Value = serde_json::from_str(payload)
         .map_err(|err| invalid_payload(format!("failed to parse Fox payload JSON: {err}")))?;
+    fox_provider_result_error(&json, "Fox payload")?;
     let sgf = json
         .get("chess")
         .and_then(json_scalar_string)
@@ -231,6 +232,7 @@ fn fetch_uid<T: ProviderTransport + ?Sized>(
     let uid = require_non_blank(uid, "uid")?;
     let last_code = require_non_blank(last_code, "last_code")?;
     let mut result = fetch_request(chess_list_request(uid, last_code)?, transport)?;
+    validate_chess_list_payload(&result.payload)?;
     result.metadata.source_id = result.metadata.source_id.or_else(|| Some(uid.to_string()));
     result
         .metadata
@@ -295,11 +297,14 @@ fn fetch_request<T: ProviderTransport + ?Sized>(
 ) -> ProviderResult<ProviderFetchResult> {
     let result = transport.fetch(&request)?;
     if !(200..400).contains(&result.status_code) {
-        return Err(transport_failed(format!(
-            "Fox transport returned HTTP {} for {}",
-            result.status_code, result.url
-        )));
+        return Err(provider_http_error(
+            "Fox",
+            result.status_code,
+            &result.payload,
+            "transport request failed",
+        ));
     }
+    provider_payload_preflight("Fox", "transport response", &result.payload)?;
     Ok(result)
 }
 
@@ -307,7 +312,7 @@ fn normalize_runtime_sgf_response(
     mut response: ProviderFetchResult,
     fallback_source_id: &str,
 ) -> ProviderResult<ProviderFetchResult> {
-    let payload = require_non_blank(&response.payload, "payload")?;
+    let payload = provider_payload_preflight("Fox", "runtime SGF response", &response.payload)?;
     let normalized = normalize_payload(payload)?;
     let mut metadata = normalized.metadata;
     metadata.request_url = metadata.request_url.or_else(|| Some(response.url.clone()));
@@ -326,6 +331,7 @@ fn normalized_payload_text(payload: &str, normalized_sgf: &str) -> ProviderResul
         return Ok(normalized_sgf.to_string());
     }
 
+    let payload = provider_payload_preflight("Fox", "payload", payload)?;
     let mut json: Value = serde_json::from_str(payload)
         .map_err(|err| invalid_payload(format!("failed to parse Fox payload JSON: {err}")))?;
     let Some(object) = json.as_object_mut() else {
@@ -388,8 +394,49 @@ fn with_cgi_fallback_context(
     error
 }
 
+fn validate_chess_list_payload(payload: &str) -> ProviderResult<()> {
+    let payload = provider_payload_preflight("Fox", "chess list payload", payload)?;
+    let json: Value = serde_json::from_str(payload)
+        .map_err(|err| invalid_payload(format!("failed to parse Fox chess list JSON: {err}")))?;
+    fox_provider_result_error(&json, "Fox chess list")?;
+    require_chess_list_array(&json)
+}
+
+fn fox_provider_result_error(json: &Value, context: &str) -> ProviderResult<()> {
+    let result = json
+        .get("result")
+        .or_else(|| json.get("errcode"))
+        .and_then(json_i64);
+    if result.is_none_or(|result| result == 0) {
+        return Ok(());
+    }
+    let result = result.unwrap_or(-1);
+    let fallback = format!("{context} provider request failed");
+    let result_message = json
+        .get("resultstr")
+        .and_then(json_scalar_string)
+        .unwrap_or_default();
+    let error_message = json
+        .get("errmsg")
+        .and_then(json_scalar_string)
+        .unwrap_or_default();
+    let message = first_non_blank([result_message.as_str(), error_message.as_str(), fallback.as_str()])
+        .unwrap_or("Fox provider request failed");
+    Err(invalid_payload(format!(
+        "Fox provider_error result {result}: {message}"
+    )))
+}
+
+fn require_chess_list_array(json: &Value) -> ProviderResult<()> {
+    json.get("chesslist")
+        .and_then(Value::as_array)
+        .map(|_| ())
+        .ok_or_else(|| invalid_payload("Fox chess list schema drift: missing chesslist array"))
+}
+
 fn parse_user_info(payload: &str, query_text: &str) -> ProviderResult<FoxUserInfo> {
-    let json: Value = serde_json::from_str(require_non_blank(payload, "payload")?)
+    let payload = provider_payload_preflight("Fox", "user payload", payload)?;
+    let json: Value = serde_json::from_str(payload)
         .map_err(|err| invalid_payload(format!("failed to parse Fox user JSON: {err}")))?;
     let result = if json.get("result").is_some() {
         json.get("result").and_then(json_i64).unwrap_or(-1)
@@ -409,7 +456,9 @@ fn parse_user_info(payload: &str, query_text: &str) -> ProviderResult<FoxUserInf
         let message = first_non_blank([result_message.as_str(), error_message.as_str(), fallback.as_str()])
             .unwrap_or("Fox user lookup failed")
             .to_string();
-        return Err(invalid_payload(message));
+        return Err(invalid_payload(format!(
+            "Fox provider_error result {result}: {message}"
+        )));
     }
 
     let uid = json
@@ -444,8 +493,11 @@ fn wrap_chess_list_with_user_info(
     nickname: &str,
     query_text: &str,
 ) -> ProviderResult<ProviderFetchResult> {
-    let mut json: Value = serde_json::from_str(require_non_blank(&result.payload, "payload")?)
+    let payload = provider_payload_preflight("Fox", "chess list payload", &result.payload)?;
+    let mut json: Value = serde_json::from_str(payload)
         .map_err(|err| invalid_payload(format!("failed to parse Fox chess list JSON: {err}")))?;
+    fox_provider_result_error(&json, "Fox chess list")?;
+    require_chess_list_array(&json)?;
     let Some(object) = json.as_object_mut() else {
         return Err(invalid_payload("Fox chess list payload JSON must be an object"));
     };
@@ -759,6 +811,7 @@ impl<'a> SgfParser<'a> {
 mod tests {
     use super::*;
     use app_model::ProviderErrorKind;
+    use provider_core::transport_failed;
     use std::collections::VecDeque;
     use std::sync::Mutex;
 
@@ -1094,6 +1147,120 @@ mod tests {
     }
 
     #[test]
+    fn provider_fixtures_cover_fox_success_shapes() {
+        let normalized = normalize_payload(include_str!(
+            "../../../tests/fixtures/provider/fox/sgf_success.json"
+        ))
+        .unwrap();
+
+        assert_eq!(normalized.metadata.source_id.as_deref(), Some("fox-fixture-1"));
+        assert_eq!(
+            normalized.sgf_text,
+            "(;GM[1]FF[4]CA[UTF-8]SZ[19]PB[Black Fixture]PW[White Fixture]RE[B+R];B[dd];W[pq])"
+        );
+
+        let transport = SequenceTransport::new(vec![
+            Ok(fetch_response(
+                &format!("{FOX_QUERY_USER_URL}?srcuid=0&username=Fixture+Player"),
+                200,
+                include_str!("../../../tests/fixtures/provider/fox/user_success.json"),
+            )),
+            Ok(fetch_response(
+                &format!("{FOX_BASE_URL}/YHWQFetchChessList?srcuid=0&dstuid=2468&type=1&lastcode=0&searchkey=&uin=2468"),
+                200,
+                include_str!("../../../tests/fixtures/provider/fox/chess_list_success.json"),
+            )),
+        ]);
+
+        let result = fetch_command("user_name Fixture Player", &transport).unwrap();
+        let json: Value = serde_json::from_str(&result.payload).unwrap();
+        assert_eq!(json["fox_uid"], "2468");
+        assert_eq!(json["fox_nickname"], "Fixture Player");
+        assert_eq!(json["chesslist"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn provider_fixtures_reject_fox_session_rate_limit_antibot_schema_empty_and_malformed() {
+        let session = normalize_payload(include_str!(
+            "../../../tests/fixtures/provider/fox/unauthorized.json"
+        ))
+        .unwrap_err();
+        assert_eq!(session.kind, ProviderErrorKind::InvalidPayload);
+        assert!(session.message.contains("provider_error"));
+        assert!(session.message.contains("session expired"));
+
+        let rate_limit = normalize_payload(include_str!(
+            "../../../tests/fixtures/provider/fox/rate_limit.json"
+        ))
+        .unwrap_err();
+        assert_eq!(rate_limit.kind, ProviderErrorKind::InvalidPayload);
+        assert!(rate_limit.message.contains("too many requests"));
+
+        let html = normalize_payload(include_str!("../../../tests/fixtures/provider/fox/anti_bot.html"))
+            .unwrap_err();
+        assert_eq!(html.kind, ProviderErrorKind::InvalidPayload);
+        assert!(html.message.contains("anti_bot_html_challenge"));
+
+        let schema = normalize_payload(include_str!(
+            "../../../tests/fixtures/provider/fox/schema_drift.json"
+        ))
+        .unwrap_err();
+        assert_eq!(schema.kind, ProviderErrorKind::InvalidPayload);
+        assert!(schema.message.contains("does not contain chess"));
+
+        let empty = normalize_payload(include_str!(
+            "../../../tests/fixtures/provider/fox/empty_result.json"
+        ))
+        .unwrap_err();
+        assert_eq!(empty.kind, ProviderErrorKind::InvalidPayload);
+        assert!(empty.message.contains("chess SGF text is empty"));
+
+        let malformed = normalize_payload(include_str!(
+            "../../../tests/fixtures/provider/fox/malformed.json"
+        ))
+        .unwrap_err();
+        assert_eq!(malformed.kind, ProviderErrorKind::InvalidPayload);
+        assert!(malformed.message.contains("failed to parse Fox payload JSON"));
+    }
+
+    #[test]
+    fn fox_http_and_chess_list_failures_are_typed_without_empty_success() {
+        let unauthorized = SequenceTransport::new(vec![Ok(fetch_response(
+            &format!(
+                "{FOX_BASE_URL}/YHWQFetchChessList?srcuid=0&dstuid=42&type=1&lastcode=0&searchkey=&uin=42"
+            ),
+            401,
+            include_str!("../../../tests/fixtures/provider/fox/unauthorized.json"),
+        ))]);
+
+        let error = fetch_command("uid 42", &unauthorized).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::TransportFailed);
+        assert!(error.message.contains("unauthorized_or_session_expired"));
+
+        let rate_limited = SequenceTransport::new(vec![Ok(fetch_response(
+            &format!(
+                "{FOX_BASE_URL}/YHWQFetchChessList?srcuid=0&dstuid=42&type=1&lastcode=0&searchkey=&uin=42"
+            ),
+            429,
+            include_str!("../../../tests/fixtures/provider/fox/rate_limit.json"),
+        ))]);
+        let error = fetch_command("uid 42", &rate_limited).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::TransportFailed);
+        assert!(error.message.contains("rate_limited"));
+
+        let drift = SequenceTransport::new(vec![Ok(fetch_response(
+            &format!(
+                "{FOX_BASE_URL}/YHWQFetchChessList?srcuid=0&dstuid=42&type=1&lastcode=0&searchkey=&uin=42"
+            ),
+            200,
+            include_str!("../../../tests/fixtures/provider/fox/schema_drift.json"),
+        ))]);
+        let error = fetch_command("uid 42", &drift).unwrap_err();
+        assert_eq!(error.kind, ProviderErrorKind::InvalidPayload);
+        assert!(error.message.contains("chess list schema drift"));
+    }
+
+    #[test]
     fn failed_h5_fallback_reports_invalid_payload() {
         let transport = SequenceTransport::new(vec![
             Ok(fetch_response(FOX_SGF_CGI_URLS[0], 200, r#"{"result":1}"#)),
@@ -1112,7 +1279,7 @@ mod tests {
         assert!(error.message.contains(FOX_SGF_CGI_URLS[0]));
         assert!(error.message.contains("result 1"));
         assert!(error.message.contains(FOX_SGF_CGI_URLS[1]));
-        assert!(error.message.contains("empty payload"));
+        assert!(error.message.contains("payload is empty"));
         assert!(error.message.contains("Fox payload chess SGF text is empty"));
     }
 

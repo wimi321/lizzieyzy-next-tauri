@@ -1,0 +1,32 @@
+{
+  "Status": 1200,
+  "Message": "ok",
+  "Result": {
+    "since": 99,
+    "list": [
+      {
+        "Id": 186031,
+        "Version": 2,
+        "hall": 7,
+        "room": 9,
+        "Status": 3,
+        "GameName": "Fixture Final",
+        "BlackName": "Black Fixture",
+        "WhiteName": "White Fixture",
+        "BlackCounty": "CN",
+        "WhiteCounty": "JP",
+        "GameDate": "2026-05-01",
+        "BroadcastTime": "19:30",
+        "FinishOrder": "",
+        "GameResult": "B+R",
+        "LiveMember": "fixture",
+        "HandsCount": 101,
+        "PersonTimes": 12,
+        "TopFlag": 1,
+        "RealtimeAnalysisFlag": 1,
+        "BlackWinRate": 61.5,
+        "Delta": 2.0
+      }
+    ]
+  }
+}

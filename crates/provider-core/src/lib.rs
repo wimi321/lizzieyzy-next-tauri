@@ -58,6 +58,64 @@ pub fn first_non_blank<'a>(values: impl IntoIterator<Item = &'a str>) -> Option<
     values.into_iter().map(str::trim).find(|value| !value.is_empty())
 }
 
+pub fn provider_http_error(provider: &str, status_code: u16, payload: &str, context: &str) -> ProviderError {
+    let class = match status_code {
+        401 => "unauthorized_or_session_expired",
+        403 => "session_expired_or_forbidden",
+        429 => "rate_limited",
+        _ => "http_error",
+    };
+    let message = compact_payload_excerpt(payload);
+    transport_failed(format!(
+        "{provider} {context}: {class}; HTTP {status_code}; payload={message}"
+    ))
+}
+
+pub fn provider_payload_preflight<'a>(
+    provider: &str,
+    label: &str,
+    payload: &'a str,
+) -> ProviderResult<&'a str> {
+    let payload = payload.trim();
+    if payload.is_empty() {
+        return Err(invalid_payload(format!("{provider} {label} payload is empty")));
+    }
+    if looks_like_html_challenge(payload) {
+        return Err(invalid_payload(format!(
+            "{provider} {label} returned anti_bot_html_challenge; not treating it as an empty result"
+        )));
+    }
+    Ok(payload)
+}
+
+pub fn compact_payload_excerpt(payload: &str) -> String {
+    let mut text = payload.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() {
+        text = "<empty>".to_string();
+    }
+    if text.len() > 160 {
+        text.truncate(157);
+        text.push_str("...");
+    }
+    text
+}
+
+fn looks_like_html_challenge(payload: &str) -> bool {
+    let lower = payload
+        .chars()
+        .take(4096)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    lower.starts_with("<!doctype html")
+        || lower.starts_with("<html")
+        || (lower.contains("<html") && lower.contains("</html"))
+        || lower.contains("captcha")
+        || lower.contains("cloudflare")
+        || lower.contains("anti-bot")
+        || lower.contains("security challenge")
+        || lower.contains("verify you are human")
+}
+
 pub trait ProviderTransport {
     fn fetch(&self, request: &ProviderFetchRequest) -> ProviderResult<ProviderFetchResult>;
 }
@@ -160,6 +218,40 @@ mod tests {
         let error = require_non_blank(" ", "payload").unwrap_err();
         assert_eq!(error.kind, ProviderErrorKind::InvalidRequest);
         assert_eq!(error.message, "payload must not be empty");
+    }
+
+    #[test]
+    fn provider_payload_preflight_rejects_empty_and_html_challenges() {
+        let empty = provider_payload_preflight("Yike", "live list", "  ").unwrap_err();
+        assert_eq!(empty.kind, ProviderErrorKind::InvalidPayload);
+        assert!(empty.message.contains("payload is empty"));
+
+        let challenge = provider_payload_preflight(
+            "Fox",
+            "payload",
+            "<html><title>Security Challenge</title><body>captcha</body></html>",
+        )
+        .unwrap_err();
+        assert_eq!(challenge.kind, ProviderErrorKind::InvalidPayload);
+        assert!(challenge.message.contains("anti_bot_html_challenge"));
+
+        assert_eq!(
+            provider_payload_preflight("Fox", "payload", r#"{"result":0}"#).unwrap(),
+            r#"{"result":0}"#
+        );
+    }
+
+    #[test]
+    fn provider_http_error_has_typed_session_and_rate_limit_messages() {
+        let unauthorized = provider_http_error("Yike", 401, r#"{"message":"expired"}"#, "detail");
+        assert_eq!(unauthorized.kind, ProviderErrorKind::TransportFailed);
+        assert!(unauthorized.message.contains("unauthorized_or_session_expired"));
+        assert!(unauthorized.message.contains("HTTP 401"));
+
+        let rate_limited = provider_http_error("Fox", 429, "too many requests", "list");
+        assert_eq!(rate_limited.kind, ProviderErrorKind::TransportFailed);
+        assert!(rate_limited.message.contains("rate_limited"));
+        assert!(rate_limited.message.contains("too many requests"));
     }
 
     #[test]

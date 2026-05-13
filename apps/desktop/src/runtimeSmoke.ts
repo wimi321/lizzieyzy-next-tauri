@@ -71,6 +71,7 @@ type RuntimeSmokeCheckName =
   | "readboard_controlled_target_proof"
   | "readboard_screenshot_region_detection"
   | "readboard_target_window_discovery"
+  | "readboard_selected_window_capture"
   | "backend_runtime_proof_observed"
   | "runtime_source_observed"
   | "backend_availability_observed"
@@ -132,6 +133,7 @@ type RuntimeSmokeReport = {
   readboardTargetWindowScreenshot?: ReadboardExternalCaptureMvpEvidence;
   readboardScreenshotRegionDetection?: ReadboardExternalCaptureMvpEvidence;
   readboardTargetWindowDiscovery?: ReadboardTargetWindowDiscoveryEvidence;
+  readboardSelectedWindowCapture?: ReadboardSelectedWindowCaptureEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
   installedAppRuntimeProof?: InstalledAppRuntimeProofEvidence;
@@ -139,7 +141,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "readboard-controlled-target-proof" | "readboard-screenshot-region-detection" | "readboard-target-window-discovery" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "readboard-controlled-target-proof" | "readboard-screenshot-region-detection" | "readboard-target-window-discovery" | "readboard-selected-window-capture" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -337,8 +339,8 @@ type ReadboardExternalCaptureMvpEvidence = {
     operatorInitiated: boolean;
     userSelectionRequired: boolean;
     selection: null | { x: number; y: number; width: number; height: number };
-    sourceKind: "local_image" | "operator_selected_file" | "controlled_local_target_window" | "arbitrary_screenshot_board_region";
-    requestedSource: "local_image" | "operator_selected_file" | "controlled_local_target_window" | "arbitrary_screenshot_board_region";
+    sourceKind: "local_image" | "operator_selected_file" | "controlled_local_target_window" | "selected_window_capture" | "arbitrary_screenshot_board_region";
+    requestedSource: "local_image" | "operator_selected_file" | "controlled_local_target_window" | "selected_window_capture" | "arbitrary_screenshot_board_region";
     localImageProvided?: true;
     localImageOnly?: true;
     operatorSelectedFileProvided?: true;
@@ -476,6 +478,46 @@ type ReadboardTargetWindowDiscoveryEvidence = {
   };
   warnings: string[];
   rawBackendResult: Record<string, unknown>;
+};
+type ReadboardSelectedWindowCaptureEvidence = {
+  runtimeObserved: true;
+  runtimeReportPhase: "readboard-selected-window-capture";
+  backendCommandInvoked: "readboard_list_capture_targets";
+  captureCommandInvoked: "readboard_external_capture";
+  status: string;
+  candidates: ReadboardCaptureTargetCandidate[];
+  selectedTarget: Record<string, unknown>;
+  rawDiscoveryResult: Record<string, unknown>;
+  rawCaptureResult: Record<string, unknown>;
+  rawPreviewResult?: Record<string, unknown>;
+  positionPreviewProduced: boolean;
+  captureSourceTrace: {
+    captureSource: "selected_window_capture";
+    selectedFromDiscovery: true;
+    captureTiedToSelectedTarget: true;
+    windowIdRequired: true;
+    imagePathProvided: false;
+    previewOnly: true;
+    explicitImportConfirmationRequired: true;
+  };
+  previewConfirmation: {
+    previewOnlyBeforeConfirmation: boolean;
+    previewProduced: boolean;
+    automaticBoardReplacement: false;
+    boardReplacedBeforeConfirmation: false;
+    userConfirmed: false;
+    boardReplacedOnlyAfterConfirmation: false;
+    boardReplacementObserved: false;
+  };
+  boundaries: {
+    targetClientDiscoveryParity: false;
+    realFoxYikeParity: false;
+    fullOcrParity: false;
+    fullReadboardParity: false;
+    automaticBoardReplacement: false;
+    releaseParity: false;
+  };
+  warnings: string[];
 };
 type ReadboardProtocolLineEvidence = {
   snapshotId: string;
@@ -688,6 +730,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runReadboardScreenshotRegionDetectionPhase(report);
     } else if (resolvedConfig.phase === "readboard-target-window-discovery") {
       await runReadboardTargetWindowDiscoveryPhase(report);
+    } else if (resolvedConfig.phase === "readboard-selected-window-capture") {
+      await runReadboardSelectedWindowCapturePhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "katago-live-workflow-cache") {
@@ -2390,6 +2434,163 @@ async function runReadboardTargetWindowDiscoveryPhase(report: RuntimeSmokeReport
   });
 }
 
+async function runReadboardSelectedWindowCapturePhase(report: RuntimeSmokeReport) {
+  if (!isTauriRuntime()) throw new Error("readboard-selected-window-capture must run inside the real Tauri runtime.");
+  const endpoint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ENDPOINT");
+  const titleHint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_TARGET_WINDOW_TITLE");
+  const width = positiveEnvInteger("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_TARGET_WIDTH") ?? 1;
+  const height = positiveEnvInteger("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_TARGET_HEIGHT") ?? 1;
+  await check(report, "readboard_selected_window_capture", async () => {
+    const discovery = await discoverReadboardCaptureTargets({
+      title: titleHint,
+      windowTitle: titleHint,
+      titleHint,
+      filter: titleHint,
+      minWidth: width,
+      minHeight: height,
+      timeoutMs: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_selected_window_capture",
+        scope: "selected_window_capture_preview_only_not_full_ocr_or_external_client_parity"
+      }
+    });
+    const discoveryStatus = normalizeDiscoveryStatus(discovery.status);
+    if (discoveryStatus !== "available") {
+      throw new Error(`Selected-window discovery expected available status, got ${String(discovery.status || "empty")}.`);
+    }
+    const selected = selectReadboardWindowTargetCandidate(discovery.candidates, titleHint);
+    const windowId = readboardTargetWindowId(selected);
+    if (windowId === null) throw new Error("Selected-window capture requires a discovered candidate with a concrete window id.");
+    const selectedMetadata = readboardTargetCandidateMetadata(selected, "");
+    const targetId = selectedMetadata.id ?? windowId;
+    const captureResult = await captureReadboardExternal({
+      source: "selected_window_capture",
+      endpoint,
+      window_title: selectedMetadata.windowTitle,
+      windowTitle: selectedMetadata.windowTitle,
+      process_id: selectedMetadata.processId,
+      processId: selectedMetadata.processId,
+      id: targetId,
+      targetId,
+      target_id: targetId,
+      captureTargetId: targetId,
+      windowId,
+      window_id: windowId,
+      appName: selectedMetadata.appName,
+      app_name: selectedMetadata.appName,
+      processName: selectedMetadata.processName,
+      process_name: selectedMetadata.processName,
+      x: selectedMetadata.x,
+      y: selectedMetadata.y,
+      targetX: selectedMetadata.x,
+      targetY: selectedMetadata.y,
+      targetWidth: selectedMetadata.width,
+      targetHeight: selectedMetadata.height,
+      width: selectedMetadata.width,
+      height: selectedMetadata.height,
+      bounds: selectedMetadata.bounds,
+      targetBounds: selectedMetadata.targetBounds,
+      captureTiedToSelectedTarget: true,
+      capture_tied_to_selected_target: true,
+      controlledTarget: selectedMetadata,
+      controlled_target: selectedMetadata,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_selected_window_capture",
+        scope: "selected_window_capture_preview_only_not_full_ocr_or_external_client_parity",
+        capture_tied_to_selected_target: "true",
+        captureTiedToSelectedTarget: "true",
+        target_candidate_id: String(targetId),
+        target_candidate_window_id: windowId,
+        target_candidate_title: selectedMetadata.windowTitle ?? "",
+        target_candidate_app_name: selectedMetadata.appName ?? "",
+        target_candidate_process_name: selectedMetadata.processName ?? "",
+        target_candidate_bounds: selectedMetadata.bounds ? `${selectedMetadata.bounds.x ?? ""},${selectedMetadata.bounds.y ?? ""},${selectedMetadata.bounds.width ?? ""},${selectedMetadata.bounds.height ?? ""}` : ""
+      }
+    });
+    const captureStatus = normalizeCaptureStatus(captureResult.status);
+    if (captureStatus !== "captured") {
+      throw new Error(`Selected-window capture expected captured status, got ${String(captureResult.status || "empty")}.`);
+    }
+
+    let previewResult: Record<string, unknown> | undefined;
+    let positionPreviewProduced = isRecord((captureResult as Record<string, unknown>).position);
+    const imagePath = readStringField(captureResult as Record<string, unknown>, "image_path")
+      ?? readStringField(captureResult as Record<string, unknown>, "imagePath");
+    const imageBase64 = readStringField(captureResult as Record<string, unknown>, "image_base64")
+      ?? readStringField(captureResult as Record<string, unknown>, "imageBase64");
+    if (!positionPreviewProduced && (imagePath || imageBase64)) {
+      const preview = await syncReadboardSidecarSnapshot({
+        endpoint,
+        image_path: imagePath,
+        image_base64: imagePath ? null : imageBase64,
+        metadata: {
+          source: "runtime_smoke",
+          input: "selected_window_capture",
+          capture_status: String(captureResult.status ?? ""),
+          scope: "selected_window_capture_preview_only_not_full_ocr_or_external_client_parity"
+        },
+        timeout_ms: 5_000
+      });
+      previewResult = preview as unknown as Record<string, unknown>;
+      positionPreviewProduced = isRecord((previewResult as Record<string, unknown>).position);
+    }
+    if (!positionPreviewProduced) {
+      throw new Error("Selected-window capture did not produce a decoded position preview.");
+    }
+
+    const evidence: ReadboardSelectedWindowCaptureEvidence = {
+      runtimeObserved: true,
+      runtimeReportPhase: "readboard-selected-window-capture",
+      backendCommandInvoked: "readboard_list_capture_targets",
+      captureCommandInvoked: "readboard_external_capture",
+      status: captureStatus,
+      candidates: discovery.candidates,
+      selectedTarget: summarizeReadboardTargetCandidate(selected),
+      rawDiscoveryResult: sanitizeReadboardEvidenceValue(discovery as Record<string, unknown>, "<selected-window-capture-artifact>", "") as Record<string, unknown>,
+      rawCaptureResult: sanitizeReadboardEvidenceValue(captureResult as Record<string, unknown>, "<selected-window-capture-artifact>", "") as Record<string, unknown>,
+      rawPreviewResult: previewResult
+        ? sanitizeReadboardEvidenceValue(previewResult, "<selected-window-capture-artifact>", "") as Record<string, unknown>
+        : undefined,
+      positionPreviewProduced,
+      captureSourceTrace: {
+        captureSource: "selected_window_capture",
+        selectedFromDiscovery: true,
+        captureTiedToSelectedTarget: true,
+        windowIdRequired: true,
+        imagePathProvided: false,
+        previewOnly: true,
+        explicitImportConfirmationRequired: true
+      },
+      previewConfirmation: {
+        previewOnlyBeforeConfirmation: true,
+        previewProduced: true,
+        automaticBoardReplacement: false,
+        boardReplacedBeforeConfirmation: false,
+        userConfirmed: false,
+        boardReplacedOnlyAfterConfirmation: false,
+        boardReplacementObserved: false
+      },
+      boundaries: {
+        targetClientDiscoveryParity: false,
+        realFoxYikeParity: false,
+        fullOcrParity: false,
+        fullReadboardParity: false,
+        automaticBoardReplacement: false,
+        releaseParity: false
+      },
+      warnings: [
+        ...(discovery.warnings ?? []),
+        ...((captureResult.warnings ?? []) as string[])
+      ]
+    };
+    report.readboardSelectedWindowCapture = evidence;
+    return evidence;
+  });
+}
+
 async function exerciseReadboardControlledTargetDomImport({
   imagePath,
   windowTitle,
@@ -3682,6 +3883,7 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "readboard-controlled-target-proof" ||
     value === "readboard-screenshot-region-detection" ||
     value === "readboard-target-window-discovery" ||
+    value === "readboard-selected-window-capture" ||
     value === "provider-live" ||
     value === "webview-dom-click" ||
     value === "installed-app-runtime-proof" ||
@@ -3699,6 +3901,7 @@ function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
     phase !== "readboard-controlled-target-proof" &&
     phase !== "readboard-screenshot-region-detection" &&
     phase !== "readboard-target-window-discovery" &&
+    phase !== "readboard-selected-window-capture" &&
     phase !== "webview-dom-click" &&
     phase !== "installed-app-runtime-proof";
 }
@@ -4164,6 +4367,23 @@ function selectReadboardTargetCandidate(candidates: ReadboardCaptureTargetCandid
     if (match) return match;
   }
   return candidates[0];
+}
+
+function selectReadboardWindowTargetCandidate(candidates: ReadboardCaptureTargetCandidate[], titleHint: string | null): ReadboardCaptureTargetCandidate {
+  const withWindowId = candidates.filter((candidate) => readboardTargetWindowId(candidate) !== null);
+  if (withWindowId.length === 0) throw new Error("Readboard target discovery returned no candidates with a window id.");
+  if (titleHint) {
+    const normalizedTitleHint = titleHint.toLowerCase();
+    const match = withWindowId.find((candidate) => candidate.title.toLowerCase().includes(normalizedTitleHint));
+    if (match) return match;
+  }
+  return withWindowId[0];
+}
+
+function readboardTargetWindowId(candidate: ReadboardCaptureTargetCandidate): string | null {
+  const raw = candidate.windowId ?? candidate.window_id;
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  return stringFromUnknown(raw);
 }
 
 function readboardTargetCandidateMetadata(candidate: ReadboardCaptureTargetCandidate, imagePath: string) {

@@ -217,6 +217,7 @@ export type ReadboardExternalCaptureSource =
   | "local_image"
   | "operator_selected_file"
   | "controlled_local_target_window"
+  | "selected_window_capture"
   | "arbitrary_screenshot_board_region";
 
 export type ReadboardExternalCaptureStatus = "captured" | "cancelled" | "permission" | "unsupported" | "decode_error" | "error" | string;

@@ -92,6 +92,7 @@ export async function previewLegacyImportCaptureHelper(
 function readboardExternalCaptureFallback(request: ReadboardExternalCaptureRequest, message: string): ReadboardExternalCaptureResult {
   const controlledTarget = request.source === "controlled_local_target_window" || request.controlledLocalTargetWindow || request.controlled_local_target_window;
   const screenshotRegion = request.source === "arbitrary_screenshot_board_region" || request.boardRegionDetection || request.board_region_detection;
+  const selectedWindow = request.source === "selected_window_capture";
   return {
     status: classifyCaptureStatus(message),
     source: request.source,
@@ -100,10 +101,12 @@ function readboardExternalCaptureFallback(request: ReadboardExternalCaptureReque
         ? "Controlled local target window/screenshot proof did not produce an image preview."
         : screenshotRegion
           ? "Scoped screenshot board-region detection did not produce an image preview."
-        : "Operator-selected screen/window capture did not produce an image preview.",
+          : selectedWindow
+            ? "Selected-window capture did not produce an image preview."
+            : "Operator-selected screen/window capture did not produce an image preview.",
       "No SGF was imported and the board was not replaced."
     ],
-    message: `${message} This is a recoverable boundary for the ${controlledTarget ? "controlled target proof" : screenshotRegion ? "screenshot board-region detection proof" : "external capture MVP"}.`,
+    message: `${message} This is a recoverable boundary for the ${controlledTarget ? "controlled target proof" : screenshotRegion ? "screenshot board-region detection proof" : selectedWindow ? "selected-window capture preview" : "external capture MVP"}.`,
     recoverable: true,
     imported: false,
     metadata: request.metadata,

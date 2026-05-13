@@ -53,7 +53,7 @@ type FoxFetchInput = {
   sourceId: string | null;
 };
 
-type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64" | "capture_screen" | "capture_window" | "controlled_target" | "screenshot_region";
+type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64" | "capture_screen" | "capture_window" | "controlled_target" | "selected_window_capture" | "screenshot_region";
 
 const providerFetchTimeoutMs = 15_000;
 const readboardTimeoutMs = 5_000;
@@ -107,6 +107,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canPreviewScreenshotRegion = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
   const canDiscoverReadboardTargets = !disabled;
   const selectedReadboardTarget = readboardSelectedTargetIndex === null ? null : readboardTargetDiscovery?.candidates[readboardSelectedTargetIndex] ?? null;
+  const selectedReadboardWindowId = selectedReadboardTarget ? readboardTargetWindowId(selectedReadboardTarget) : null;
+  const canCaptureSelectedReadboardWindow = !disabled && selectedReadboardTarget !== null && selectedReadboardWindowId !== null;
   const canConfirmReadboardImport = !disabled && readboardSyncResult?.position != null;
   const canImportReadboardSnapshot = canConfirmReadboardImport && readboardImportConfirmed;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
@@ -379,6 +381,122 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       setReadboardPreviewKind(source === "screen" ? "capture_screen" : "capture_window");
       setReadboardPreviewError(errorMessage(error));
       setOperationStatus("readboardSync", `Capture preview failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
+    }
+  }
+
+  async function handleReadboardSelectedWindowCapture() {
+    if (!canCaptureSelectedReadboardWindow || !selectedReadboardTarget) return;
+    const targetMetadata = readboardControlledTargetMetadataFromCandidate(selectedReadboardTarget, "", readboardControlledFixtureId);
+    const windowId = readboardTargetWindowId(selectedReadboardTarget);
+    if (!windowId) return;
+    setOperationStatus("readboardSync", "Capturing selected window for preview...");
+    resetReadboardPreviewState();
+    setReadboardCaptureResult(null);
+    try {
+      const capture = await captureReadboardExternal({
+        source: "selected_window_capture",
+        endpoint: optionalTrimmed(readboardEndpoint),
+        window_title: targetMetadata.window_title ?? null,
+        windowTitle: targetMetadata.windowTitle ?? null,
+        process_id: targetMetadata.process_id ?? null,
+        processId: targetMetadata.processId ?? null,
+        id: targetMetadata.id ?? null,
+        targetId: targetMetadata.targetId ?? targetMetadata.target_id ?? targetMetadata.captureTargetId ?? targetMetadata.id ?? null,
+        target_id: targetMetadata.target_id ?? targetMetadata.targetId ?? targetMetadata.captureTargetId ?? targetMetadata.id ?? null,
+        captureTargetId: targetMetadata.captureTargetId ?? targetMetadata.targetId ?? targetMetadata.target_id ?? targetMetadata.id ?? null,
+        windowId,
+        window_id: windowId,
+        appName: targetMetadata.appName ?? targetMetadata.app_name ?? null,
+        app_name: targetMetadata.app_name ?? targetMetadata.appName ?? null,
+        processName: targetMetadata.processName ?? targetMetadata.process_name ?? null,
+        process_name: targetMetadata.process_name ?? targetMetadata.processName ?? null,
+        x: targetMetadata.x ?? targetMetadata.bounds?.x ?? null,
+        y: targetMetadata.y ?? targetMetadata.bounds?.y ?? null,
+        targetX: targetMetadata.targetX ?? targetMetadata.x ?? targetMetadata.bounds?.x ?? null,
+        targetY: targetMetadata.targetY ?? targetMetadata.y ?? targetMetadata.bounds?.y ?? null,
+        targetWidth: targetMetadata.targetWidth ?? targetMetadata.width ?? targetMetadata.bounds?.width ?? null,
+        targetHeight: targetMetadata.targetHeight ?? targetMetadata.height ?? targetMetadata.bounds?.height ?? null,
+        width: targetMetadata.width ?? null,
+        height: targetMetadata.height ?? null,
+        bounds: targetMetadata.bounds ?? targetMetadata.targetBounds ?? targetMetadata.target_bounds ?? null,
+        targetBounds: targetMetadata.targetBounds ?? targetMetadata.bounds ?? targetMetadata.target_bounds ?? null,
+        captureTiedToSelectedTarget: true,
+        capture_tied_to_selected_target: true,
+        controlledTarget: targetMetadata,
+        controlled_target: targetMetadata,
+        timeout_ms: readboardTimeoutMs,
+        metadata: {
+          source: "provider_panel",
+          input: "selected_window_capture",
+          scope: "selected_window_capture_preview_only_not_full_ocr_or_external_client_parity",
+          capture_tied_to_selected_target: "true",
+          captureTiedToSelectedTarget: "true",
+          target_candidate_id: readboardTargetCandidateId(selectedReadboardTarget),
+          target_candidate_window_id: windowId,
+          target_candidate_title: selectedReadboardTarget.title ?? "",
+          target_candidate_app_name: readboardTargetAppName(selectedReadboardTarget) ?? "",
+          target_candidate_process_name: readboardTargetProcessName(selectedReadboardTarget) ?? "",
+          target_candidate_bounds: readboardTargetBoundsSummary(selectedReadboardTarget)
+        }
+      });
+      setReadboardCaptureResult(capture);
+      const status = normalizeCaptureStatus(capture.status);
+      if (status !== "captured") {
+        setReadboardPreviewKind("selected_window_capture");
+        setReadboardPreviewError(capture.message ?? capture.errorMessage ?? `Selected-window capture ${status}; no image preview was imported.`);
+        setOperationStatus("readboardSync", readboardCaptureStatus(capture));
+        return;
+      }
+
+      const directSnapshot = readboardSnapshotFromCapture(capture);
+      if (directSnapshot) {
+        setReadboardSyncResult(directSnapshot);
+        setReadboardPreviewKind("selected_window_capture");
+        setReadboardPreviewError("");
+        setOperationStatus("readboardSync", readboardCapturePreviewStatus(capture, directSnapshot));
+        return;
+      }
+
+      const imagePath = capture.image_path ?? capture.imagePath ?? null;
+      const imageBase64 = capture.image_base64 ?? capture.imageBase64 ?? null;
+      if (!imagePath && !imageBase64) {
+        setReadboardPreviewKind("selected_window_capture");
+        setReadboardPreviewError("Selected-window capture succeeded but did not return decoded position or image data for preview.");
+        setOperationStatus("readboardSync", "Selected-window capture returned no preview data; no import performed and the board was not replaced.");
+        return;
+      }
+
+      const preview = await syncReadboardSidecarSnapshot({
+        endpoint: optionalTrimmed(readboardEndpoint),
+        image_path: imagePath,
+        image_base64: imagePath ? null : cleanImageBase64(imageBase64 ?? ""),
+        metadata: {
+          source: "provider_panel",
+          input: "selected_window_capture",
+          capture_status: capture.status,
+          snapshot_id: capture.snapshot_id ?? capture.snapshotId ?? "",
+          snapshot_hash: capture.snapshot_hash ?? capture.snapshotHash ?? capture.hash ?? "",
+          scope: "selected_window_capture_preview_only_not_full_ocr_or_external_client_parity",
+          ...stringifyMetadata(readboardControlledTargetMetadataFromResult(capture, targetMetadata))
+        },
+        timeout_ms: readboardTimeoutMs
+      });
+      setReadboardSyncResult(preview);
+      setReadboardPreviewKind("selected_window_capture");
+      setReadboardPreviewError("");
+      setOperationStatus("readboardSync", readboardCapturePreviewStatus(capture, preview));
+    } catch (error) {
+      setReadboardCaptureResult({
+        status: normalizeCaptureStatus(errorMessage(error)),
+        source: "selected_window_capture",
+        warnings: ["Selected-window capture failed recoverably. No SGF was imported and the board was not replaced."],
+        message: errorMessage(error),
+        recoverable: true,
+        imported: false
+      });
+      setReadboardPreviewKind("selected_window_capture");
+      setReadboardPreviewError(errorMessage(error));
+      setOperationStatus("readboardSync", `Selected-window capture failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
     }
   }
 
@@ -957,6 +1075,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           data-target-window-discovery-status={readboardTargetDiscovery ? normalizeDiscoveryStatus(readboardTargetDiscovery.status) : "ready"}
           data-target-window-candidate-count={readboardTargetDiscovery?.candidates.length ?? 0}
           data-target-window-selected={String(selectedReadboardTarget !== null)}
+          data-selected-window-id-present={String(selectedReadboardWindowId !== null)}
+          data-selected-window-capture-ready={String(canCaptureSelectedReadboardWindow)}
           data-target-client-parity="false"
           data-real-fox-yike-parity="false"
           data-automatic-replacement="false"
@@ -987,6 +1107,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
                   data-testid="readboard-target-window-candidate"
                   data-selected={String(readboardSelectedTargetIndex === index)}
                   data-window-title={candidate.title}
+                  data-window-id={readboardTargetWindowId(candidate) ?? ""}
                   data-app-name={readboardTargetAppName(candidate) ?? ""}
                   data-process-name={readboardTargetProcessName(candidate) ?? ""}
                   onClick={() => setReadboardSelectedTargetIndex(index)}
@@ -1000,6 +1121,20 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
                 </p>
               )}
             </div>
+          ) : null}
+          {selectedReadboardWindowId ? (
+            <button
+              type="button"
+              data-testid="readboard-capture-selected-window"
+              data-selected-window-id={selectedReadboardWindowId}
+              data-capture-source="selected_window_capture"
+              data-preview-only="true"
+              data-automatic-replacement="false"
+              disabled={!canCaptureSelectedReadboardWindow}
+              onClick={() => void handleReadboardSelectedWindowCapture()}
+            >
+              Capture selected window
+            </button>
           ) : null}
         </section>
         <section
@@ -1146,6 +1281,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             data-preview-has-position={String(readboardSyncResult.position != null)}
             data-preview-stone-count={readboardSyncResult.position?.stones.length ?? 0}
             data-controlled-local-target-window={String(readboardPreviewKind === "controlled_target")}
+            data-selected-window-capture={String(readboardPreviewKind === "selected_window_capture")}
             data-arbitrary-screenshot-board-region={String(readboardPreviewKind === "screenshot_region")}
             data-board-region-detection-scoped={String(readboardPreviewKind === "screenshot_region")}
           >
@@ -1569,6 +1705,7 @@ function readboardCaptureStatus(result: ReadboardExternalCaptureResult): string 
   const status = normalizeCaptureStatus(result.status);
   if (status === "captured" && readboardCaptureControlledTarget(result)) return "Controlled local target captured; preview is required before import.";
   if (status === "captured" && readboardCaptureScreenshotRegion(result)) return "Screenshot board region detected; preview is required before import.";
+  if (status === "captured" && result.source === "selected_window_capture") return "Selected window captured; preview is required before import.";
   if (status === "captured") return `Operator-selected ${readboardCaptureSourceLabel(result)} captured; preview is required before import.`;
   return `Capture ${status}: ${result.message ?? result.errorMessage ?? "recoverable; no SGF imported and board not replaced."}`;
 }
@@ -1579,7 +1716,9 @@ function readboardCapturePreviewStatus(result: ReadboardExternalCaptureResult, p
     ? "Controlled local target"
     : readboardCaptureScreenshotRegion(result)
       ? "Screenshot board-region detection"
-      : `Operator-selected ${source} capture`;
+      : result.source === "selected_window_capture"
+        ? "Selected-window capture"
+        : `Operator-selected ${source} capture`;
   if (!preview.position) return `${prefix} preview ${readboardSnapshotId(preview)}: no board position extracted; no import performed.`;
   return `${prefix} preview ${readboardSnapshotId(preview)}: ${preview.position.board_size}x${preview.position.board_size}, ${preview.position.stones.length} stones, ${colorLabel(preview.position.to_play)} to play. Confirm before import.`;
 }
@@ -1628,6 +1767,7 @@ function readboardPreviewSourceLabel(kind: ReadboardPreviewKind): string {
   if (kind === "capture_screen") return "operator-selected screen capture";
   if (kind === "capture_window") return "operator-selected window capture";
   if (kind === "controlled_target") return "controlled target window/screenshot proof";
+  if (kind === "selected_window_capture") return "selected-window capture";
   if (kind === "screenshot_region") return "scoped screenshot board-region detection";
   if (kind === "protocol") return "protocol snapshot line";
   return "not reported";
@@ -1652,7 +1792,9 @@ function readboardSnapshotFromCapture(result: ReadboardExternalCaptureResult): R
         ? "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity"
         : readboardCaptureControlledTarget(result)
           ? "controlled_target_screenshot_proof_not_full_ocr_or_external_client_parity"
-          : "operator_selected_capture_mvp_not_full_ocr_or_external_client_capture",
+          : result.source === "selected_window_capture"
+            ? "selected_window_capture_preview_only_not_full_ocr_or_external_client_parity"
+            : "operator_selected_capture_mvp_not_full_ocr_or_external_client_capture",
       board_region: readboardBoardRegionSummary(result),
       ...stringifyMetadata(readboardControlledTargetMetadataFromResult(result, null))
     },
@@ -1674,6 +1816,7 @@ function normalizeCaptureStatus(value: unknown): string {
 function readboardCaptureSourceLabel(result: ReadboardExternalCaptureResult): string {
   if (result.source === "window") return "window";
   if (result.source === "screen") return "screen";
+  if (result.source === "selected_window_capture") return "selected window";
   if (result.source === "arbitrary_screenshot_board_region" || readboardCaptureScreenshotRegion(result)) return "screenshot board region";
   if (result.source === "controlled_local_target_window" || readboardCaptureControlledTarget(result)) return "controlled target";
   return String(result.source || "capture");
@@ -1838,6 +1981,12 @@ function readboardControlledTargetMetadataFromCandidate(
 
 function readboardTargetCandidateId(candidate: ReadboardCaptureTargetCandidate): string {
   return String(candidate.id ?? candidate.windowId ?? candidate.window_id ?? candidate.processId ?? candidate.process_id ?? candidate.title ?? "target");
+}
+
+function readboardTargetWindowId(candidate: ReadboardCaptureTargetCandidate): string | null {
+  const raw = candidate.windowId ?? candidate.window_id;
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  return stringFromUnknown(raw);
 }
 
 function readboardTargetAppName(candidate: ReadboardCaptureTargetCandidate): string | null {

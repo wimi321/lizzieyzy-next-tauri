@@ -10498,6 +10498,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn readboard_external_capture_selected_window_success_uses_window_id_metadata() {
         let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(serde_json::json!({
@@ -10573,6 +10574,7 @@ mod tests {
         assert!(error.message.contains("requires targetWindowId/windowId"));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn readboard_external_capture_selected_window_structured_failures_are_recoverable() {
         for (runner, status) in [

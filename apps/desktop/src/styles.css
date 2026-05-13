@@ -942,6 +942,36 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.provider-typed-error {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #7f1d1d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.provider-typed-error p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.provider-typed-error ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.provider-typed-error small {
+  color: #991b1b;
+  font-weight: 700;
+}
+
 .provider-readboard {
   display: grid;
   gap: 8px;

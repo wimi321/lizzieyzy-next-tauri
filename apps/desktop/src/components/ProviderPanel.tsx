@@ -20,6 +20,8 @@ import {
   type ProviderImportRequest,
   type ProviderImportResult,
   type ProviderKind,
+  type ProviderTypedError,
+  type ProviderTypedErrorKind,
   type ReadboardControlledTargetMetadata,
   type ReadboardCaptureTargetCandidate,
   type ReadboardCaptureTargetDiscoveryResult,
@@ -95,6 +97,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardReplacementConfirmedByUser, setReadboardReplacementConfirmedByUser] = useState(false);
   const [legacyHelperResult, setLegacyHelperResult] = useState<LegacyImportCaptureHelperResult | null>(null);
   const [providerWarnings, setProviderWarnings] = useState<string[]>([]);
+  const [providerTypedError, setProviderTypedError] = useState<ProviderTypedError | null>(null);
   const canPreviewYike = !disabled && provider === "yike" && sourceUrl.trim().length > 0;
   const canFetchYike = !disabled && provider === "yike" && descriptor !== null;
   const canFetchFox = !disabled && provider === "fox" && sourceUrl.trim().length > 0;
@@ -123,6 +126,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     setProvider(nextProvider);
     setDescriptor(null);
     setProviderWarnings([]);
+    setProviderTypedError(null);
     setOperationStatus("preview", nextProvider === "yike" ? "Yike URL preview ready." : "Fox accepts chessid or provider command input.");
     setOperationStatus("fetch", `${providerLabel(nextProvider)} fetch ready.`);
     setOperationStatus("import", `${providerLabel(nextProvider)} payload import ready.`);
@@ -135,10 +139,12 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       const nextDescriptor = await parseYikeUrl(sourceUrl);
       setDescriptor(nextDescriptor);
       setProviderWarnings([]);
+      setProviderTypedError(null);
       setOperationStatus("preview", `${yikeRoomKindLabel(nextDescriptor.room_kind)} descriptor ready.`);
     } catch (error) {
       setDescriptor(null);
       setProviderWarnings([]);
+      setProviderTypedError(normalizeProviderTypedError(error, provider));
       setOperationStatus("preview", `URL preview failed: ${errorMessage(error)}`);
     }
   }
@@ -149,9 +155,11 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     try {
       const result = await fetchYikeProvider(buildYikeFetchRequest(descriptor, sourceUrl));
       await importFetchedPayload(result, sourceUrl.trim() || descriptor.request_url, descriptor.id);
+      setProviderTypedError(null);
       setOperationStatus("fetch", providerFetchStatus(result, "Yike"));
     } catch (error) {
       setProviderWarnings([]);
+      setProviderTypedError(normalizeProviderTypedError(error, "yike"));
       setOperationStatus("fetch", `Yike fetch failed: ${errorMessage(error)}`);
     }
   }
@@ -163,9 +171,11 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       setOperationStatus("fetch", "Fetching Fox payload...");
       const result = await fetchFoxProvider(buildFoxFetchRequest(foxInput));
       await importFetchedPayload(result, foxInput.sourceUrl, foxInput.sourceId);
+      setProviderTypedError(null);
       setOperationStatus("fetch", providerFetchStatus(result, "Fox"));
     } catch (error) {
       setProviderWarnings([]);
+      setProviderTypedError(normalizeProviderTypedError(error, "fox"));
       setOperationStatus("fetch", `Fox fetch failed: ${errorMessage(error)}`);
     }
   }
@@ -177,9 +187,11 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
       const result = await importProviderPayload(buildRequest(provider, payload, sourceUrl, descriptor));
       await onImport(result);
       setProviderWarnings(result.warnings);
+      setProviderTypedError(null);
       setOperationStatus("import", importStatus(result));
     } catch (error) {
       setProviderWarnings([]);
+      setProviderTypedError(normalizeProviderTypedError(error, provider));
       setOperationStatus("import", `Import failed: ${errorMessage(error)}`);
     }
   }
@@ -764,6 +776,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     const imported = await importProviderPayload(buildFetchImportRequest(result, fallbackSourceUrl, fallbackSourceId));
     await onImport(imported);
     setProviderWarnings([...result.warnings, ...imported.warnings]);
+    setProviderTypedError(null);
     setOperationStatus("import", importStatus(imported));
   }
 
@@ -820,6 +833,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             setSourceUrl(event.target.value);
             setDescriptor(null);
             setProviderWarnings([]);
+            setProviderTypedError(null);
           }}
         />
       </label>
@@ -857,11 +871,13 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           onChange={(event) => {
             setPayload(event.target.value);
             setProviderWarnings([]);
+            setProviderTypedError(null);
           }}
         />
       </label>
       <button data-testid="provider-import-payload" data-legacy-target="providers-import" onClick={() => void handleImport()} disabled={!canImport}>Import pasted payload</button>
       <p className="provider-status" data-testid="provider-import-status" title={statuses.import}>{statuses.import}</p>
+      <ProviderTypedErrorCallout error={providerTypedError} />
       <WarningList label="Provider warnings" warnings={providerWarnings} />
 
       <div
@@ -1471,6 +1487,36 @@ function HelperCard({
       </div>
       <p>{detail}</p>
       <button type="button" disabled={disabled} onClick={onAction}>{actionLabel}</button>
+    </section>
+  );
+}
+
+function ProviderTypedErrorCallout({ error }: { error: ProviderTypedError | null }) {
+  if (!error) return null;
+  return (
+    <section
+      className="provider-typed-error"
+      role="alert"
+      data-testid="provider-typed-error"
+      data-provider={error.provider}
+      data-error-kind={error.kind}
+      data-status-code={error.statusCode ?? ""}
+      data-scoped-provider-boundary={String(error.scopedBoundary)}
+      data-real-fox-yike-parity="false"
+    >
+      <div className="provider-subheader">
+        <strong>{providerTypedErrorTitle(error.kind)}</strong>
+        <span>{providerLabelForError(error.provider)}</span>
+      </div>
+      <p title={error.message}>{error.message}</p>
+      <ul>
+        {error.recovery.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      <small>
+        This is a scoped provider fetch/import boundary. It does not prove full Fox/Yike session, anti-bot, or live-provider parity.
+      </small>
     </section>
   );
 }
@@ -2100,6 +2146,107 @@ function stringifyMetadata(metadata: Record<string, unknown> | null | undefined)
 
 function warningCount(warnings: string[]): string {
   return warnings.length === 0 ? "none" : `${warnings.length} warning(s)`;
+}
+
+function normalizeProviderTypedError(error: unknown, provider: ProviderKind | string): ProviderTypedError {
+  const record = isUnknownRecord(error) ? error : {};
+  const message = errorMessage(error);
+  const rawKind = stringFromUnknown(record.kind)
+    ?? stringFromUnknown(record.errorKind)
+    ?? stringFromUnknown(record.error_kind)
+    ?? stringFromUnknown(record.code)
+    ?? null;
+  const statusCode = numberFromUnknown(record.statusCode)
+    ?? numberFromUnknown(record.status_code)
+    ?? numberFromUnknown(record.status)
+    ?? statusCodeFromMessage(message);
+  const retryAfterSeconds = numberFromUnknown(record.retryAfterSeconds)
+    ?? numberFromUnknown(record.retry_after_seconds)
+    ?? null;
+  const kind = classifyProviderTypedError(rawKind, statusCode, message);
+  return {
+    provider,
+    kind,
+    rawKind,
+    statusCode,
+    message: message || providerTypedErrorTitle(kind),
+    recovery: providerRecoverySuggestions(kind, provider, retryAfterSeconds),
+    retryAfterSeconds,
+    scopedBoundary: true
+  };
+}
+
+function classifyProviderTypedError(rawKind: string | null, statusCode: number | null, message: string): ProviderTypedErrorKind {
+  const text = `${rawKind ?? ""} ${message}`.toLowerCase();
+  if (statusCode === 401 || text.includes("unauthorized") || text.includes("auth required")) return "unauthorized";
+  if (text.includes("session") && (text.includes("expired") || text.includes("invalid"))) return "session_expired";
+  if (statusCode === 429 || text.includes("rate limit") || text.includes("too many request")) return "rate_limited";
+  if (statusCode === 403 || text.includes("challenge") || text.includes("captcha") || text.includes("blocked") || text.includes("anti-bot")) return "blocked_or_challenged";
+  if (text.includes("schema") || text.includes("shape") || text.includes("field") || text.includes("parser")) return "schema_changed";
+  if (statusCode === 204 || text.includes("empty") || text.includes("no result") || text.includes("not found")) return "empty_result";
+  if (text.includes("malformed") || text.includes("invalid payload") || text.includes("invalid json") || text.includes("bad payload") || text.includes("parse")) return "malformed_payload";
+  if (text.includes("unsupported") || text.includes("not implemented")) return "unsupported";
+  if (statusCode !== null || text.includes("network") || text.includes("timeout") || text.includes("fetch")) return "network_error";
+  return "unknown";
+}
+
+function providerTypedErrorTitle(kind: ProviderTypedErrorKind): string {
+  switch (kind) {
+    case "unauthorized":
+      return "Authorization required";
+    case "session_expired":
+      return "Session expired";
+    case "rate_limited":
+      return "Rate limited";
+    case "blocked_or_challenged":
+      return "Blocked or challenged";
+    case "schema_changed":
+      return "Provider schema changed";
+    case "malformed_payload":
+      return "Malformed payload";
+    case "empty_result":
+      return "Empty result";
+    case "network_error":
+      return "Network boundary";
+    case "unsupported":
+      return "Unsupported provider path";
+    default:
+      return "Provider boundary";
+  }
+}
+
+function providerRecoverySuggestions(kind: ProviderTypedErrorKind, provider: ProviderKind | string, retryAfterSeconds: number | null): string[] {
+  const label = providerLabelForError(provider);
+  switch (kind) {
+    case "unauthorized":
+      return [`Refresh ${label} credentials/session outside LizzieYzy Next, then retry.`, "Paste exported SGF/payload manually if authenticated fetch is unavailable."];
+    case "session_expired":
+      return [`Sign in to ${label} again outside the app and retry with a fresh URL or id.`, "No board state was replaced; manual SGF import remains available."];
+    case "rate_limited":
+      return [retryAfterSeconds ? `Wait about ${retryAfterSeconds} seconds before retrying.` : "Wait before retrying; avoid repeated polling.", "Use pasted payload/SGF if the provider continues throttling."];
+    case "blocked_or_challenged":
+      return [`Complete any ${label} browser challenge manually; this app does not bypass anti-bot checks.`, "Use controlled/pasted payload import instead of treating this as live-provider parity."];
+    case "schema_changed":
+      return ["Save the failing payload or URL for parser update triage.", "Use pasted SGF if available; do not assume provider import is fully compatible."];
+    case "malformed_payload":
+      return ["Check that the payload is raw SGF or supported provider JSON.", "Preview/import will stay blocked until a valid payload is provided."];
+    case "empty_result":
+      return ["Confirm the game id, room id, or live URL is still available.", "Try again later or paste a known SGF export."];
+    case "unsupported":
+      return ["Use the visible scoped import paths: paste SGF/provider JSON or controlled readboard preview.", "This path is intentionally not counted as full provider parity."];
+    default:
+      return ["Check network/provider state, then retry or paste SGF manually.", "No automatic board replacement was performed from this failure."];
+  }
+}
+
+function providerLabelForError(provider: ProviderKind | string): string {
+  if (provider === "yike" || provider === "fox" || provider === "readboard_snapshot") return providerLabel(provider);
+  return String(provider || "Provider");
+}
+
+function statusCodeFromMessage(message: string): number | null {
+  const match = /\b(401|403|404|408|409|422|429|500|502|503|504)\b/.exec(message);
+  return match ? Number(match[1]) : null;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {

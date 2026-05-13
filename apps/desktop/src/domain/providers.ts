@@ -65,6 +65,29 @@ export type ProviderFetchResult = {
   warnings: string[];
 };
 
+export type ProviderTypedErrorKind =
+  | "unauthorized"
+  | "session_expired"
+  | "rate_limited"
+  | "blocked_or_challenged"
+  | "schema_changed"
+  | "malformed_payload"
+  | "empty_result"
+  | "network_error"
+  | "unsupported"
+  | "unknown";
+
+export type ProviderTypedError = {
+  provider: ProviderKind | string;
+  kind: ProviderTypedErrorKind;
+  rawKind?: string | null;
+  statusCode?: number | null;
+  message: string;
+  recovery: string[];
+  retryAfterSeconds?: number | null;
+  scopedBoundary: true;
+};
+
 export type ReadboardSidecarProbeRequest = {
   endpoint?: string | null;
   timeout_ms?: number | null;

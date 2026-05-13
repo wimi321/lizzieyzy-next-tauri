@@ -1,0 +1,912 @@
+{
+  "backendCommand": "readboard_external_capture",
+  "backendCommandInvoked": true,
+  "boardRegionDecodes": [
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 72,
+        "y": 64
+      },
+      "boardSize": 19,
+      "decodeAttempted": true,
+      "decodeSucceeded": true,
+      "expectedOutcome": "decode_success",
+      "kind": "embedded_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+      "sanitized": true,
+      "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+      "sizeBytes": 907264,
+      "snapshotHash": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+      "stoneCount": 3,
+      "toPlay": "black"
+    },
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 151,
+        "y": 47
+      },
+      "boardSize": 19,
+      "decodeAttempted": true,
+      "decodeSucceeded": true,
+      "expectedOutcome": "decode_success",
+      "kind": "offset_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-offset-board.ppm",
+      "sanitized": true,
+      "sha256": "10ee482af31ec08b34ce7caf4186a5fdfd4f18c242856ecc36eff45ebda1c513",
+      "sizeBytes": 930062,
+      "snapshotHash": "10ee482af31ec08b34ce7caf4186a5fdfd4f18c242856ecc36eff45ebda1c513",
+      "stoneCount": 3,
+      "toPlay": "black"
+    },
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 17,
+        "y": 17
+      },
+      "boardSize": 19,
+      "decodeAttempted": true,
+      "decodeSucceeded": true,
+      "expectedOutcome": "decode_success",
+      "kind": "border_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-border-board.ppm",
+      "sanitized": true,
+      "sha256": "1807f6bcfaf992d9fc8c7c311aad3ebb9eee5e1e029c28fa5007d306da246a2e",
+      "sizeBytes": 565132,
+      "snapshotHash": "1807f6bcfaf992d9fc8c7c311aad3ebb9eee5e1e029c28fa5007d306da246a2e",
+      "stoneCount": 3,
+      "toPlay": "black"
+    },
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 0,
+        "y": 0
+      },
+      "boardSize": 19,
+      "decodeAttempted": true,
+      "decodeSucceeded": true,
+      "expectedOutcome": "decode_success",
+      "kind": "slight_noise_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-slight-noise-board.ppm",
+      "sanitized": true,
+      "sha256": "f6ae43d2dcc9628d7902ea745df5b9c4dcbe52051e12a5306d9abddf6b0d49f0",
+      "sizeBytes": 480068,
+      "snapshotHash": "f6ae43d2dcc9628d7902ea745df5b9c4dcbe52051e12a5306d9abddf6b0d49f0",
+      "stoneCount": 3,
+      "toPlay": "black"
+    }
+  ],
+  "boardRegionScreenshotOcrVerified": true,
+  "captureArtifact": {
+    "boardRegion": {
+      "confidence": 0.9307479,
+      "height": 103,
+      "source": "readboard_sidecar_board_region_detection",
+      "width": 103,
+      "x": 372,
+      "y": 366
+    },
+    "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+    "sanitized": true,
+    "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+    "sizeBytes": 907264,
+    "sourceKind": "arbitrary_screenshot_board_region"
+  },
+  "captureSource": {
+    "arbitraryScreenshotBoardRegion": true,
+    "externalClientCaptureCovered": false,
+    "externalScreenRegionCovered": false,
+    "externalWindowRegionCovered": false,
+    "operatorInitiated": false,
+    "requestedSource": "arbitrary_screenshot_board_region",
+    "selectedScreenRegionCovered": false,
+    "selection": null,
+    "sourceKind": "arbitrary_screenshot_board_region",
+    "targetClientDiscoveryCovered": false,
+    "userSelectionRequired": false
+  },
+  "checks": [
+    {
+      "details": {
+        "backendCommand": "readboard_external_capture",
+        "backendCommandInvoked": true,
+        "rawBackendResult": {
+          "arbitraryScreenshot": true,
+          "artifact": {
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+            "sanitized": true,
+            "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+            "sizeBytes": 907264
+          },
+          "artifactPath": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+          "artifactSha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+          "artifactSizeBytes": 907264,
+          "backendCommand": "readboard_external_capture",
+          "boardRegion": {
+            "confidence": 0.9307479,
+            "height": 103,
+            "source": "readboard_sidecar_board_region_detection",
+            "width": 103,
+            "x": 372,
+            "y": 366
+          },
+          "boardRegionDetection": true,
+          "boardReplacement": "none",
+          "boundaries": {
+            "automaticBoardReplacement": false,
+            "fullOcrParity": false,
+            "fullReadboardParity": false,
+            "providerParity": false,
+            "readboardParity": false,
+            "realClientCapture": false,
+            "targetClientDiscovery": false
+          },
+          "captureSource": "arbitrary_screenshot_board_region",
+          "decode": {
+            "attempted": true,
+            "blackStones": 0,
+            "boardSize": 19,
+            "status": "success",
+            "stoneCount": 4,
+            "whiteStones": 4
+          },
+          "detectedBoardRegion": {
+            "confidence": 0.9307479,
+            "height": 103,
+            "source": "readboard_sidecar_board_region_detection",
+            "width": 103,
+            "x": 372,
+            "y": 366
+          },
+          "errorMessage": null,
+          "hash": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+          "message": null,
+          "metadata": {
+            "arbitraryScreenshot": "true",
+            "boardRegionConfidence": "0.931",
+            "boardRegionDetection": "true",
+            "boardRegionHeight": "103",
+            "boardRegionSource": "readboard_sidecar_board_region_detection",
+            "boardRegionWidth": "103",
+            "boardRegionX": "372",
+            "boardRegionY": "366",
+            "phase": "readboard_screenshot_region_detection",
+            "scope": "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity",
+            "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-embedded-board.ppm",
+            "screenshotSha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+            "screenshotSize": "907264",
+            "source": "runtime_smoke"
+          },
+          "operatorInitiated": false,
+          "phase": "readboard_screenshot_region_detection",
+          "position": {
+            "board_size": 19,
+            "captures_black": 0,
+            "captures_white": 0,
+            "errors": [],
+            "last_move": null,
+            "move_number": 4,
+            "stones": [
+              {
+                "color": "white",
+                "x": 2,
+                "y": 2
+              },
+              {
+                "color": "white",
+                "x": 3,
+                "y": 2
+              },
+              {
+                "color": "white",
+                "x": 2,
+                "y": 3
+              },
+              {
+                "color": "white",
+                "x": 3,
+                "y": 3
+              }
+            ],
+            "to_play": "black"
+          },
+          "recoverable": false,
+          "sanitizedPath": "arbitrary-screenshot-board-region:arbitrary-embedded-board.ppm",
+          "schema": "lizzieyzy.readboard-external-capture.v1",
+          "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+          "size": 907264,
+          "snapshot": {
+            "positionMoveNumber": 4,
+            "snapshotId": "external-capture-preview",
+            "toPlay": "Black",
+            "warnings": [
+              "UnsupportedProvider: scoped controlled image import decoded a controlled board region from an image/screenshot",
+              "UnsupportedProvider: this is scoped arbitrary screenshot board-region detection, not full OCR or real client parity"
+            ]
+          },
+          "snapshotHash": "8262bb78f36caac36fbb940e69f9bb52139eb1e09640372e48ea5db0c8281e16",
+          "snapshotId": "external-capture-preview",
+          "source": "runtime_smoke",
+          "sourceMetadata": {
+            "arbitraryScreenshot": "true",
+            "boardRegionConfidence": "0.931",
+            "boardRegionDetection": "true",
+            "boardRegionHeight": "103",
+            "boardRegionSource": "readboard_sidecar_board_region_detection",
+            "boardRegionWidth": "103",
+            "boardRegionX": "372",
+            "boardRegionY": "366",
+            "phase": "readboard_screenshot_region_detection",
+            "scope": "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity",
+            "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-embedded-board.ppm",
+            "screenshotSha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+            "screenshotSize": "907264",
+            "source": "runtime_smoke"
+          },
+          "status": "captured",
+          "userSelectionRequired": false,
+          "warnings": [
+            "UnsupportedProvider: scoped controlled image import decoded a controlled board region from an image/screenshot",
+            "UnsupportedProvider: this is scoped arbitrary screenshot board-region detection, not full OCR or real client parity",
+            "Readboard external capture decoded a scoped arbitrary screenshot board-region preview only; this is not full OCR, real client discovery, or automatic board replacement parity."
+          ]
+        },
+        "runtimeObserved": true,
+        "runtimeReportKey": "readboardScreenshotRegionDetection",
+        "runtimeReportPhase": "readboard-screenshot-region-detection",
+        "sourceKind": "arbitrary_screenshot_board_region"
+      },
+      "name": "runtime_capture",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardRegion": {
+          "confidence": 0.9307479,
+          "height": 103,
+          "source": "readboard_sidecar_board_region_detection",
+          "width": 103,
+          "x": 372,
+          "y": 366
+        },
+        "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+        "sanitized": true,
+        "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+        "sizeBytes": 907264,
+        "sourceKind": "arbitrary_screenshot_board_region"
+      },
+      "name": "capture_artifact",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "fixtures": [
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 72,
+              "y": 64
+            },
+            "boardSize": 19,
+            "expectedOutcome": "decode_success",
+            "kind": "embedded_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+            "sanitized": true,
+            "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+            "sizeBytes": 907264,
+            "stoneCount": 3
+          },
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 151,
+              "y": 47
+            },
+            "boardSize": 19,
+            "expectedOutcome": "decode_success",
+            "kind": "offset_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-offset-board.ppm",
+            "sanitized": true,
+            "sha256": "10ee482af31ec08b34ce7caf4186a5fdfd4f18c242856ecc36eff45ebda1c513",
+            "sizeBytes": 930062,
+            "stoneCount": 3
+          },
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 17,
+              "y": 17
+            },
+            "boardSize": 19,
+            "expectedOutcome": "decode_success",
+            "kind": "border_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-border-board.ppm",
+            "sanitized": true,
+            "sha256": "1807f6bcfaf992d9fc8c7c311aad3ebb9eee5e1e029c28fa5007d306da246a2e",
+            "sizeBytes": 565132,
+            "stoneCount": 3
+          },
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 0,
+              "y": 0
+            },
+            "boardSize": 19,
+            "expectedOutcome": "decode_success",
+            "kind": "slight_noise_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-slight-noise-board.ppm",
+            "sanitized": true,
+            "sha256": "f6ae43d2dcc9628d7902ea745df5b9c4dcbe52051e12a5306d9abddf6b0d49f0",
+            "sizeBytes": 480068,
+            "stoneCount": 3
+          },
+          {
+            "boardReplaced": false,
+            "decodeAttempted": true,
+            "decodeSucceeded": false,
+            "errorKind": "ImageLowConfidence",
+            "expectedOutcome": "decode_error",
+            "imported": false,
+            "kind": "non_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm",
+            "sanitized": true,
+            "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "sizeBytes": 97215
+          }
+        ]
+      },
+      "name": "fixture_manifest",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "screenshots": [
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 72,
+              "y": 64
+            },
+            "boardSize": 19,
+            "decodeAttempted": true,
+            "decodeSucceeded": true,
+            "expectedOutcome": "decode_success",
+            "kind": "embedded_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+            "sanitized": true,
+            "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+            "sizeBytes": 907264,
+            "snapshotHash": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+            "stoneCount": 3,
+            "toPlay": "black"
+          },
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 151,
+              "y": 47
+            },
+            "boardSize": 19,
+            "decodeAttempted": true,
+            "decodeSucceeded": true,
+            "expectedOutcome": "decode_success",
+            "kind": "offset_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-offset-board.ppm",
+            "sanitized": true,
+            "sha256": "10ee482af31ec08b34ce7caf4186a5fdfd4f18c242856ecc36eff45ebda1c513",
+            "sizeBytes": 930062,
+            "snapshotHash": "10ee482af31ec08b34ce7caf4186a5fdfd4f18c242856ecc36eff45ebda1c513",
+            "stoneCount": 3,
+            "toPlay": "black"
+          },
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 17,
+              "y": 17
+            },
+            "boardSize": 19,
+            "decodeAttempted": true,
+            "decodeSucceeded": true,
+            "expectedOutcome": "decode_success",
+            "kind": "border_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-border-board.ppm",
+            "sanitized": true,
+            "sha256": "1807f6bcfaf992d9fc8c7c311aad3ebb9eee5e1e029c28fa5007d306da246a2e",
+            "sizeBytes": 565132,
+            "snapshotHash": "1807f6bcfaf992d9fc8c7c311aad3ebb9eee5e1e029c28fa5007d306da246a2e",
+            "stoneCount": 3,
+            "toPlay": "black"
+          },
+          {
+            "boardRegion": {
+              "height": 400,
+              "width": 400,
+              "x": 0,
+              "y": 0
+            },
+            "boardSize": 19,
+            "decodeAttempted": true,
+            "decodeSucceeded": true,
+            "expectedOutcome": "decode_success",
+            "kind": "slight_noise_board",
+            "path": "tests/fixtures/readboard-screenshots/arbitrary-slight-noise-board.ppm",
+            "sanitized": true,
+            "sha256": "f6ae43d2dcc9628d7902ea745df5b9c4dcbe52051e12a5306d9abddf6b0d49f0",
+            "sizeBytes": 480068,
+            "snapshotHash": "f6ae43d2dcc9628d7902ea745df5b9c4dcbe52051e12a5306d9abddf6b0d49f0",
+            "stoneCount": 3,
+            "toPlay": "black"
+          }
+        ]
+      },
+      "name": "board_region_decodes",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "arbitraryOcrParity": false,
+        "automaticBoardReplacement": false,
+        "boardReplacedBeforeConfirmation": false,
+        "boardReplacedOnlyAfterConfirmation": false,
+        "boardReplacementObserved": false,
+        "fullOcrParity": false,
+        "fullReadboardParity": false,
+        "previewConfirmationObserved": false,
+        "previewOnlyBeforeConfirmation": true,
+        "previewProduced": true,
+        "releaseParity": false,
+        "targetClientParity": false,
+        "userConfirmed": false
+      },
+      "name": "preview_confirmation",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boardReplaced": false,
+        "decodeAttempted": true,
+        "decodeSucceeded": false,
+        "errorKind": "decode_error",
+        "expectedOutcome": "decode_error",
+        "imported": false,
+        "kind": "non_board",
+        "message": "controlled readboard image confidence is too low: no controlled 13x13 or 19x19 board region was detected in the image",
+        "path": "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm",
+        "rawBackendResult": {
+          "boardRegion": null,
+          "boardReplacement": "none",
+          "boundaries": {
+            "automaticBoardReplacement": false,
+            "fullOcrParity": false,
+            "fullReadboardParity": false,
+            "providerParity": false,
+            "readboardParity": false,
+            "realClientCapture": false,
+            "targetClientDiscovery": false
+          },
+          "captureSource": "arbitrary_screenshot_board_region",
+          "decode": {
+            "attempted": true,
+            "blackStones": null,
+            "boardSize": null,
+            "status": "decode_error",
+            "stoneCount": null,
+            "whiteStones": null
+          },
+          "errorMessage": "controlled readboard image confidence is too low: no controlled 13x13 or 19x19 board region was detected in the image",
+          "hash": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+          "message": "controlled readboard image confidence is too low: no controlled 13x13 or 19x19 board region was detected in the image",
+          "metadata": {
+            "arbitraryScreenshot": "true",
+            "boardRegionDetection": "true",
+            "fixture_kind": "non_board",
+            "phase": "readboard_screenshot_region_detection_failed_decode",
+            "scope": "arbitrary_screenshot_non_board_decode_failure_no_preview_or_import",
+            "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-non-board.ppm",
+            "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "screenshotSize": "97215",
+            "source": "runtime_smoke"
+          },
+          "operatorInitiated": false,
+          "position": null,
+          "recoverable": true,
+          "sanitizedPath": "arbitrary-screenshot-board-region:arbitrary-non-board.ppm",
+          "schema": "lizzieyzy.readboard-external-capture.v1",
+          "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+          "size": 97215,
+          "snapshot": null,
+          "snapshotHash": null,
+          "snapshotId": null,
+          "source": "arbitrary_screenshot_board_region",
+          "sourceMetadata": {
+            "arbitraryScreenshot": "true",
+            "boardRegionDetection": "true",
+            "fixture_kind": "non_board",
+            "phase": "readboard_screenshot_region_detection_failed_decode",
+            "scope": "arbitrary_screenshot_non_board_decode_failure_no_preview_or_import",
+            "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-non-board.ppm",
+            "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+            "screenshotSize": "97215",
+            "source": "runtime_smoke"
+          },
+          "status": "decode_error",
+          "userSelectionRequired": false,
+          "warnings": [
+            "Readboard external capture decoded a scoped arbitrary screenshot board-region preview only; this is not full OCR, real client discovery, or automatic board replacement parity."
+          ]
+        },
+        "sanitized": true,
+        "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "sizeBytes": 97215,
+        "status": "decode_error"
+      },
+      "name": "failed_decode_no_replacement",
+      "status": "pass"
+    },
+    {
+      "details": {
+        "boundaries": {
+          "fullOcrParity": false,
+          "fullReadboardParity": false,
+          "realClientParity": false,
+          "releaseParity": false,
+          "targetClientDiscoveryParity": false
+        }
+      },
+      "name": "scope_boundaries",
+      "status": "pass"
+    }
+  ],
+  "collectionMethod": "runtime_backend_arbitrary_screenshot_board_region_ocr",
+  "failedDecodeNoReplacement": true,
+  "failedDecodeNoReplacementEvidence": {
+    "boardReplaced": false,
+    "decodeAttempted": true,
+    "decodeSucceeded": false,
+    "errorKind": "decode_error",
+    "expectedOutcome": "decode_error",
+    "imported": false,
+    "kind": "non_board",
+    "message": "controlled readboard image confidence is too low: no controlled 13x13 or 19x19 board region was detected in the image",
+    "path": "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm",
+    "rawBackendResult": {
+      "boardRegion": null,
+      "boardReplacement": "none",
+      "boundaries": {
+        "automaticBoardReplacement": false,
+        "fullOcrParity": false,
+        "fullReadboardParity": false,
+        "providerParity": false,
+        "readboardParity": false,
+        "realClientCapture": false,
+        "targetClientDiscovery": false
+      },
+      "captureSource": "arbitrary_screenshot_board_region",
+      "decode": {
+        "attempted": true,
+        "blackStones": null,
+        "boardSize": null,
+        "status": "decode_error",
+        "stoneCount": null,
+        "whiteStones": null
+      },
+      "errorMessage": "controlled readboard image confidence is too low: no controlled 13x13 or 19x19 board region was detected in the image",
+      "hash": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "message": "controlled readboard image confidence is too low: no controlled 13x13 or 19x19 board region was detected in the image",
+      "metadata": {
+        "arbitraryScreenshot": "true",
+        "boardRegionDetection": "true",
+        "fixture_kind": "non_board",
+        "phase": "readboard_screenshot_region_detection_failed_decode",
+        "scope": "arbitrary_screenshot_non_board_decode_failure_no_preview_or_import",
+        "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-non-board.ppm",
+        "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "screenshotSize": "97215",
+        "source": "runtime_smoke"
+      },
+      "operatorInitiated": false,
+      "position": null,
+      "recoverable": true,
+      "sanitizedPath": "arbitrary-screenshot-board-region:arbitrary-non-board.ppm",
+      "schema": "lizzieyzy.readboard-external-capture.v1",
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "size": 97215,
+      "snapshot": null,
+      "snapshotHash": null,
+      "snapshotId": null,
+      "source": "arbitrary_screenshot_board_region",
+      "sourceMetadata": {
+        "arbitraryScreenshot": "true",
+        "boardRegionDetection": "true",
+        "fixture_kind": "non_board",
+        "phase": "readboard_screenshot_region_detection_failed_decode",
+        "scope": "arbitrary_screenshot_non_board_decode_failure_no_preview_or_import",
+        "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-non-board.ppm",
+        "screenshotSha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+        "screenshotSize": "97215",
+        "source": "runtime_smoke"
+      },
+      "status": "decode_error",
+      "userSelectionRequired": false,
+      "warnings": [
+        "Readboard external capture decoded a scoped arbitrary screenshot board-region preview only; this is not full OCR, real client discovery, or automatic board replacement parity."
+      ]
+    },
+    "sanitized": true,
+    "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+    "sizeBytes": 97215,
+    "status": "decode_error"
+  },
+  "fixtureManifest": [
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 72,
+        "y": 64
+      },
+      "boardSize": 19,
+      "expectedOutcome": "decode_success",
+      "kind": "embedded_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+      "sanitized": true,
+      "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+      "sizeBytes": 907264,
+      "stoneCount": 3
+    },
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 151,
+        "y": 47
+      },
+      "boardSize": 19,
+      "expectedOutcome": "decode_success",
+      "kind": "offset_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-offset-board.ppm",
+      "sanitized": true,
+      "sha256": "10ee482af31ec08b34ce7caf4186a5fdfd4f18c242856ecc36eff45ebda1c513",
+      "sizeBytes": 930062,
+      "stoneCount": 3
+    },
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 17,
+        "y": 17
+      },
+      "boardSize": 19,
+      "expectedOutcome": "decode_success",
+      "kind": "border_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-border-board.ppm",
+      "sanitized": true,
+      "sha256": "1807f6bcfaf992d9fc8c7c311aad3ebb9eee5e1e029c28fa5007d306da246a2e",
+      "sizeBytes": 565132,
+      "stoneCount": 3
+    },
+    {
+      "boardRegion": {
+        "height": 400,
+        "width": 400,
+        "x": 0,
+        "y": 0
+      },
+      "boardSize": 19,
+      "expectedOutcome": "decode_success",
+      "kind": "slight_noise_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-slight-noise-board.ppm",
+      "sanitized": true,
+      "sha256": "f6ae43d2dcc9628d7902ea745df5b9c4dcbe52051e12a5306d9abddf6b0d49f0",
+      "sizeBytes": 480068,
+      "stoneCount": 3
+    },
+    {
+      "boardReplaced": false,
+      "decodeAttempted": true,
+      "decodeSucceeded": false,
+      "errorKind": "ImageLowConfidence",
+      "expectedOutcome": "decode_error",
+      "imported": false,
+      "kind": "non_board",
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm",
+      "sanitized": true,
+      "sha256": "c8b0b20ad8f9a7f562a77a5f26a09a215871a6a1791ce364a5375211177d4d92",
+      "sizeBytes": 97215
+    }
+  ],
+  "fullOcrParity": false,
+  "fullReadboardParity": false,
+  "name": "readboard_arbitrary_screenshot_ocr_smoke",
+  "platform": "macos",
+  "previewConfirmation": {
+    "arbitraryOcrParity": false,
+    "automaticBoardReplacement": false,
+    "boardReplacedBeforeConfirmation": false,
+    "boardReplacedOnlyAfterConfirmation": false,
+    "boardReplacementObserved": false,
+    "fullOcrParity": false,
+    "fullReadboardParity": false,
+    "previewConfirmationObserved": false,
+    "previewOnlyBeforeConfirmation": true,
+    "previewProduced": true,
+    "releaseParity": false,
+    "targetClientParity": false,
+    "userConfirmed": false
+  },
+  "rawBackendResult": {
+    "arbitraryScreenshot": true,
+    "artifact": {
+      "path": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+      "sanitized": true,
+      "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+      "sizeBytes": 907264
+    },
+    "artifactPath": "tests/fixtures/readboard-screenshots/arbitrary-embedded-board.ppm",
+    "artifactSha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+    "artifactSizeBytes": 907264,
+    "backendCommand": "readboard_external_capture",
+    "boardRegion": {
+      "confidence": 0.9307479,
+      "height": 103,
+      "source": "readboard_sidecar_board_region_detection",
+      "width": 103,
+      "x": 372,
+      "y": 366
+    },
+    "boardRegionDetection": true,
+    "boardReplacement": "none",
+    "boundaries": {
+      "automaticBoardReplacement": false,
+      "fullOcrParity": false,
+      "fullReadboardParity": false,
+      "providerParity": false,
+      "readboardParity": false,
+      "realClientCapture": false,
+      "targetClientDiscovery": false
+    },
+    "captureSource": "arbitrary_screenshot_board_region",
+    "decode": {
+      "attempted": true,
+      "blackStones": 0,
+      "boardSize": 19,
+      "status": "success",
+      "stoneCount": 4,
+      "whiteStones": 4
+    },
+    "detectedBoardRegion": {
+      "confidence": 0.9307479,
+      "height": 103,
+      "source": "readboard_sidecar_board_region_detection",
+      "width": 103,
+      "x": 372,
+      "y": 366
+    },
+    "errorMessage": null,
+    "hash": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+    "message": null,
+    "metadata": {
+      "arbitraryScreenshot": "true",
+      "boardRegionConfidence": "0.931",
+      "boardRegionDetection": "true",
+      "boardRegionHeight": "103",
+      "boardRegionSource": "readboard_sidecar_board_region_detection",
+      "boardRegionWidth": "103",
+      "boardRegionX": "372",
+      "boardRegionY": "366",
+      "phase": "readboard_screenshot_region_detection",
+      "scope": "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity",
+      "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-embedded-board.ppm",
+      "screenshotSha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+      "screenshotSize": "907264",
+      "source": "runtime_smoke"
+    },
+    "operatorInitiated": false,
+    "phase": "readboard_screenshot_region_detection",
+    "position": {
+      "board_size": 19,
+      "captures_black": 0,
+      "captures_white": 0,
+      "errors": [],
+      "last_move": null,
+      "move_number": 4,
+      "stones": [
+        {
+          "color": "white",
+          "x": 2,
+          "y": 2
+        },
+        {
+          "color": "white",
+          "x": 3,
+          "y": 2
+        },
+        {
+          "color": "white",
+          "x": 2,
+          "y": 3
+        },
+        {
+          "color": "white",
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "to_play": "black"
+    },
+    "recoverable": false,
+    "sanitizedPath": "arbitrary-screenshot-board-region:arbitrary-embedded-board.ppm",
+    "schema": "lizzieyzy.readboard-external-capture.v1",
+    "sha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+    "size": 907264,
+    "snapshot": {
+      "positionMoveNumber": 4,
+      "snapshotId": "external-capture-preview",
+      "toPlay": "Black",
+      "warnings": [
+        "UnsupportedProvider: scoped controlled image import decoded a controlled board region from an image/screenshot",
+        "UnsupportedProvider: this is scoped arbitrary screenshot board-region detection, not full OCR or real client parity"
+      ]
+    },
+    "snapshotHash": "8262bb78f36caac36fbb940e69f9bb52139eb1e09640372e48ea5db0c8281e16",
+    "snapshotId": "external-capture-preview",
+    "source": "runtime_smoke",
+    "sourceMetadata": {
+      "arbitraryScreenshot": "true",
+      "boardRegionConfidence": "0.931",
+      "boardRegionDetection": "true",
+      "boardRegionHeight": "103",
+      "boardRegionSource": "readboard_sidecar_board_region_detection",
+      "boardRegionWidth": "103",
+      "boardRegionX": "372",
+      "boardRegionY": "366",
+      "phase": "readboard_screenshot_region_detection",
+      "scope": "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity",
+      "screenshotPath": "arbitrary-screenshot-board-region:arbitrary-embedded-board.ppm",
+      "screenshotSha256": "d71b486d18dbd9cc0b85cdd8a216c1ceac9ebb4882b394ef6c4e33c38ba7720e",
+      "screenshotSize": "907264",
+      "source": "runtime_smoke"
+    },
+    "status": "captured",
+    "userSelectionRequired": false,
+    "warnings": [
+      "UnsupportedProvider: scoped controlled image import decoded a controlled board region from an image/screenshot",
+      "UnsupportedProvider: this is scoped arbitrary screenshot board-region detection, not full OCR or real client parity",
+      "Readboard external capture decoded a scoped arbitrary screenshot board-region preview only; this is not full OCR, real client discovery, or automatic board replacement parity."
+    ]
+  },
+  "realClientParity": false,
+  "releaseParity": false,
+  "runtimeObserved": true,
+  "runtimeReportKey": "readboardScreenshotRegionDetection",
+  "runtimeReportPhase": "readboard-screenshot-region-detection",
+  "schema": "lizzieyzy.readboard-arbitrary-screenshot-ocr-smoke.v1",
+  "scope": {
+    "note": "Runtime-backed backend command evidence for controlled arbitrary board-region screenshots; no target-client discovery, real client parity, full OCR/readboard parity, or release parity."
+  },
+  "sourceRuntimeReport": {
+    "phase": "readboard-screenshot-region-detection",
+    "reportKey": "readboardScreenshotRegionDetection",
+    "runtimeObserved": true,
+    "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1"
+  },
+  "status": "pass",
+  "targetClientDiscoveryParity": false
+}

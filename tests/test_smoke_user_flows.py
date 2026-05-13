@@ -3286,6 +3286,136 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("readboard_target_window_screenshot_smoke", pending)
             self.assertIn(expected_detail, pending["readboard_target_window_screenshot_smoke"])
 
+    def test_valid_readboard_arbitrary_screenshot_ocr_evidence_passes_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("readboard_arbitrary_screenshot_ocr_smoke", pass_names)
+            self.assertNotIn("readboard_arbitrary_screenshot_ocr_smoke", pending_names)
+
+    def test_readboard_arbitrary_screenshot_ocr_rejects_overclaims(self) -> None:
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            lambda evidence: evidence.__setitem__("fullOcrParity", True),
+            "fullOcrParity must be false",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_requires_runtime_proof(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["runtimeObserved"] = False
+            evidence.pop("rawBackendResult", None)
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "runtimeObserved must be true",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_requires_runtime_phase_key(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("runtimeReportPhase", None)
+            evidence.pop("runtimeReportKey", None)
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "runtimeReportPhase must be readboard-screenshot-region-detection",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_rejects_wrong_source_runtime_report(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence["runtimeReportPhase"] = "wrong-phase"
+            evidence["runtimeReportKey"] = "wrongKey"
+            evidence["sourceRuntimeReport"] = {
+                "schema": "lizzieyzy.tauri-runtime-ui-smoke.v1",
+                "phase": "wrong-phase",
+                "reportKey": "wrongKey",
+                "runtimeObserved": False,
+            }
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "sourceRuntimeReport.phase must be readboard-screenshot-region-detection",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_requires_source_runtime_report(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            evidence.pop("sourceRuntimeReport", None)
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "sourceRuntimeReport must be an object",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_rejects_region_out_of_bounds(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            decodes = evidence["boardRegionDecodes"]
+            assert isinstance(decodes, list)
+            first = decodes[0]
+            assert isinstance(first, dict)
+            region = first["boardRegion"]
+            assert isinstance(region, dict)
+            region["x"] = 9999
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            for check in checks:
+                if isinstance(check, dict) and check.get("name") == "board_region_decodes":
+                    details = check["details"]
+                    assert isinstance(details, dict)
+                    details["screenshots"] = decodes
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "boardRegion must fit within artifact width",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_requires_unique_valid_hashes(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            manifest = evidence["fixtureManifest"]
+            assert isinstance(manifest, list)
+            valid = [item for item in manifest if isinstance(item, dict) and item.get("kind") == "embedded_board"][0]
+            for item in manifest:
+                if isinstance(item, dict) and item.get("kind") == "offset_board":
+                    item["path"] = valid["path"]
+                    item["sha256"] = valid["sha256"]
+                    item["sizeBytes"] = valid["sizeBytes"]
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "valid board-region fixtures must have unique hashes",
+        )
+
+    def test_readboard_arbitrary_screenshot_ocr_rejects_failed_decode_import(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            failed = evidence["failedDecodeNoReplacementEvidence"]
+            assert isinstance(failed, dict)
+            failed["boardReplaced"] = True
+
+        self.assert_invalid_readboard_arbitrary_screenshot_ocr_pending(
+            mutate,
+            "failedDecodeNoReplacementEvidence.boardReplaced must be false",
+        )
+
+    def assert_invalid_readboard_arbitrary_screenshot_ocr_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_readboard_arbitrary_screenshot_ocr_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.READBOARD_ARBITRARY_SCREENSHOT_OCR_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("readboard_arbitrary_screenshot_ocr_smoke", failures)
+            self.assertIn("readboard_arbitrary_screenshot_ocr_smoke", pending)
+            self.assertIn(expected_detail, pending["readboard_arbitrary_screenshot_ocr_smoke"])
+
     def test_valid_provider_controlled_network_evidence_passes_runtime_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4463,6 +4593,7 @@ def create_complete_smoke_fixture(
     write_valid_completion_audit_doc(root)
     write_valid_katago_analysis_stale_guard_evidence(root)
     write_valid_readboard_target_window_screenshot_evidence(root)
+    write_valid_readboard_arbitrary_screenshot_ocr_evidence(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -4738,6 +4869,14 @@ def write_valid_readboard_target_window_screenshot_evidence(root: Path) -> None:
     )
 
 
+def write_valid_readboard_arbitrary_screenshot_ocr_evidence(root: Path) -> None:
+    create_readboard_arbitrary_screenshot_ocr_fixtures(root)
+    write_json(
+        root / smoke_user_flows.READBOARD_ARBITRARY_SCREENSHOT_OCR_SMOKE_EVIDENCE,
+        valid_readboard_arbitrary_screenshot_ocr_evidence(),
+    )
+
+
 def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
@@ -4783,6 +4922,21 @@ def create_readboard_target_window_screenshot_fixtures(root: Path) -> None:
         "target-window-light-dark.ppm",
         "target-window-slight-noise.ppm",
         "target-window-non-board.ppm",
+    ):
+        source = source_root / filename
+        target = root / "tests/fixtures/readboard-screenshots" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+
+
+def create_readboard_arbitrary_screenshot_ocr_fixtures(root: Path) -> None:
+    source_root = Path(__file__).resolve().parents[1] / "tests/fixtures/readboard-screenshots"
+    for filename in (
+        "arbitrary-embedded-board.ppm",
+        "arbitrary-offset-board.ppm",
+        "arbitrary-border-board.ppm",
+        "arbitrary-slight-noise-board.ppm",
+        "arbitrary-non-board.ppm",
     ):
         source = source_root / filename
         target = root / "tests/fixtures/readboard-screenshots" / filename
@@ -6161,6 +6315,11 @@ def valid_readboard_operator_capture_evidence() -> dict[str, object]:
 
 def valid_readboard_target_window_screenshot_evidence() -> dict[str, object]:
     evidence_path = Path(__file__).resolve().parents[1] / smoke_user_flows.READBOARD_TARGET_WINDOW_SCREENSHOT_SMOKE_EVIDENCE
+    return json.loads(evidence_path.read_text(encoding="utf-8"))
+
+
+def valid_readboard_arbitrary_screenshot_ocr_evidence() -> dict[str, object]:
+    evidence_path = Path(__file__).resolve().parents[1] / smoke_user_flows.READBOARD_ARBITRARY_SCREENSHOT_OCR_SMOKE_EVIDENCE
     return json.loads(evidence_path.read_text(encoding="utf-8"))
 
 

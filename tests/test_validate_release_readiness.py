@@ -58,7 +58,7 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
 
             failures = {result.name: result.detail for result in results if not result.ok}
             self.assertIn("stale_smoke_counts", failures)
-            self.assertIn("58 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("59 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
             self.assertIn("54 passed", failures["stale_smoke_counts"])
 
     def test_rejects_current_central_smoke_count_55(self) -> None:
@@ -76,7 +76,7 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
 
             failures = {result.name: result.detail for result in results if not result.ok}
             self.assertIn("stale_smoke_counts", failures)
-            self.assertIn("58 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("59 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
             self.assertIn("55 passed", failures["stale_smoke_counts"])
 
     def test_rejects_current_central_smoke_count_57(self) -> None:
@@ -94,17 +94,17 @@ class ValidateReleaseReadinessTests(unittest.TestCase):
 
             failures = {result.name: result.detail for result in results if not result.ok}
             self.assertIn("stale_smoke_counts", failures)
-            self.assertIn("58 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
+            self.assertIn("59 passed, 0 failed, 0 pending", failures["stale_smoke_counts"])
             self.assertIn("57 passed", failures["stale_smoke_counts"])
 
-    def test_accepts_current_central_smoke_count_58(self) -> None:
+    def test_accepts_current_central_smoke_count_59(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             create_readiness_docs(
                 root,
                 qa_extra=(
                     "The central smoke gate currently reports "
-                    "`58 passed, 0 failed, 0 pending`."
+                    "`59 passed, 0 failed, 0 pending`."
                 ),
             )
 

@@ -19,7 +19,7 @@ REQUIRED_DOCS = (
 )
 RELEASE_READINESS_EVIDENCE = "docs/qa/release-readiness-preflight.json"
 COMPLETION_AUDIT_EVIDENCE = "docs/qa/completion-audit-gate.json"
-CURRENT_CENTRAL_SMOKE_PASSED = 58
+CURRENT_CENTRAL_SMOKE_PASSED = 59
 SELF_EXCLUDING_BASELINES = {
     RELEASE_READINESS_EVIDENCE: ("release_readiness_preflight", 54),
     COMPLETION_AUDIT_EVIDENCE: ("completion_audit_gate", 55),

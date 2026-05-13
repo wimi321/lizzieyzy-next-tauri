@@ -994,6 +994,88 @@ struct ReadboardExternalCaptureRequestDto {
     height: Option<Value>,
     #[serde(default, alias = "sourceMetadata", alias = "source_metadata")]
     metadata: Option<BTreeMap<String, Value>>,
+    #[serde(default, alias = "targetId", alias = "target_id", alias = "captureTargetId")]
+    target_id: Option<Value>,
+    #[serde(default, alias = "appName", alias = "app_name", alias = "applicationName")]
+    app_name: Option<Value>,
+    #[serde(default, alias = "targetX", alias = "target_x")]
+    target_x: Option<Value>,
+    #[serde(default, alias = "targetY", alias = "target_y")]
+    target_y: Option<Value>,
+    #[serde(default, alias = "targetWidth", alias = "target_width")]
+    target_width: Option<Value>,
+    #[serde(default, alias = "targetHeight", alias = "target_height")]
+    target_height: Option<Value>,
+    #[serde(default, alias = "targetBounds", alias = "target_bounds")]
+    target_bounds: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardListCaptureTargetsRequestDto {
+    #[serde(default)]
+    filter: Option<String>,
+    #[serde(default, alias = "titleHint", alias = "title_hint")]
+    title: Option<String>,
+    #[serde(default, alias = "windowTitle", alias = "window_title")]
+    window_title: Option<String>,
+    #[serde(
+        default,
+        alias = "app",
+        alias = "appName",
+        alias = "app_name",
+        alias = "appHint",
+        alias = "app_hint"
+    )]
+    app_name: Option<String>,
+    #[serde(default, alias = "processName", alias = "process_name")]
+    process_name: Option<String>,
+    #[serde(default, alias = "minWidth", alias = "min_width")]
+    min_width: Option<u32>,
+    #[serde(default, alias = "minHeight", alias = "min_height")]
+    min_height: Option<u32>,
+    #[serde(default, alias = "minSize", alias = "min_size")]
+    min_size: Option<u32>,
+    #[serde(default, alias = "timeoutMs", alias = "timeout_ms")]
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardListCaptureTargetsResultDto {
+    schema: String,
+    status: String,
+    recoverable: bool,
+    platform: String,
+    targets: Vec<ReadboardCaptureTargetDto>,
+    candidates: Vec<ReadboardCaptureTargetDto>,
+    target_count: usize,
+    warnings: Vec<String>,
+    message: Option<String>,
+    boundaries: BTreeMap<String, bool>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardCaptureTargetDto {
+    id: String,
+    title: String,
+    app_name: String,
+    process_name: String,
+    process_id: Option<i32>,
+    bounds: Option<ReadboardCaptureTargetBoundsDto>,
+    visible: bool,
+    source: String,
+    metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ReadboardCaptureTargetBoundsDto {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2041,6 +2123,64 @@ fn readboard_external_capture(
     readboard_external_capture_with_runner(request, run_macos_interactive_screencapture)
 }
 
+#[tauri::command]
+fn readboard_list_capture_targets(
+    request: ReadboardListCaptureTargetsRequestDto,
+) -> Result<ReadboardListCaptureTargetsResultDto, ProviderError> {
+    readboard_list_capture_targets_with_runner(request, run_capture_target_list)
+}
+
+#[tauri::command]
+fn readboard_discover_capture_targets(
+    request: ReadboardListCaptureTargetsRequestDto,
+) -> Result<ReadboardListCaptureTargetsResultDto, ProviderError> {
+    readboard_list_capture_targets(request)
+}
+
+fn readboard_list_capture_targets_with_runner(
+    request: ReadboardListCaptureTargetsRequestDto,
+    runner: fn() -> ReadboardCaptureTargetListOutcome,
+) -> Result<ReadboardListCaptureTargetsResultDto, ProviderError> {
+    validate_capture_target_request(&request)?;
+    match runner() {
+        ReadboardCaptureTargetListOutcome::Available { raw } => {
+            let mut warnings = Vec::new();
+            let mut targets = parse_capture_target_lines(&raw, &mut warnings)
+                .into_iter()
+                .filter(|target| readboard_capture_target_matches(&request, target))
+                .collect::<Vec<_>>();
+            targets.sort_by(|left, right| {
+                left.app_name
+                    .cmp(&right.app_name)
+                    .then_with(|| left.title.cmp(&right.title))
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            let status = if targets.is_empty() { "empty" } else { "available" };
+            Ok(readboard_capture_targets_result(
+                status,
+                status == "empty",
+                targets,
+                warnings,
+                (status == "empty").then(|| "no matching visible capture targets were found".to_string()),
+            ))
+        }
+        ReadboardCaptureTargetListOutcome::Unsupported { message } => Ok(readboard_capture_targets_result(
+            "unsupported",
+            true,
+            Vec::new(),
+            vec![readboard_capture_target_scope_warning()],
+            Some(sanitize_capture_message(&message)),
+        )),
+        ReadboardCaptureTargetListOutcome::Failed { message } => Ok(readboard_capture_targets_result(
+            "unavailable",
+            true,
+            Vec::new(),
+            vec![readboard_capture_target_scope_warning()],
+            Some(sanitize_capture_message(&message)),
+        )),
+    }
+}
+
 fn readboard_external_capture_with_runner(
     request: ReadboardExternalCaptureRequestDto,
     screencapture_runner: fn(Duration) -> ReadboardCaptureFileOutcome,
@@ -2229,6 +2369,13 @@ enum ReadboardCaptureFileOutcome {
     Unsupported { message: String },
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+enum ReadboardCaptureTargetListOutcome {
+    Available { raw: String },
+    Unsupported { message: String },
+    Failed { message: String },
+}
+
 #[cfg(target_os = "macos")]
 fn run_macos_interactive_screencapture(timeout: Duration) -> ReadboardCaptureFileOutcome {
     let path = std::env::temp_dir().join(format!("readboard-external-capture-{}.png", Uuid::new_v4()));
@@ -2303,6 +2450,45 @@ fn run_macos_interactive_screencapture(timeout: Duration) -> ReadboardCaptureFil
     }
 }
 
+#[cfg(target_os = "macos")]
+fn run_capture_target_list() -> ReadboardCaptureTargetListOutcome {
+    let script = r#"
+set AppleScript's text item delimiters to linefeed
+set rows to {}
+tell application "System Events"
+  repeat with p in application processes
+    try
+      if background only of p is false then
+        set appName to name of p as text
+        set pidValue to unix id of p as text
+        repeat with w in windows of p
+          try
+            set windowTitle to name of w as text
+            set windowPosition to position of w
+            set windowSize to size of w
+            set rowText to appName & tab & pidValue & tab & windowTitle & tab & ((item 1 of windowPosition) as text) & tab & ((item 2 of windowPosition) as text) & tab & ((item 1 of windowSize) as text) & tab & ((item 2 of windowSize) as text)
+            set end of rows to rowText
+          end try
+        end repeat
+      end if
+    end try
+  end repeat
+end tell
+return rows as text
+"#;
+    match Command::new("osascript").arg("-e").arg(script).output() {
+        Ok(output) if output.status.success() => ReadboardCaptureTargetListOutcome::Available {
+            raw: String::from_utf8_lossy(&output.stdout).to_string(),
+        },
+        Ok(output) => ReadboardCaptureTargetListOutcome::Failed {
+            message: sanitize_capture_message(&String::from_utf8_lossy(&output.stderr)),
+        },
+        Err(err) => ReadboardCaptureTargetListOutcome::Unsupported {
+            message: format!("failed to start macOS capture target discovery: {err}"),
+        },
+    }
+}
+
 #[cfg(not(target_os = "macos"))]
 fn run_macos_interactive_screencapture(_timeout: Duration) -> ReadboardCaptureFileOutcome {
     match std::env::var("LIZZIEYZY_READBOARD_CAPTURE_TEST_STATUS")
@@ -2325,6 +2511,197 @@ fn run_macos_interactive_screencapture(_timeout: Duration) -> ReadboardCaptureFi
             message: "interactive screencapture is only supported on macOS".to_string(),
         },
     }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_capture_target_list() -> ReadboardCaptureTargetListOutcome {
+    ReadboardCaptureTargetListOutcome::Unsupported {
+        message: "capture target discovery is currently supported on macOS only".to_string(),
+    }
+}
+
+fn validate_capture_target_request(
+    request: &ReadboardListCaptureTargetsRequestDto,
+) -> Result<(), ProviderError> {
+    validate_timeout_ms(request.timeout_ms, "readboard_list_capture_targets")?;
+    for (name, value) in [
+        ("filter", request.filter.as_deref()),
+        ("title", request.title.as_deref()),
+        ("windowTitle", request.window_title.as_deref()),
+        ("app", request.app_name.as_deref()),
+        ("processName", request.process_name.as_deref()),
+    ] {
+        if value.is_some_and(|value| value.len() > 200) {
+            return Err(invalid_request(format!(
+                "readboard_list_capture_targets {name} filter is too long"
+            )));
+        }
+    }
+    for (name, value) in [
+        ("minWidth", request.min_width),
+        ("minHeight", request.min_height),
+        ("minSize", request.min_size),
+    ] {
+        if value.is_some_and(|value| value > 100_000) {
+            return Err(invalid_request(format!(
+                "readboard_list_capture_targets {name} is too large"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn parse_capture_target_lines(raw: &str, warnings: &mut Vec<String>) -> Vec<ReadboardCaptureTargetDto> {
+    raw.lines()
+        .filter_map(|line| parse_capture_target_line(line, warnings))
+        .collect()
+}
+
+fn parse_capture_target_line(line: &str, warnings: &mut Vec<String>) -> Option<ReadboardCaptureTargetDto> {
+    let fields = line.split('\t').collect::<Vec<_>>();
+    if fields.len() < 7 {
+        if !line.trim().is_empty() {
+            warnings.push("ignored malformed capture target row".to_string());
+        }
+        return None;
+    }
+    let app_name = sanitize_capture_metadata_value(fields[0].trim());
+    let process_id = fields[1].trim().parse::<i32>().ok();
+    let title = sanitize_capture_metadata_value(fields[2].trim());
+    let bounds = match (
+        fields[3].trim().parse::<i32>(),
+        fields[4].trim().parse::<i32>(),
+        fields[5].trim().parse::<u32>(),
+        fields[6].trim().parse::<u32>(),
+    ) {
+        (Ok(x), Ok(y), Ok(width), Ok(height)) if width > 0 && height > 0 => {
+            Some(ReadboardCaptureTargetBoundsDto { x, y, width, height })
+        }
+        _ => {
+            warnings.push("ignored capture target row with invalid bounds".to_string());
+            return None;
+        }
+    };
+    if app_name.is_empty() || title.is_empty() {
+        return None;
+    }
+    let id = capture_target_id(&app_name, process_id, &title, bounds);
+    let mut metadata = BTreeMap::from([
+        (
+            "captureMetadataSource".to_string(),
+            "macos_system_events".to_string(),
+        ),
+        ("previewOnly".to_string(), "true".to_string()),
+        ("automaticBoardReplacement".to_string(), "false".to_string()),
+    ]);
+    if let Some(bounds) = bounds {
+        metadata.insert("targetX".to_string(), bounds.x.to_string());
+        metadata.insert("targetY".to_string(), bounds.y.to_string());
+        metadata.insert("targetWidth".to_string(), bounds.width.to_string());
+        metadata.insert("targetHeight".to_string(), bounds.height.to_string());
+    }
+    Some(ReadboardCaptureTargetDto {
+        id,
+        title: title.clone(),
+        app_name: app_name.clone(),
+        process_name: app_name,
+        process_id,
+        bounds,
+        visible: true,
+        source: "macos_visible_window".to_string(),
+        metadata,
+    })
+}
+
+fn capture_target_id(
+    app_name: &str,
+    process_id: Option<i32>,
+    title: &str,
+    bounds: Option<ReadboardCaptureTargetBoundsDto>,
+) -> String {
+    let bounds_key = bounds
+        .map(|bounds| format!("{}:{}:{}:{}", bounds.x, bounds.y, bounds.width, bounds.height))
+        .unwrap_or_else(|| "unknown-bounds".to_string());
+    let digest = sha256_hex(format!("{app_name}|{process_id:?}|{title}|{bounds_key}").as_bytes());
+    format!("readboard-target-{}", &digest[..16])
+}
+
+fn readboard_capture_target_matches(
+    request: &ReadboardListCaptureTargetsRequestDto,
+    target: &ReadboardCaptureTargetDto,
+) -> bool {
+    if !capture_filter_matches(
+        request.filter.as_deref(),
+        [&target.title, &target.app_name, &target.process_name],
+    ) {
+        return false;
+    }
+    if !capture_filter_matches(
+        request.title.as_deref().or(request.window_title.as_deref()),
+        [&target.title],
+    ) {
+        return false;
+    }
+    if !capture_filter_matches(request.app_name.as_deref(), [&target.app_name]) {
+        return false;
+    }
+    if !capture_filter_matches(request.process_name.as_deref(), [&target.process_name]) {
+        return false;
+    }
+    let Some(bounds) = target.bounds else {
+        return request.min_width.is_none() && request.min_height.is_none() && request.min_size.is_none();
+    };
+    if request.min_width.is_some_and(|minimum| bounds.width < minimum) {
+        return false;
+    }
+    if request.min_height.is_some_and(|minimum| bounds.height < minimum) {
+        return false;
+    }
+    if request
+        .min_size
+        .is_some_and(|minimum| bounds.width < minimum || bounds.height < minimum)
+    {
+        return false;
+    }
+    true
+}
+
+fn capture_filter_matches<'a>(filter: Option<&str>, values: impl IntoIterator<Item = &'a String>) -> bool {
+    let Some(filter) = filter.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    let filter = filter.to_ascii_lowercase();
+    values
+        .into_iter()
+        .any(|value| value.to_ascii_lowercase().contains(&filter))
+}
+
+fn readboard_capture_targets_result(
+    status: &str,
+    recoverable: bool,
+    targets: Vec<ReadboardCaptureTargetDto>,
+    mut warnings: Vec<String>,
+    message: Option<String>,
+) -> ReadboardListCaptureTargetsResultDto {
+    warnings.push(readboard_capture_target_scope_warning());
+    let target_count = targets.len();
+    let candidates = targets.clone();
+    ReadboardListCaptureTargetsResultDto {
+        schema: "lizzieyzy.readboard-capture-targets.v1".to_string(),
+        status: status.to_string(),
+        recoverable,
+        platform: std::env::consts::OS.to_string(),
+        targets,
+        candidates,
+        target_count,
+        warnings,
+        message,
+        boundaries: readboard_external_capture_boundaries(),
+    }
+}
+
+fn readboard_capture_target_scope_warning() -> String {
+    "Readboard capture target discovery lists local visible window metadata for operator review only; it does not prove Fox/Yike parity, target-client capture, OCR parity, or automatic board replacement.".to_string()
 }
 
 fn readboard_external_capture_metadata(
@@ -2352,9 +2729,21 @@ fn readboard_external_capture_metadata(
     );
     insert_optional_value_metadata(&mut metadata, "targetProcess", request.process.as_ref());
     insert_optional_value_metadata(&mut metadata, "targetProcessId", request.process_id.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetId", request.target_id.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetAppName", request.app_name.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetX", request.target_x.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetY", request.target_y.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetWidth", request.target_width.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetHeight", request.target_height.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetBounds", request.target_bounds.as_ref());
     insert_optional_value_metadata(&mut metadata, "fixtureId", request.fixture_id.as_ref());
     insert_optional_value_metadata(&mut metadata, "width", request.width.as_ref());
     insert_optional_value_metadata(&mut metadata, "height", request.height.as_ref());
+    if metadata.contains_key("targetId") || metadata.contains_key("targetBounds") {
+        metadata
+            .entry("selectedCaptureTarget".to_string())
+            .or_insert_with(|| "true".to_string());
+    }
     if metadata.contains_key("targetWindowTitle") || metadata.contains_key("fixtureId") {
         metadata
             .entry("controlledLocalTargetWindow".to_string())
@@ -6423,6 +6812,8 @@ pub fn run() {
             provider_fetch_fox,
             readboard_sidecar_probe,
             readboard_sidecar_sync_snapshot,
+            readboard_list_capture_targets,
+            readboard_discover_capture_targets,
             readboard_external_capture,
             legacy_capture_external_window,
             legacy_import_capture_helper,
@@ -9115,6 +9506,129 @@ mod tests {
     }
 
     #[test]
+    fn readboard_list_capture_targets_filters_and_sanitizes_fake_window_rows() {
+        fn fake_targets() -> ReadboardCaptureTargetListOutcome {
+            ReadboardCaptureTargetListOutcome::Available {
+                raw: [
+                    "LizzieYzy Next\t123\tReview Board\t10\t20\t900\t700",
+                    "Tiny App\t124\tTiny Board\t0\t0\t80\t70",
+                    "Private App\t125\t/Users/example/private game\t1\t2\t640\t480",
+                    "malformed-row",
+                ]
+                .join("\n"),
+            }
+        }
+
+        let result = readboard_list_capture_targets_with_runner(
+            ReadboardListCaptureTargetsRequestDto {
+                filter: Some("review".to_string()),
+                min_width: Some(300),
+                min_height: Some(300),
+                ..Default::default()
+            },
+            fake_targets,
+        )
+        .unwrap();
+
+        assert_eq!(result.schema, "lizzieyzy.readboard-capture-targets.v1");
+        assert_eq!(result.status, "available");
+        assert_eq!(result.target_count, 1);
+        assert_eq!(result.candidates, result.targets);
+        assert!(!result.recoverable);
+        let target = &result.targets[0];
+        assert_eq!(target.title, "Review Board");
+        assert_eq!(target.app_name, "LizzieYzy Next");
+        assert_eq!(target.process_id, Some(123));
+        assert_eq!(
+            target.bounds,
+            Some(ReadboardCaptureTargetBoundsDto {
+                x: 10,
+                y: 20,
+                width: 900,
+                height: 700,
+            })
+        );
+        assert_eq!(
+            target
+                .metadata
+                .get("automaticBoardReplacement")
+                .map(String::as_str),
+            Some("false")
+        );
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("operator review only")));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains("/Users/"));
+        assert!(!serialized.contains("/private/"));
+    }
+
+    #[test]
+    fn readboard_list_capture_targets_accepts_frontend_hint_fields() {
+        fn fake_targets() -> ReadboardCaptureTargetListOutcome {
+            ReadboardCaptureTargetListOutcome::Available {
+                raw: "KataGo Board\t321\tLive Review Target\t4\t5\t720\t720".to_string(),
+            }
+        }
+
+        let request: ReadboardListCaptureTargetsRequestDto = serde_json::from_value(serde_json::json!({
+            "titleHint": "live review",
+            "appHint": "katago",
+            "timeoutMs": 1000,
+            "minSize": 300
+        }))
+        .unwrap();
+        let result = readboard_list_capture_targets_with_runner(request, fake_targets).unwrap();
+
+        assert_eq!(result.status, "available");
+        assert_eq!(result.target_count, 1);
+        assert_eq!(result.candidates.len(), 1);
+        assert_eq!(result.candidates, result.targets);
+        assert_eq!(result.targets[0].title, "Live Review Target");
+    }
+
+    #[test]
+    fn readboard_list_capture_targets_returns_structured_unsupported() {
+        fn fake_unsupported() -> ReadboardCaptureTargetListOutcome {
+            ReadboardCaptureTargetListOutcome::Unsupported {
+                message: "capture target discovery is currently supported on macOS only".to_string(),
+            }
+        }
+
+        let result = readboard_list_capture_targets_with_runner(
+            ReadboardListCaptureTargetsRequestDto::default(),
+            fake_unsupported,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, "unsupported");
+        assert!(result.recoverable);
+        assert_eq!(result.target_count, 0);
+        assert!(result.targets.is_empty());
+        assert!(result.candidates.is_empty());
+        assert_eq!(result.boundaries.get("automaticBoardReplacement"), Some(&false));
+    }
+
+    #[test]
+    fn readboard_list_capture_targets_rejects_unbounded_filters() {
+        fn fake_targets() -> ReadboardCaptureTargetListOutcome {
+            ReadboardCaptureTargetListOutcome::Available { raw: String::new() }
+        }
+
+        let error = readboard_list_capture_targets_with_runner(
+            ReadboardListCaptureTargetsRequestDto {
+                filter: Some("x".repeat(201)),
+                ..Default::default()
+            },
+            fake_targets,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind, ProviderErrorKind::InvalidRequest);
+    }
+
+    #[test]
     fn readboard_external_capture_frontend_style_request_aliases_screen_to_operator_capture() {
         let value = serde_json::json!({
             "source": "screen",
@@ -9396,6 +9910,12 @@ mod tests {
         let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(serde_json::json!({
             "source": "screenshot_board_region",
             "imagePath": path.display().to_string(),
+            "targetId": "readboard-target-test",
+            "appName": "Controlled Fixture App",
+            "targetX": 10,
+            "targetY": 20,
+            "targetWidth": 400,
+            "targetHeight": 400,
             "sourceMetadata": {
                 "scenario": "frontend-arbitrary-screenshot"
             }
@@ -9444,6 +9964,29 @@ mod tests {
                 .get("boardRegionSource")
                 .map(String::as_str),
             Some("readboard_sidecar_board_region_detection")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetId").map(String::as_str),
+            Some("readboard-target-test")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetAppName").map(String::as_str),
+            Some("Controlled Fixture App")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("selectedCaptureTarget")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetX").map(String::as_str),
+            Some("10")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetWidth").map(String::as_str),
+            Some("400")
         );
         assert_eq!(result.decode.status, "success");
         assert_eq!(result.decode.stone_count, Some(3));

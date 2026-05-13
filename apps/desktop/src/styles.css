@@ -832,9 +832,14 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.provider-target-metadata-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .provider-grid button,
 .provider-panel > button,
-.provider-readboard > button {
+.provider-readboard > button,
+.provider-controlled-target > button {
   min-width: 0;
   height: 32px;
   padding: 6px 8px;
@@ -843,7 +848,8 @@ textarea {
 }
 
 .provider-panel > button,
-.provider-readboard > button {
+.provider-readboard > button,
+.provider-controlled-target > button {
   width: 100%;
 }
 
@@ -938,6 +944,16 @@ textarea {
   min-width: 0;
   padding-top: 8px;
   border-top: 1px solid #e2e8f0;
+}
+
+.provider-controlled-target {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .legacy-import-helper {

@@ -19,6 +19,7 @@ import {
   type ProviderImportRequest,
   type ProviderImportResult,
   type ProviderKind,
+  type ReadboardControlledTargetMetadata,
   type ReadboardExternalCaptureResult,
   type ReadboardExternalCaptureSource,
   type LegacyImportCaptureHelperKind,
@@ -49,7 +50,7 @@ type FoxFetchInput = {
   sourceId: string | null;
 };
 
-type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64" | "capture_screen" | "capture_window";
+type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64" | "capture_screen" | "capture_window" | "controlled_target";
 
 const providerFetchTimeoutMs = 15_000;
 const readboardTimeoutMs = 5_000;
@@ -75,6 +76,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const [readboardImageBase64, setReadboardImageBase64] = useState("");
   const [readboardImageName, setReadboardImageName] = useState("");
   const [readboardCaptureWindowTitle, setReadboardCaptureWindowTitle] = useState("");
+  const [readboardControlledFixtureId, setReadboardControlledFixtureId] = useState("");
+  const [readboardControlledProcessId, setReadboardControlledProcessId] = useState("");
+  const [readboardControlledWidth, setReadboardControlledWidth] = useState("");
+  const [readboardControlledHeight, setReadboardControlledHeight] = useState("");
   const [readboardCaptureResult, setReadboardCaptureResult] = useState<ReadboardExternalCaptureResult | null>(null);
   const [readboardProbeResult, setReadboardProbeResult] = useState<ReadboardSidecarProbeResult | null>(null);
   const [readboardSyncResult, setReadboardSyncResult] = useState<ReadboardSidecarSyncSnapshotResult | null>(null);
@@ -93,6 +98,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canSyncReadboard = !disabled && readboardProtocolLine.trim().length > 0;
   const canPreviewReadboardImage = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
   const canCaptureReadboardExternal = !disabled;
+  const canPreviewControlledTarget = !disabled && readboardImagePath.trim().length > 0;
   const canConfirmReadboardImport = !disabled && readboardSyncResult?.position != null;
   const canImportReadboardSnapshot = canConfirmReadboardImport && readboardImportConfirmed;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
@@ -329,6 +335,103 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     }
   }
 
+  async function handleReadboardControlledTargetPreview() {
+    if (!canPreviewControlledTarget) return;
+    setOperationStatus("readboardSync", "Previewing controlled local target window/screenshot proof...");
+    resetReadboardPreviewState();
+    try {
+      const imagePath = readboardImagePath.trim();
+      const targetMetadata = readboardControlledTargetMetadata(
+        readboardCaptureWindowTitle,
+        readboardControlledProcessId,
+        readboardControlledFixtureId,
+        readboardControlledWidth,
+        readboardControlledHeight,
+        imagePath
+      );
+      const capture = await captureReadboardExternal({
+        source: "controlled_local_target_window",
+        endpoint: optionalTrimmed(readboardEndpoint),
+        image_path: imagePath,
+        imagePath,
+        window_title: targetMetadata.window_title ?? null,
+        windowTitle: targetMetadata.windowTitle ?? null,
+        process_id: targetMetadata.process_id ?? null,
+        processId: targetMetadata.processId ?? null,
+        fixture_id: targetMetadata.fixture_id ?? null,
+        fixtureId: targetMetadata.fixtureId ?? null,
+        width: targetMetadata.width ?? null,
+        height: targetMetadata.height ?? null,
+        controlledLocalTargetWindow: true,
+        controlled_local_target_window: true,
+        controlledTarget: targetMetadata,
+        controlled_target: targetMetadata,
+        timeout_ms: readboardTimeoutMs,
+        metadata: {
+          source: "provider_panel",
+          input: "controlled_local_target_window",
+          scope: "controlled_target_screenshot_proof_not_full_ocr_or_external_client_parity",
+          fixture_id: targetMetadata.fixture_id ?? "",
+          window_title: targetMetadata.window_title ?? "",
+          process_id: targetMetadata.process_id === null || targetMetadata.process_id === undefined ? "" : String(targetMetadata.process_id),
+          width: targetMetadata.width === null || targetMetadata.width === undefined ? "" : String(targetMetadata.width),
+          height: targetMetadata.height === null || targetMetadata.height === undefined ? "" : String(targetMetadata.height)
+        }
+      });
+      setReadboardCaptureResult(capture);
+      const status = normalizeCaptureStatus(capture.status);
+      if (status !== "captured") {
+        setReadboardPreviewKind("controlled_target");
+        setReadboardPreviewError(capture.message ?? capture.errorMessage ?? `Controlled target proof ${status}; no image preview was imported.`);
+        setOperationStatus("readboardSync", readboardCaptureStatus(capture));
+        return;
+      }
+
+      const directSnapshot = readboardSnapshotFromCapture(capture);
+      if (directSnapshot) {
+        setReadboardSyncResult(directSnapshot);
+        setReadboardPreviewKind("controlled_target");
+        setReadboardPreviewError("");
+        setOperationStatus("readboardSync", readboardCapturePreviewStatus(capture, directSnapshot));
+        return;
+      }
+
+      const imageBase64 = capture.image_base64 ?? capture.imageBase64 ?? null;
+      const preview = await syncReadboardSidecarSnapshot({
+        endpoint: optionalTrimmed(readboardEndpoint),
+        image_path: capture.image_path ?? capture.imagePath ?? imagePath,
+        image_base64: capture.image_path || capture.imagePath || imagePath ? null : cleanImageBase64(imageBase64 ?? ""),
+        metadata: {
+          source: "provider_panel",
+          input: "controlled_local_target_window",
+          capture_status: capture.status,
+          snapshot_id: capture.snapshot_id ?? capture.snapshotId ?? "",
+          snapshot_hash: capture.snapshot_hash ?? capture.snapshotHash ?? capture.hash ?? "",
+          scope: "controlled_target_screenshot_proof_not_full_ocr_or_external_client_parity",
+          ...stringifyMetadata(readboardControlledTargetMetadataFromResult(capture, targetMetadata))
+        },
+        timeout_ms: readboardTimeoutMs
+      });
+      setReadboardSyncResult(preview);
+      setReadboardPreviewKind("controlled_target");
+      setReadboardPreviewError("");
+      setOperationStatus("readboardSync", readboardCapturePreviewStatus(capture, preview));
+    } catch (error) {
+      setReadboardCaptureResult({
+        status: normalizeCaptureStatus(errorMessage(error)),
+        source: "controlled_local_target_window",
+        warnings: ["Controlled target proof failed recoverably. No SGF was imported and the board was not replaced."],
+        message: errorMessage(error),
+        recoverable: true,
+        imported: false,
+        controlledLocalTargetWindow: true
+      });
+      setReadboardPreviewKind("controlled_target");
+      setReadboardPreviewError(errorMessage(error));
+      setOperationStatus("readboardSync", `Controlled target preview failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
+    }
+  }
+
   async function handleImportReadboardSnapshot() {
     if (!readboardSyncResult?.position || !readboardImportConfirmed) return;
     setOperationStatus("readboardSync", "Importing readboard snapshot...");
@@ -485,6 +588,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         data-preview-confirmed={String(readboardImportConfirmed)}
         data-user-confirmed={String(readboardImportConfirmed || readboardReplacementConfirmedByUser)}
         data-can-import-preview={String(canImportReadboardSnapshot)}
+        data-controlled-local-target-window={String(readboardPreviewKind === "controlled_target" || readboardCaptureControlledTarget(readboardCaptureResult))}
+        data-preview-before-confirmation={String(readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
         data-preview-only-before-confirmation={String(readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
         data-board-replaced-before-confirmation="false"
         data-board-replacement-observed={String(readboardReplacementObserved)}
@@ -493,6 +598,9 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         data-target-client-parity="false"
         data-full-readboard-parity="false"
         data-release-parity="false"
+        data-no-full-ocr-parity="true"
+        data-no-target-client-parity="true"
+        data-no-release-parity="true"
       >
         <div className="provider-subheader" data-testid="readboard-preview-header" data-legacy-target="provider-readboard-status">
           <h3>Readboard preview and controlled image import</h3>
@@ -553,7 +661,15 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             </div>
             <div>
               <dt>Bytes</dt>
-              <dd>{readboardCaptureResult.size ?? "not reported"}</dd>
+              <dd>{readboardCaptureSize(readboardCaptureResult) ?? "not reported"}</dd>
+            </div>
+            <div>
+              <dt>Target</dt>
+              <dd title={readboardControlledTargetSummary(readboardCaptureResult)}>{readboardControlledTargetSummary(readboardCaptureResult)}</dd>
+            </div>
+            <div>
+              <dt>Fixture</dt>
+              <dd>{readboardControlledTargetValue(readboardCaptureResult, "fixture") ?? "not reported"}</dd>
             </div>
             <div>
               <dt>Board size</dt>
@@ -659,6 +775,78 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             }}
           />
         </label>
+        <section
+          className="provider-controlled-target"
+          data-testid="readboard-controlled-target-proof"
+          data-controlled-local-target-window={String(readboardPreviewKind === "controlled_target" || readboardCaptureControlledTarget(readboardCaptureResult))}
+          data-preview-before-confirmation={String(readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
+          data-no-full-ocr-parity="true"
+          data-no-target-client-parity="true"
+          data-no-release-parity="true"
+        >
+          <div className="provider-subheader">
+            <h4>Controlled target window/screenshot proof</h4>
+            <span>scoped proof</span>
+          </div>
+          <p className="provider-status">
+            Uses an explicit image path plus target metadata to prove a controlled local target window/screenshot route. It does not claim arbitrary OCR, external client automation, or release parity.
+          </p>
+          <div className="provider-grid provider-target-metadata-grid">
+            <label>
+              <span>Fixture id</span>
+              <input
+                data-testid="readboard-controlled-target-fixture-id-input"
+                value={readboardControlledFixtureId}
+                disabled={disabled}
+                placeholder="controlled-board-fixture"
+                onChange={(event) => setReadboardControlledFixtureId(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Process id</span>
+              <input
+                data-testid="readboard-controlled-target-process-id-input"
+                value={readboardControlledProcessId}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="optional pid"
+                onChange={(event) => setReadboardControlledProcessId(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="provider-grid provider-target-metadata-grid">
+            <label>
+              <span>Width</span>
+              <input
+                data-testid="readboard-controlled-target-width-input"
+                value={readboardControlledWidth}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="optional"
+                onChange={(event) => setReadboardControlledWidth(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Height</span>
+              <input
+                data-testid="readboard-controlled-target-height-input"
+                value={readboardControlledHeight}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="optional"
+                onChange={(event) => setReadboardControlledHeight(event.target.value)}
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            data-testid="readboard-preview-controlled-target"
+            onClick={() => void handleReadboardControlledTargetPreview()}
+            disabled={!canPreviewControlledTarget}
+          >
+            Preview controlled target
+          </button>
+        </section>
         <div className="provider-grid">
           <button data-testid="readboard-preview-image" onClick={() => void handleReadboardImagePreview()} disabled={!canPreviewReadboardImage}>Preview image</button>
           <button data-testid="readboard-import-image-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import confirmed preview</button>
@@ -702,6 +890,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             data-preview-kind={readboardPreviewKind}
             data-preview-has-position={String(readboardSyncResult.position != null)}
             data-preview-stone-count={readboardSyncResult.position?.stones.length ?? 0}
+            data-controlled-local-target-window={String(readboardPreviewKind === "controlled_target")}
           >
             <div>
               <dt>Snapshot</dt>
@@ -1121,14 +1310,16 @@ function readboardImagePreviewStatus(result: ReadboardSidecarSyncSnapshotResult)
 
 function readboardCaptureStatus(result: ReadboardExternalCaptureResult): string {
   const status = normalizeCaptureStatus(result.status);
+  if (status === "captured" && readboardCaptureControlledTarget(result)) return "Controlled local target captured; preview is required before import.";
   if (status === "captured") return `Operator-selected ${readboardCaptureSourceLabel(result)} captured; preview is required before import.`;
   return `Capture ${status}: ${result.message ?? result.errorMessage ?? "recoverable; no SGF imported and board not replaced."}`;
 }
 
 function readboardCapturePreviewStatus(result: ReadboardExternalCaptureResult, preview: ReadboardSidecarSyncSnapshotResult): string {
   const source = readboardCaptureSourceLabel(result);
-  if (!preview.position) return `Operator-selected ${source} capture preview ${readboardSnapshotId(preview)}: no board position extracted; no import performed.`;
-  return `Operator-selected ${source} capture preview ${readboardSnapshotId(preview)}: ${preview.position.board_size}x${preview.position.board_size}, ${preview.position.stones.length} stones, ${colorLabel(preview.position.to_play)} to play. Confirm before import.`;
+  const prefix = readboardCaptureControlledTarget(result) ? "Controlled local target" : `Operator-selected ${source} capture`;
+  if (!preview.position) return `${prefix} preview ${readboardSnapshotId(preview)}: no board position extracted; no import performed.`;
+  return `${prefix} preview ${readboardSnapshotId(preview)}: ${preview.position.board_size}x${preview.position.board_size}, ${preview.position.stones.length} stones, ${colorLabel(preview.position.to_play)} to play. Confirm before import.`;
 }
 
 function readboardSnapshotImportStatus(result: ProviderImportResult): string {
@@ -1174,6 +1365,7 @@ function readboardPreviewSourceLabel(kind: ReadboardPreviewKind): string {
   if (kind === "image_base64") return "controlled image base64";
   if (kind === "capture_screen") return "operator-selected screen capture";
   if (kind === "capture_window") return "operator-selected window capture";
+  if (kind === "controlled_target") return "controlled target window/screenshot proof";
   if (kind === "protocol") return "protocol snapshot line";
   return "not reported";
 }
@@ -1191,9 +1383,10 @@ function readboardSnapshotFromCapture(result: ReadboardExternalCaptureResult): R
       capture_source: readboardCaptureSourceLabel(result),
       sanitized_path: result.sanitizedPath ?? "",
       sha256: result.sha256 ?? "",
-      size: result.size === null || result.size === undefined ? "" : String(result.size),
+      size: readboardCaptureSize(result) === null ? "" : String(readboardCaptureSize(result)),
       decode: typeof result.decode === "string" ? result.decode : result.decode ? JSON.stringify(result.decode) : "",
-      scope: "operator_selected_capture_mvp_not_full_ocr_or_external_client_capture"
+      scope: "operator_selected_capture_mvp_not_full_ocr_or_external_client_capture",
+      ...stringifyMetadata(readboardControlledTargetMetadataFromResult(result, null))
     },
     position: result.position,
     warnings: result.warnings
@@ -1211,15 +1404,50 @@ function normalizeCaptureStatus(value: unknown): string {
 }
 
 function readboardCaptureSourceLabel(result: ReadboardExternalCaptureResult): string {
-  return result.source === "window" ? "window" : result.source === "screen" ? "screen" : String(result.source || "capture");
+  if (result.source === "window") return "window";
+  if (result.source === "screen") return "screen";
+  if (result.source === "controlled_local_target_window" || readboardCaptureControlledTarget(result)) return "controlled target";
+  return String(result.source || "capture");
 }
 
 function readboardCaptureHash(result: ReadboardExternalCaptureResult): string | null {
   return result.snapshot_hash ?? result.snapshotHash ?? result.hash ?? result.sha256 ?? null;
 }
 
+function readboardCaptureSize(result: ReadboardExternalCaptureResult): number | null {
+  return result.size ?? result.sizeBytes ?? numberFromUnknown(result.artifact?.sizeBytes) ?? numberFromUnknown(result.artifact?.size) ?? null;
+}
+
 function readboardCapturePosition(result: ReadboardExternalCaptureResult): PositionDto | null {
   return result.position ?? null;
+}
+
+function readboardCaptureControlledTarget(result: ReadboardExternalCaptureResult | null): boolean {
+  if (!result) return false;
+  return Boolean(
+      result.controlledLocalTargetWindow ||
+      result.controlled_local_target_window ||
+      result.source === "controlled_local_target_window" ||
+      readboardControlledTargetValue(result, "fixture") ||
+      readboardControlledTargetValue(result, "window")
+  );
+}
+
+function readboardControlledTargetSummary(result: ReadboardExternalCaptureResult): string {
+  const metadata = readboardControlledTargetMetadataFromResult(result, null);
+  const parts = [
+    metadata.window_title ? `window ${metadata.window_title}` : "",
+    metadata.process_id !== null && metadata.process_id !== undefined ? `pid ${metadata.process_id}` : "",
+    metadata.fixture_id ? `fixture ${metadata.fixture_id}` : "",
+    metadata.width && metadata.height ? `${metadata.width}x${metadata.height}` : ""
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("; ") : readboardCaptureControlledTarget(result) ? "controlled target" : "not reported";
+}
+
+function readboardControlledTargetValue(result: ReadboardExternalCaptureResult, key: "fixture" | "window"): string | null {
+  const metadata = readboardControlledTargetMetadataFromResult(result, null);
+  if (key === "fixture") return metadata.fixture_id ?? null;
+  return metadata.window_title ?? null;
 }
 
 function readboardResultMetadata(result: ReadboardSidecarSyncSnapshotResult): Record<string, string> {
@@ -1233,7 +1461,96 @@ function readboardSourceMetadata(result: ReadboardSidecarSyncSnapshotResult, kin
   return entries;
 }
 
-function stringifyMetadata(metadata: Record<string, string> | null | undefined): Record<string, string> {
+function readboardControlledTargetMetadata(
+  windowTitle: string,
+  processId: string,
+  fixtureId: string,
+  width: string,
+  height: string,
+  imagePath: string
+): ReadboardControlledTargetMetadata {
+  const normalizedWindowTitle = optionalTrimmed(windowTitle);
+  const normalizedFixtureId = optionalTrimmed(fixtureId);
+  const normalizedProcessId = positiveIntegerOrNull(processId);
+  const normalizedWidth = positiveIntegerOrNull(width);
+  const normalizedHeight = positiveIntegerOrNull(height);
+  return {
+    controlledLocalTargetWindow: true,
+    controlled_local_target_window: true,
+    windowTitle: normalizedWindowTitle,
+    window_title: normalizedWindowTitle,
+    processId: normalizedProcessId,
+    process_id: normalizedProcessId,
+    fixtureId: normalizedFixtureId,
+    fixture_id: normalizedFixtureId,
+    width: normalizedWidth,
+    height: normalizedHeight,
+    imagePath,
+    image_path: imagePath
+  };
+}
+
+function readboardControlledTargetMetadataFromResult(
+  result: ReadboardExternalCaptureResult,
+  fallback: ReadboardControlledTargetMetadata | null
+): ReadboardControlledTargetMetadata {
+  const rawTarget = result.controlledTarget ?? result.controlled_target ?? result.targetMetadata ?? result.target_metadata ?? {};
+  const target = isUnknownRecord(rawTarget) ? rawTarget : {};
+  const sourceMetadata = stringifyMetadata(result.source_metadata ?? result.sourceMetadata ?? result.metadata ?? {});
+  const windowTitle = stringFromUnknown(result.windowTitle)
+    ?? stringFromUnknown(result.window_title)
+    ?? stringFromUnknown(target.windowTitle)
+    ?? stringFromUnknown(target.window_title)
+    ?? sourceMetadata.window_title
+    ?? fallback?.window_title
+    ?? null;
+  const fixtureId = stringFromUnknown(result.fixtureId)
+    ?? stringFromUnknown(result.fixture_id)
+    ?? stringFromUnknown(target.fixtureId)
+    ?? stringFromUnknown(target.fixture_id)
+    ?? sourceMetadata.fixture_id
+    ?? fallback?.fixture_id
+    ?? null;
+  const processId = numberFromUnknown(result.processId)
+    ?? numberFromUnknown(result.process_id)
+    ?? numberFromUnknown(target.processId)
+    ?? numberFromUnknown(target.process_id)
+    ?? numberFromString(sourceMetadata.process_id)
+    ?? fallback?.process_id
+    ?? null;
+  const width = numberFromUnknown(result.width)
+    ?? numberFromUnknown(target.width)
+    ?? numberFromString(sourceMetadata.width)
+    ?? fallback?.width
+    ?? null;
+  const height = numberFromUnknown(result.height)
+    ?? numberFromUnknown(target.height)
+    ?? numberFromString(sourceMetadata.height)
+    ?? fallback?.height
+    ?? null;
+  const imagePath = stringFromUnknown(result.imagePath)
+    ?? stringFromUnknown(result.image_path)
+    ?? stringFromUnknown(target.imagePath)
+    ?? stringFromUnknown(target.image_path)
+    ?? fallback?.image_path
+    ?? null;
+  return {
+    controlledLocalTargetWindow: Boolean(result.controlledLocalTargetWindow ?? result.controlled_local_target_window ?? target.controlledLocalTargetWindow ?? target.controlled_local_target_window ?? fallback?.controlledLocalTargetWindow ?? false),
+    controlled_local_target_window: Boolean(result.controlled_local_target_window ?? result.controlledLocalTargetWindow ?? target.controlled_local_target_window ?? target.controlledLocalTargetWindow ?? fallback?.controlled_local_target_window ?? false),
+    windowTitle,
+    window_title: windowTitle,
+    processId,
+    process_id: processId,
+    fixtureId,
+    fixture_id: fixtureId,
+    width,
+    height,
+    imagePath,
+    image_path: imagePath
+  };
+}
+
+function stringifyMetadata(metadata: Record<string, unknown> | null | undefined): Record<string, string> {
   if (!metadata) return {};
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(metadata)) {
@@ -1269,6 +1586,27 @@ function cleanImageBase64(value: string): string {
   return trimmed;
 }
 
+function positiveIntegerOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function stringFromUnknown(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function numberFromString(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function colorLabel(color: PlayerColor): string {
   return color === "black" ? "Black" : "White";
 }
@@ -1281,5 +1619,9 @@ function errorMessage(error: unknown): string {
 }
 
 function isErrorRecord(value: unknown): value is { kind?: unknown; message?: unknown } {
+  return typeof value === "object" && value !== null;
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

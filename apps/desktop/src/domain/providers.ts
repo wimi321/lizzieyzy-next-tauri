@@ -102,7 +102,27 @@ export type ReadboardSidecarSyncSnapshotResult = {
   warnings: string[];
 };
 
-export type ReadboardExternalCaptureSource = "screen" | "window" | "local_image" | "operator_selected_file";
+export type ReadboardControlledTargetMetadata = {
+  controlledLocalTargetWindow?: boolean;
+  controlled_local_target_window?: boolean;
+  windowTitle?: string | null;
+  window_title?: string | null;
+  processId?: number | null;
+  process_id?: number | null;
+  fixtureId?: string | null;
+  fixture_id?: string | null;
+  width?: number | null;
+  height?: number | null;
+  imagePath?: string | null;
+  image_path?: string | null;
+};
+
+export type ReadboardExternalCaptureSource =
+  | "screen"
+  | "window"
+  | "local_image"
+  | "operator_selected_file"
+  | "controlled_local_target_window";
 
 export type ReadboardExternalCaptureStatus = "captured" | "cancelled" | "permission" | "unsupported" | "decode_error" | "error" | string;
 
@@ -110,8 +130,21 @@ export type ReadboardExternalCaptureRequest = {
   source: ReadboardExternalCaptureSource;
   endpoint?: string | null;
   image_path?: string | null;
+  imagePath?: string | null;
   window_title?: string | null;
+  windowTitle?: string | null;
+  process_id?: number | null;
+  processId?: number | null;
+  fixture_id?: string | null;
+  fixtureId?: string | null;
+  width?: number | null;
+  height?: number | null;
+  controlledLocalTargetWindow?: boolean;
+  controlled_local_target_window?: boolean;
+  controlledTarget?: ReadboardControlledTargetMetadata | null;
+  controlled_target?: ReadboardControlledTargetMetadata | null;
   timeout_ms?: number | null;
+  timeoutMs?: number | null;
   metadata: Record<string, string>;
 };
 
@@ -130,6 +163,22 @@ export type ReadboardExternalCaptureResult = {
   sanitizedPath?: string | null;
   sha256?: string | null;
   size?: number | null;
+  sizeBytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  window_title?: string | null;
+  windowTitle?: string | null;
+  process_id?: number | null;
+  processId?: number | null;
+  fixture_id?: string | null;
+  fixtureId?: string | null;
+  controlledLocalTargetWindow?: boolean;
+  controlled_local_target_window?: boolean;
+  controlledTarget?: ReadboardControlledTargetMetadata | null;
+  controlled_target?: ReadboardControlledTargetMetadata | null;
+  targetMetadata?: ReadboardControlledTargetMetadata | Record<string, unknown> | null;
+  target_metadata?: ReadboardControlledTargetMetadata | Record<string, unknown> | null;
+  artifact?: Record<string, unknown> | null;
   decode?: Record<string, unknown> | string | null;
   confidence?: number | string | null;
   position?: PositionDto | null;

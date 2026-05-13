@@ -71,14 +71,7 @@ export async function captureReadboardExternal(request: ReadboardExternalCapture
   if (!isTauriRuntime()) return readboardExternalCaptureFallback(request, "Browser preview cannot capture external screens or windows.");
   try {
     return await invoke<ReadboardExternalCaptureResult>("readboard_external_capture", {
-      request: {
-        captureSource: request.source,
-        endpoint: request.endpoint ?? null,
-        imagePath: request.image_path ?? null,
-        windowTitle: request.window_title ?? null,
-        timeoutMs: request.timeout_ms ?? null,
-        metadata: request.metadata
-      }
+      request: normalizeReadboardExternalCaptureRequest(request)
     });
   } catch (error) {
     return readboardExternalCaptureFallback(request, errorMessage(error));
@@ -97,17 +90,53 @@ export async function previewLegacyImportCaptureHelper(
 }
 
 function readboardExternalCaptureFallback(request: ReadboardExternalCaptureRequest, message: string): ReadboardExternalCaptureResult {
+  const controlledTarget = request.source === "controlled_local_target_window" || request.controlledLocalTargetWindow || request.controlled_local_target_window;
   return {
     status: classifyCaptureStatus(message),
     source: request.source,
     warnings: [
-      "Operator-selected screen/window capture did not produce an image preview.",
+      controlledTarget
+        ? "Controlled local target window/screenshot proof did not produce an image preview."
+        : "Operator-selected screen/window capture did not produce an image preview.",
       "No SGF was imported and the board was not replaced."
     ],
-    message: `${message} This is a recoverable boundary for the external capture MVP.`,
+    message: `${message} This is a recoverable boundary for the ${controlledTarget ? "controlled target proof" : "external capture MVP"}.`,
     recoverable: true,
     imported: false,
+    metadata: request.metadata,
+    controlledLocalTargetWindow: request.controlledLocalTargetWindow ?? request.controlled_local_target_window ?? false,
+    controlled_target: request.controlled_target ?? request.controlledTarget ?? null,
+    controlledTarget: request.controlledTarget ?? request.controlled_target ?? null
+  };
+}
+
+function normalizeReadboardExternalCaptureRequest(request: ReadboardExternalCaptureRequest) {
+  return {
+    captureSource: request.source,
+    endpoint: request.endpoint ?? null,
+    imagePath: request.imagePath ?? request.image_path ?? null,
+    windowTitle: request.windowTitle ?? request.window_title ?? null,
+    processId: request.processId ?? request.process_id ?? null,
+    fixtureId: request.fixtureId ?? request.fixture_id ?? null,
+    width: request.width ?? null,
+    height: request.height ?? null,
+    controlledLocalTargetWindow: request.controlledLocalTargetWindow ?? request.controlled_local_target_window ?? false,
+    controlledTarget: normalizeControlledTarget(request.controlledTarget ?? request.controlled_target ?? null),
+    timeoutMs: request.timeoutMs ?? request.timeout_ms ?? null,
     metadata: request.metadata
+  };
+}
+
+function normalizeControlledTarget(target: ReadboardExternalCaptureRequest["controlledTarget"] | ReadboardExternalCaptureRequest["controlled_target"]) {
+  if (!target) return null;
+  return {
+    controlledLocalTargetWindow: target.controlledLocalTargetWindow ?? target.controlled_local_target_window ?? false,
+    windowTitle: target.windowTitle ?? target.window_title ?? null,
+    processId: target.processId ?? target.process_id ?? null,
+    fixtureId: target.fixtureId ?? target.fixture_id ?? null,
+    width: target.width ?? null,
+    height: target.height ?? null,
+    imagePath: target.imagePath ?? target.image_path ?? null
   };
 }
 

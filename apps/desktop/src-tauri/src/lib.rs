@@ -960,7 +960,7 @@ struct InstalledAppSgfWorkflowBoundariesDto {
     full_legacy_parity: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 struct ReadboardExternalCaptureRequestDto {
     #[serde(alias = "source", alias = "captureSource")]
     capture_source: String,
@@ -968,8 +968,32 @@ struct ReadboardExternalCaptureRequestDto {
     image_path: Option<String>,
     #[serde(default, alias = "timeoutMs", alias = "timeout_ms")]
     timeout_ms: Option<u64>,
+    #[serde(default)]
+    endpoint: Option<String>,
+    #[serde(
+        default,
+        alias = "windowTitle",
+        alias = "window_title",
+        alias = "targetWindowTitle"
+    )]
+    window_title: Option<String>,
+    #[serde(
+        default,
+        alias = "processName",
+        alias = "process_name",
+        alias = "targetProcess"
+    )]
+    process: Option<Value>,
+    #[serde(default, alias = "processId", alias = "process_id", alias = "targetProcessId")]
+    process_id: Option<Value>,
+    #[serde(default, alias = "fixtureId", alias = "fixture_id")]
+    fixture_id: Option<Value>,
+    #[serde(default, alias = "screenshotWidth", alias = "screenshot_width")]
+    width: Option<Value>,
+    #[serde(default, alias = "screenshotHeight", alias = "screenshot_height")]
+    height: Option<Value>,
     #[serde(default, alias = "sourceMetadata", alias = "source_metadata")]
-    metadata: Option<BTreeMap<String, String>>,
+    metadata: Option<BTreeMap<String, Value>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -993,6 +1017,7 @@ struct ReadboardExternalCaptureResultDto {
     decode: ReadboardExternalCaptureDecodeDto,
     snapshot: Option<ReadboardExternalCaptureSnapshotDto>,
     board_replacement: String,
+    boundaries: BTreeMap<String, bool>,
     warnings: Vec<String>,
     message: Option<String>,
     error_message: Option<String>,
@@ -2028,7 +2053,7 @@ fn readboard_external_capture_with_runner(
         ));
     }
     validate_timeout_ms(request.timeout_ms, "readboard_external_capture")?;
-    let metadata = request.metadata.unwrap_or_default();
+    let metadata = readboard_external_capture_metadata(&request);
     match capture_source.as_str() {
         "local_image" | "local_image_file" | "image_path" => {
             let path = request
@@ -2061,6 +2086,30 @@ fn readboard_external_capture_with_runner(
                 "operator_selected_file",
                 true,
                 true,
+                metadata,
+            ))
+        }
+        "controlled_local_target_window"
+        | "controlled_target_window"
+        | "controlled_target"
+        | "controlled_window"
+        | "controlled_screenshot"
+        | "controlled_target_screenshot" => {
+            let path = request
+                .image_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    invalid_request(
+                        "readboard_external_capture controlled_local_target_window requires imagePath",
+                    )
+                })?;
+            Ok(readboard_external_capture_decode_path(
+                Path::new(path),
+                "controlled_local_target_window",
+                false,
+                false,
                 metadata,
             ))
         }
@@ -2251,6 +2300,75 @@ fn run_macos_interactive_screencapture(_timeout: Duration) -> ReadboardCaptureFi
     }
 }
 
+fn readboard_external_capture_metadata(
+    request: &ReadboardExternalCaptureRequestDto,
+) -> BTreeMap<String, String> {
+    let mut metadata = request
+        .metadata
+        .as_ref()
+        .map(|metadata| {
+            metadata
+                .iter()
+                .filter_map(|(key, value)| {
+                    json_value_to_metadata_string(value)
+                        .map(|value| (key.clone(), sanitize_capture_metadata_value(&value)))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+
+    insert_optional_metadata(&mut metadata, "endpoint", request.endpoint.as_deref());
+    insert_optional_metadata(
+        &mut metadata,
+        "targetWindowTitle",
+        request.window_title.as_deref(),
+    );
+    insert_optional_value_metadata(&mut metadata, "targetProcess", request.process.as_ref());
+    insert_optional_value_metadata(&mut metadata, "targetProcessId", request.process_id.as_ref());
+    insert_optional_value_metadata(&mut metadata, "fixtureId", request.fixture_id.as_ref());
+    insert_optional_value_metadata(&mut metadata, "width", request.width.as_ref());
+    insert_optional_value_metadata(&mut metadata, "height", request.height.as_ref());
+    if metadata.contains_key("targetWindowTitle") || metadata.contains_key("fixtureId") {
+        metadata
+            .entry("controlledLocalTargetWindow".to_string())
+            .or_insert_with(|| "true".to_string());
+    }
+    metadata
+}
+
+fn insert_optional_metadata(metadata: &mut BTreeMap<String, String>, key: &str, value: Option<&str>) {
+    if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
+        metadata
+            .entry(key.to_string())
+            .or_insert_with(|| sanitize_capture_metadata_value(value));
+    }
+}
+
+fn insert_optional_value_metadata(metadata: &mut BTreeMap<String, String>, key: &str, value: Option<&Value>) {
+    if let Some(value) = value.and_then(json_value_to_metadata_string) {
+        metadata
+            .entry(key.to_string())
+            .or_insert_with(|| sanitize_capture_metadata_value(&value));
+    }
+}
+
+fn json_value_to_metadata_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::String(value) => {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }
+        Value::Array(_) | Value::Object(_) => Some(value.to_string()),
+    }
+}
+
+fn sanitize_capture_metadata_value(value: &str) -> String {
+    sanitize_capture_message(value)
+}
+
 fn readboard_external_capture_decode_path(
     path: &Path,
     capture_source: &str,
@@ -2259,6 +2377,10 @@ fn readboard_external_capture_decode_path(
     metadata: BTreeMap<String, String>,
 ) -> ReadboardExternalCaptureResultDto {
     let sanitized_path = sanitize_capture_path_for_source(path, capture_source);
+    let mut metadata = metadata;
+    metadata
+        .entry("screenshotPath".to_string())
+        .or_insert_with(|| sanitized_path.clone());
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(err) => {
@@ -2277,6 +2399,12 @@ fn readboard_external_capture_decode_path(
     };
     let sha256 = sha256_hex(&bytes);
     let size = bytes.len() as u64;
+    metadata
+        .entry("screenshotSha256".to_string())
+        .or_insert_with(|| sha256.clone());
+    metadata
+        .entry("screenshotSize".to_string())
+        .or_insert_with(|| size.to_string());
     let request = ReadboardSidecarSyncSnapshotRequest {
         sgf_text: None,
         snapshot_id: Some("external-capture-preview".to_string()),
@@ -2334,6 +2462,7 @@ fn readboard_external_capture_decode_path(
                 decode,
                 snapshot,
                 board_replacement: "none".to_string(),
+                boundaries: readboard_external_capture_boundaries(),
                 warnings,
                 message: None,
                 error_message: None,
@@ -2439,11 +2568,24 @@ fn readboard_external_capture_status_with_file(
         },
         snapshot: None,
         board_replacement: "none".to_string(),
+        boundaries: readboard_external_capture_boundaries(),
         warnings,
         message: error_message.clone(),
         error_message,
         metadata,
     }
+}
+
+fn readboard_external_capture_boundaries() -> BTreeMap<String, bool> {
+    BTreeMap::from([
+        ("automaticBoardReplacement".to_string(), false),
+        ("fullOcrParity".to_string(), false),
+        ("fullReadboardParity".to_string(), false),
+        ("realClientCapture".to_string(), false),
+        ("targetClientDiscovery".to_string(), false),
+        ("providerParity".to_string(), false),
+        ("readboardParity".to_string(), false),
+    ])
 }
 
 fn sanitize_capture_path(path: &Path) -> String {
@@ -2457,6 +2599,7 @@ fn sanitize_capture_path_for_source(path: &Path, source: &str) -> String {
         .unwrap_or("image");
     let prefix = match source {
         "operator_selected_file" => "operator-selected-file",
+        "controlled_local_target_window" | "controlled_target_window" => "controlled-local-target-window",
         "macos_interactive_capture" | "macos_interactive_screencapture" => "macos-interactive-capture",
         _ => "local-image",
     };
@@ -2486,6 +2629,7 @@ fn readboard_external_capture_scope_warning(source: &str) -> String {
     match source {
         "local_image" | "local_image_file" => "Readboard external capture decoded an explicit local image file only; this is not arbitrary OCR or target-client capture parity.".to_string(),
         "operator_selected_file" => "Readboard external capture decoded an operator-selected image file only; no target-client discovery or automatic board replacement was performed.".to_string(),
+        "controlled_local_target_window" | "controlled_target_window" => "Readboard external capture decoded an explicit controlled local target-window screenshot fixture only; no real client discovery, arbitrary OCR, or automatic board replacement was performed.".to_string(),
         "macos_interactive_capture" => "Readboard external capture used operator-selected macOS interactive capture only; this is not arbitrary OCR or external client parity.".to_string(),
         _ => "Readboard external capture is scoped preview-only proof; no arbitrary OCR, target-client parity, or automatic board replacement is claimed.".to_string(),
     }
@@ -8860,7 +9004,11 @@ mod tests {
             capture_source: "local_image".to_string(),
             image_path: Some(path.display().to_string()),
             timeout_ms: None,
-            metadata: Some(BTreeMap::from([("case".to_string(), "fixture".to_string())])),
+            metadata: Some(BTreeMap::from([(
+                "case".to_string(),
+                Value::String("fixture".to_string()),
+            )])),
+            ..Default::default()
         })
         .unwrap();
 
@@ -8922,7 +9070,7 @@ mod tests {
                 .metadata
                 .as_ref()
                 .and_then(|metadata| metadata.get("ui"))
-                .map(String::as_str),
+                .and_then(Value::as_str),
             Some("frontend")
         );
         assert_eq!(
@@ -8940,8 +9088,9 @@ mod tests {
             timeout_ms: Some(1_000),
             metadata: Some(BTreeMap::from([(
                 "selection".to_string(),
-                "operator".to_string(),
+                Value::String("operator".to_string()),
             )])),
+            ..Default::default()
         })
         .unwrap();
 
@@ -8971,6 +9120,7 @@ mod tests {
             image_path: Some(path.display().to_string()),
             timeout_ms: Some(1_000),
             metadata: None,
+            ..Default::default()
         })
         .unwrap();
 
@@ -9007,9 +9157,175 @@ mod tests {
                 .metadata
                 .as_ref()
                 .and_then(|metadata| metadata.get("style"))
-                .map(String::as_str),
+                .and_then(Value::as_str),
             Some("snake")
         );
+    }
+
+    #[test]
+    fn readboard_external_capture_accepts_controlled_target_window_request_aliases() {
+        let value = serde_json::json!({
+            "captureSource": "controlled_local_target_window",
+            "imagePath": "board.png",
+            "endpoint": "fixture://controlled-window",
+            "window_title": "Controlled Board Window",
+            "processId": 4242,
+            "fixtureId": "fixture-19-three-stones",
+            "width": 640,
+            "height": 640,
+            "sourceMetadata": {
+                "process": "fixture-client",
+                "operator": "test"
+            }
+        });
+        let request: ReadboardExternalCaptureRequestDto = serde_json::from_value(value).unwrap();
+        let metadata = readboard_external_capture_metadata(&request);
+
+        assert_eq!(request.capture_source, "controlled_local_target_window");
+        assert_eq!(request.image_path.as_deref(), Some("board.png"));
+        assert_eq!(request.endpoint.as_deref(), Some("fixture://controlled-window"));
+        assert_eq!(
+            metadata.get("targetWindowTitle").map(String::as_str),
+            Some("Controlled Board Window")
+        );
+        assert_eq!(metadata.get("targetProcessId").map(String::as_str), Some("4242"));
+        assert_eq!(
+            metadata.get("fixtureId").map(String::as_str),
+            Some("fixture-19-three-stones")
+        );
+        assert_eq!(metadata.get("width").map(String::as_str), Some("640"));
+        assert_eq!(metadata.get("height").map(String::as_str), Some("640"));
+        assert_eq!(
+            metadata.get("controlledLocalTargetWindow").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            metadata.get("process").map(String::as_str),
+            Some("fixture-client")
+        );
+    }
+
+    #[test]
+    fn readboard_external_capture_controlled_target_window_carries_preview_metadata() {
+        let path = readboard_image_fixture("controlled-19-three-stones.ppm");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "controlled_target_window".to_string(),
+            image_path: Some(path.display().to_string()),
+            window_title: Some("Controlled Board Window".to_string()),
+            process: Some(Value::String("fixture-client".to_string())),
+            process_id: Some(Value::Number(4242.into())),
+            fixture_id: Some(Value::String("fixture-19-three-stones".to_string())),
+            width: Some(Value::Number(640.into())),
+            height: Some(Value::Number(640.into())),
+            metadata: Some(BTreeMap::from([(
+                "scenario".to_string(),
+                Value::String("controlled-window".to_string()),
+            )])),
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "captured");
+        assert_eq!(result.source, "controlled_local_target_window");
+        assert_eq!(result.capture_source, "controlled_local_target_window");
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("controlled-local-target-window:controlled-19-three-stones.ppm")
+        );
+        assert_eq!(
+            result
+                .source_metadata
+                .get("targetWindowTitle")
+                .map(String::as_str),
+            Some("Controlled Board Window")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetProcess").map(String::as_str),
+            Some("fixture-client")
+        );
+        assert_eq!(
+            result.source_metadata.get("targetProcessId").map(String::as_str),
+            Some("4242")
+        );
+        assert_eq!(
+            result.source_metadata.get("fixtureId").map(String::as_str),
+            Some("fixture-19-three-stones")
+        );
+        assert_eq!(
+            result.source_metadata.get("width").map(String::as_str),
+            Some("640")
+        );
+        assert_eq!(
+            result.source_metadata.get("height").map(String::as_str),
+            Some("640")
+        );
+        assert_eq!(
+            result.source_metadata.get("screenshotPath"),
+            result.sanitized_path.as_ref()
+        );
+        assert_eq!(
+            result.source_metadata.get("screenshotSha256"),
+            result.sha256.as_ref()
+        );
+        let expected_size = result.size.map(|size| size.to_string());
+        assert_eq!(
+            result.source_metadata.get("screenshotSize").map(String::as_str),
+            expected_size.as_deref()
+        );
+        assert_eq!(result.position.as_ref().unwrap().board_size, 19);
+        assert_eq!(result.decode.stone_count, Some(3));
+        assert_eq!(result.board_replacement, "none");
+        assert_eq!(result.boundaries.get("automaticBoardReplacement"), Some(&false));
+        assert_eq!(result.boundaries.get("targetClientDiscovery"), Some(&false));
+        assert_eq!(result.boundaries.get("fullOcrParity"), Some(&false));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("controlled local target-window screenshot fixture")));
+    }
+
+    #[test]
+    fn readboard_external_capture_controlled_target_window_non_board_is_recoverable_preview_error() {
+        let path = readboard_image_fixture("non-board.ppm");
+        let result = readboard_external_capture(ReadboardExternalCaptureRequestDto {
+            capture_source: "controlled_local_target_window".to_string(),
+            image_path: Some(path.display().to_string()),
+            window_title: Some("Controlled Non Board".to_string()),
+            fixture_id: Some(Value::String("non-board".to_string())),
+            metadata: Some(BTreeMap::from([(
+                "privatePath".to_string(),
+                Value::String("/Users/example/private-board.png".to_string()),
+            )])),
+            ..Default::default()
+        })
+        .unwrap();
+
+        assert_eq!(result.status, "decode_error");
+        assert!(result.recoverable);
+        assert_eq!(result.source, "controlled_local_target_window");
+        assert_eq!(result.capture_source, "controlled_local_target_window");
+        assert!(!result.operator_initiated);
+        assert!(!result.user_selection_required);
+        assert!(result.position.is_none());
+        assert!(result.snapshot.is_none());
+        assert_eq!(result.board_replacement, "none");
+        assert_eq!(result.decode.status, "decode_error");
+        assert_eq!(
+            result.sanitized_path.as_deref(),
+            Some("controlled-local-target-window:non-board.ppm")
+        );
+        assert_eq!(
+            result.source_metadata.get("privatePath").map(String::as_str),
+            Some("<path>")
+        );
+        assert_eq!(result.boundaries.get("realClientCapture"), Some(&false));
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains(path.parent().unwrap().to_str().unwrap()));
+        assert!(!serialized.contains("/Users/"));
+        assert!(!serialized.contains("/private/"));
+        assert!(!serialized.contains("/var/folders/"));
     }
 
     #[test]
@@ -9020,6 +9336,7 @@ mod tests {
             image_path: Some(path.display().to_string()),
             timeout_ms: None,
             metadata: None,
+            ..Default::default()
         })
         .unwrap();
 
@@ -9049,6 +9366,7 @@ mod tests {
             image_path: None,
             timeout_ms: None,
             metadata: None,
+            ..Default::default()
         })
         .unwrap_err();
         assert_eq!(invalid_source.kind, ProviderErrorKind::InvalidRequest);
@@ -9058,6 +9376,7 @@ mod tests {
             image_path: None,
             timeout_ms: None,
             metadata: None,
+            ..Default::default()
         })
         .unwrap_err();
         assert_eq!(missing_path.kind, ProviderErrorKind::InvalidRequest);
@@ -9086,6 +9405,7 @@ mod tests {
                 image_path: None,
                 timeout_ms: Some(1_000),
                 metadata: None,
+                ..Default::default()
             },
             fake_cancel,
         )
@@ -9111,6 +9431,7 @@ mod tests {
             image_path: None,
             timeout_ms: Some(1_000),
             metadata: None,
+            ..Default::default()
         })
         .unwrap();
 

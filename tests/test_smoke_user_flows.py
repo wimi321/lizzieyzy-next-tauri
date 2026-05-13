@@ -3621,6 +3621,70 @@ class SmokeUserFlowsTests(unittest.TestCase):
             self.assertIn("provider_live_smoke", pending)
             self.assertIn("scripts/smoke_tauri_provider_live.py", pending["provider_live_smoke"])
 
+    def test_valid_provider_session_error_schema_evidence_passes_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = [result for result in results if result.status == "FAIL"]
+            pending_names = {result.name for result in results if result.status == "PENDING"}
+            pass_names = {result.name for result in results if result.status == "PASS"}
+            self.assertEqual([], failures)
+            self.assertIn("provider_session_error_schema_smoke", pass_names)
+            self.assertNotIn("provider_session_error_schema_smoke", pending_names)
+
+    def test_provider_session_error_schema_rejects_missing_fixture_class(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            manifest = evidence["fixtureManifest"]
+            assert isinstance(manifest, list)
+            evidence["fixtureManifest"] = [
+                item for item in manifest if not (isinstance(item, dict) and item.get("class") == "schema_changed")
+            ]
+
+        self.assert_invalid_provider_session_error_schema_pending(
+            mutate,
+            "fixtureManifest missing classes: schema_changed",
+        )
+
+    def test_provider_session_error_schema_rejects_frontend_display_missing(self) -> None:
+        def mutate(evidence: dict[str, object]) -> None:
+            checks = evidence["checks"]
+            assert isinstance(checks, list)
+            for check in checks:
+                if isinstance(check, dict) and check.get("name") == "frontend_display":
+                    details = check["details"]
+                    assert isinstance(details, dict)
+                    details["typedFrontendDisplay"] = False
+
+        self.assert_invalid_provider_session_error_schema_pending(
+            mutate,
+            "frontend_display.typedFrontendDisplay must be true",
+        )
+
+    def test_provider_session_error_schema_rejects_overclaim(self) -> None:
+        self.assert_invalid_provider_session_error_schema_pending(
+            lambda evidence: evidence.__setitem__("fullProviderParity", True),
+            "fullProviderParity must be false",
+        )
+
+    def assert_invalid_provider_session_error_schema_pending(self, mutate_evidence, expected_detail: str) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_complete_smoke_fixture(root)
+            evidence = valid_provider_session_error_schema_evidence()
+            mutate_evidence(evidence)
+            write_json(root / smoke_user_flows.PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE, evidence)
+
+            results = smoke_user_flows.UserFlowSmoke(root).run()
+
+            failures = {result.name: result.detail for result in results if result.status == "FAIL"}
+            pending = {result.name: result.detail for result in results if result.status == "PENDING"}
+            self.assertNotIn("provider_session_error_schema_smoke", failures)
+            self.assertIn("provider_session_error_schema_smoke", pending)
+            self.assertIn(expected_detail, pending["provider_session_error_schema_smoke"])
+
     def test_invalid_provider_controlled_network_evidence_remains_pending(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -4772,6 +4836,7 @@ def create_complete_smoke_fixture(
     write_valid_readboard_target_window_screenshot_evidence(root)
     write_valid_readboard_arbitrary_screenshot_ocr_evidence(root)
     write_valid_readboard_target_window_discovery_evidence(root)
+    write_valid_provider_session_error_schema_evidence(root)
     for rel in smoke_user_flows.GOLDEN_SGF_FIXTURES:
         write(root / rel, "(;FF[4]GM[1]SZ[9];B[aa];W[bb])\n")
     write(
@@ -5067,6 +5132,13 @@ def write_valid_provider_live_evidence(root: Path) -> None:
     write_json(
         root / smoke_user_flows.PROVIDER_LIVE_SMOKE_EVIDENCE,
         valid_provider_live_evidence(),
+    )
+
+
+def write_valid_provider_session_error_schema_evidence(root: Path) -> None:
+    write_json(
+        root / smoke_user_flows.PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE,
+        valid_provider_session_error_schema_evidence(),
     )
 
 
@@ -6604,6 +6676,11 @@ def valid_provider_live_evidence() -> dict[str, object]:
             },
         ],
     }
+
+
+def valid_provider_session_error_schema_evidence() -> dict[str, object]:
+    evidence_path = Path(__file__).resolve().parents[1] / smoke_user_flows.PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE
+    return json.loads(evidence_path.read_text(encoding="utf-8"))
 
 
 def valid_multiplatform_packaging_evidence() -> dict[str, object]:

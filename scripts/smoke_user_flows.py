@@ -934,6 +934,35 @@ PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS = [
     "offline_not_counted_as_external_live",
     "external_account_scope",
 ]
+PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE = "docs/qa/provider-session-error-schema-smoke.json"
+PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_SCHEMA = "lizzieyzy.provider-session-error-schema-smoke.v1"
+PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FIXTURES = {
+    "session_expired",
+    "auth_required",
+    "rate_limited",
+    "blocked_or_challenged",
+    "schema_changed",
+    "empty_result",
+    "service_unavailable",
+    "malformed_payload",
+}
+PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_CHECKS = [
+    "fixture_classes",
+    "typed_error_mapping",
+    "frontend_display",
+    "schema_drift_detection",
+    "scope_boundaries",
+]
+PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FALSE_FIELDS = [
+    "realProviderParity",
+    "fullProviderParity",
+    "liveProviderParity",
+    "foxYikeParity",
+    "externalAccountCovered",
+    "releaseParity",
+    "releaseReady",
+    "fullLegacyParity",
+]
 MULTIPLATFORM_PACKAGING_SMOKE_EVIDENCE = "docs/qa/multiplatform-packaging-smoke.json"
 MULTIPLATFORM_PACKAGING_SMOKE_SCHEMA = "lizzieyzy.multiplatform-packaging-smoke.v1"
 PACKAGING_PLATFORMS = ["macos", "windows", "linux"]
@@ -1711,6 +1740,7 @@ class UserFlowSmoke:
         self.check_readboard_arbitrary_screenshot_ocr_smoke_evidence()
         self.check_readboard_target_window_discovery_smoke_evidence()
         self.check_provider_live_smoke_evidence()
+        self.check_provider_session_error_schema_smoke_evidence()
         self.check_multiplatform_packaging_smoke_evidence()
 
     def check_tauri_runtime_ui_smoke_evidence(self) -> None:
@@ -2650,6 +2680,30 @@ class UserFlowSmoke:
         self.pass_(
             "provider_live_smoke",
             f"macOS scoped controlled-network Tauri provider smoke evidence passes with {len(PROVIDER_LIVE_SMOKE_REQUIRED_CHECKS)} required checks",
+        )
+
+    def check_provider_session_error_schema_smoke_evidence(self) -> None:
+        evidence_path = self.path(PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE)
+        if not evidence_path.is_file():
+            self.pending(
+                "provider_session_error_schema_smoke",
+                f"TODO gate: record scoped provider session/error/schema evidence at {PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE}",
+            )
+            return
+        evidence = self.load_json(PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE)
+        if evidence is None:
+            return
+        failures = validate_provider_session_error_schema_smoke_evidence(evidence)
+        if failures:
+            self.pending(
+                "provider_session_error_schema_smoke",
+                f"{PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_EVIDENCE} is present but not valid scoped provider session/error/schema PASS evidence: "
+                + "; ".join(failures),
+            )
+            return
+        self.pass_(
+            "provider_session_error_schema_smoke",
+            "scoped provider session/error/schema evidence passes with fixture classes, typed frontend display, schema drift handling, and false parity/release boundaries",
         )
 
     def check_multiplatform_packaging_smoke_evidence(self) -> None:
@@ -7878,6 +7932,212 @@ def validate_provider_live_smoke_evidence(evidence: Any) -> list[str]:
     failures.extend(validate_controlled_network_observed(check_by_name.get("controlled_network_observed")))
     failures.extend(validate_offline_not_counted_as_external_live(check_by_name.get("offline_not_counted_as_external_live")))
     failures.extend(validate_external_account_scope(check_by_name.get("external_account_scope")))
+    return failures
+
+
+def validate_provider_session_error_schema_smoke_evidence(evidence: Any) -> list[str]:
+    if not isinstance(evidence, dict):
+        return ["evidence root must be an object"]
+    failures: list[str] = []
+    if evidence.get("schema") != PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_SCHEMA:
+        failures.append(f"schema must be {PROVIDER_SESSION_ERROR_SCHEMA_SMOKE_SCHEMA}")
+    if evidence.get("name") != "provider_session_error_schema_smoke":
+        failures.append("name must be provider_session_error_schema_smoke")
+    if str(evidence.get("status", "")).lower() != "pass":
+        failures.append("status must be pass")
+    if str(evidence.get("platform", "")).lower() not in {"macos", "darwin", "ci"}:
+        failures.append("platform must be macos/darwin/ci")
+    if evidence.get("collectionMethod") != "fixture_contract_plus_frontend_display":
+        failures.append("collectionMethod must be fixture_contract_plus_frontend_display")
+    if evidence.get("sourceStaticOnly") is not False:
+        failures.append("sourceStaticOnly must be false")
+    if evidence.get("externalNetworkObserved") is not False:
+        failures.append("externalNetworkObserved must be false")
+    for key in ("fixtureClassesVerified", "typedErrorsVerified", "frontendDisplayVerified", "schemaDriftHandled"):
+        if evidence.get(key) is not True:
+            failures.append(f"{key} must be true")
+    for key in PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FALSE_FIELDS:
+        if evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+
+    checks = evidence.get("checks")
+    if not isinstance(checks, list):
+        failures.append("checks must be a list")
+        check_by_name: dict[str, Any] = {}
+    else:
+        check_by_name = {
+            check.get("name"): check
+            for check in checks
+            if isinstance(check, dict) and isinstance(check.get("name"), str)
+        }
+        missing = [name for name in PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_CHECKS if name not in check_by_name]
+        not_pass = [
+            name
+            for name in PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_CHECKS
+            if name in check_by_name and str(check_by_name[name].get("status", "")).lower() != "pass"
+        ]
+        if missing:
+            failures.append("missing required checks: " + ", ".join(missing))
+        if not_pass:
+            failures.append("required checks not pass: " + ", ".join(not_pass))
+
+    fixture_manifest = evidence.get("fixtureManifest")
+    failures.extend(validate_provider_session_fixture_manifest(fixture_manifest, "fixtureManifest"))
+    failures.extend(validate_provider_session_fixture_manifest_check(check_by_name.get("fixture_classes")))
+    failures.extend(validate_provider_typed_error_mapping(check_by_name.get("typed_error_mapping"), fixture_manifest))
+    failures.extend(validate_provider_frontend_display(check_by_name.get("frontend_display")))
+    failures.extend(validate_provider_schema_drift_detection(check_by_name.get("schema_drift_detection")))
+    failures.extend(validate_provider_session_scope_boundaries(check_by_name.get("scope_boundaries"), evidence))
+    return failures
+
+
+def validate_provider_session_fixture_manifest(manifest: Any, label: str) -> list[str]:
+    if not isinstance(manifest, list):
+        return [f"{label} must be a list"]
+    failures: list[str] = []
+    classes: set[str] = set()
+    for index, item in enumerate(manifest):
+        item_label = f"{label}[{index}]"
+        if not isinstance(item, dict):
+            failures.append(f"{item_label} must be an object")
+            continue
+        fixture_class = item.get("class")
+        if isinstance(fixture_class, str):
+            classes.add(fixture_class)
+        if fixture_class not in PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FIXTURES:
+            failures.append(f"{item_label}.class must be one of required fixture classes")
+        if item.get("provider") not in {"yike", "fox"}:
+            failures.append(f"{item_label}.provider must be yike or fox")
+        if not isinstance(item.get("errorKind"), str) or not item.get("errorKind"):
+            failures.append(f"{item_label}.errorKind must be non-empty")
+        if item.get("reportedAsSuccess") is not False:
+            failures.append(f"{item_label}.reportedAsSuccess must be false")
+        if item.get("fixtureParserOnly") is not False:
+            failures.append(f"{item_label}.fixtureParserOnly must be false")
+    missing = sorted(PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FIXTURES - classes)
+    if missing:
+        failures.append("fixtureManifest missing classes: " + ", ".join(missing))
+    return failures
+
+
+def validate_provider_session_fixture_manifest_check(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["fixture_classes evidence must be an object"]
+    classes = evidence.get("classes")
+    if not isinstance(classes, list):
+        return ["fixture_classes.classes must be a list"]
+    missing = sorted(PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FIXTURES - set(classes))
+    if missing:
+        return ["fixture_classes missing classes: " + ", ".join(missing)]
+    if evidence.get("fixtureClassesVerified") is not True:
+        return ["fixture_classes.fixtureClassesVerified must be true"]
+    return []
+
+
+def validate_provider_typed_error_mapping(check: Any, manifest: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["typed_error_mapping evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("typedProviderError") is not True:
+        failures.append("typed_error_mapping.typedProviderError must be true")
+    mappings = evidence.get("mappings")
+    if not isinstance(mappings, list) or not mappings:
+        failures.append("typed_error_mapping.mappings must be non-empty")
+        return failures
+    manifest_classes: set[str] = set()
+    if isinstance(manifest, list):
+        manifest_classes = {
+            item.get("class")
+            for item in manifest
+            if isinstance(item, dict) and isinstance(item.get("class"), str)
+        }
+    mapping_classes: set[str] = set()
+    for index, mapping in enumerate(mappings):
+        item_label = f"typed_error_mapping.mappings[{index}]"
+        if not isinstance(mapping, dict):
+            failures.append(f"{item_label} must be an object")
+            continue
+        mapping_class = mapping.get("class")
+        if isinstance(mapping_class, str):
+            mapping_classes.add(mapping_class)
+        if not isinstance(mapping.get("errorKind"), str) or not mapping.get("errorKind"):
+            failures.append(f"{item_label}.errorKind must be non-empty")
+        if not isinstance(mapping.get("userMessage"), str) or not mapping.get("userMessage"):
+            failures.append(f"{item_label}.userMessage must be non-empty")
+        if mapping.get("retryable") not in {True, False}:
+            failures.append(f"{item_label}.retryable must be boolean")
+        if mapping.get("reportedAsSuccess") is not False:
+            failures.append(f"{item_label}.reportedAsSuccess must be false")
+    missing = sorted((manifest_classes or PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FIXTURES) - mapping_classes)
+    if missing:
+        failures.append("typed_error_mapping missing classes: " + ", ".join(missing))
+    return failures
+
+
+def validate_provider_frontend_display(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["frontend_display evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("typedFrontendDisplay") is not True:
+        failures.append("frontend_display.typedFrontendDisplay must be true")
+    if evidence.get("rawPayloadHidden") is not True:
+        failures.append("frontend_display.rawPayloadHidden must be true")
+    if evidence.get("actionableRecoveryShown") is not True:
+        failures.append("frontend_display.actionableRecoveryShown must be true")
+    messages = evidence.get("messages")
+    if not isinstance(messages, list) or len(messages) < 3:
+        failures.append("frontend_display.messages must include at least three typed messages")
+    else:
+        message_classes: set[str] = set()
+        for index, message in enumerate(messages):
+            if not isinstance(message, dict):
+                failures.append(f"frontend_display.messages[{index}] must be an object")
+                continue
+            message_class = message.get("class")
+            if isinstance(message_class, str):
+                message_classes.add(message_class)
+            if not isinstance(message.get("errorKind"), str) or not message.get("errorKind"):
+                failures.append(f"frontend_display.messages[{index}].errorKind must be non-empty")
+            if not isinstance(message.get("text"), str) or not message.get("text"):
+                failures.append(f"frontend_display.messages[{index}].text must be non-empty")
+            if message.get("reportedAsSuccess") is not False:
+                failures.append(f"frontend_display.messages[{index}].reportedAsSuccess must be false")
+        missing = sorted(PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FIXTURES - message_classes)
+        if missing:
+            failures.append("frontend_display missing classes: " + ", ".join(missing))
+    return failures
+
+
+def validate_provider_schema_drift_detection(check: Any) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["schema_drift_detection evidence must be an object"]
+    failures: list[str] = []
+    if evidence.get("unknownFieldsWarned") is not True:
+        failures.append("schema_drift_detection.unknownFieldsWarned must be true")
+    if evidence.get("missingRequiredRejected") is not True:
+        failures.append("schema_drift_detection.missingRequiredRejected must be true")
+    if evidence.get("schemaVersionRecorded") is not True:
+        failures.append("schema_drift_detection.schemaVersionRecorded must be true")
+    if evidence.get("reportedAsSuccess") is not False:
+        failures.append("schema_drift_detection.reportedAsSuccess must be false")
+    return failures
+
+
+def validate_provider_session_scope_boundaries(check: Any, root_evidence: dict[str, Any]) -> list[str]:
+    evidence = check_evidence(check)
+    if evidence is None:
+        return ["scope_boundaries evidence must be an object"]
+    failures: list[str] = []
+    boundaries = evidence.get("boundaries") if isinstance(evidence.get("boundaries"), dict) else evidence
+    for key in PROVIDER_SESSION_ERROR_SCHEMA_REQUIRED_FALSE_FIELDS:
+        if root_evidence.get(key) is not False:
+            failures.append(f"{key} must be false")
+        if boundaries.get(key) is not False:
+            failures.append(f"scope_boundaries.{key} must be false")
     return failures
 
 

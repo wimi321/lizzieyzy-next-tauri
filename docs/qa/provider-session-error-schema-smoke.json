@@ -1,0 +1,288 @@
+{
+  "schema": "lizzieyzy.provider-session-error-schema-smoke.v1",
+  "name": "provider_session_error_schema_smoke",
+  "status": "pass",
+  "platform": "ci",
+  "collectionMethod": "fixture_contract_plus_frontend_display",
+  "sourceStaticOnly": false,
+  "externalNetworkObserved": false,
+  "fixtureClassesVerified": true,
+  "typedErrorsVerified": true,
+  "frontendDisplayVerified": true,
+  "schemaDriftHandled": true,
+  "fixtureManifest": [
+    {
+      "class": "session_expired",
+      "provider": "yike",
+      "errorKind": "ProviderSessionExpired",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": false
+    },
+    {
+      "class": "auth_required",
+      "provider": "fox",
+      "errorKind": "ProviderAuthRequired",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": false
+    },
+    {
+      "class": "rate_limited",
+      "provider": "yike",
+      "errorKind": "ProviderRateLimited",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": true
+    },
+    {
+      "class": "blocked_or_challenged",
+      "provider": "fox",
+      "errorKind": "ProviderBlockedOrChallenged",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": false
+    },
+    {
+      "class": "schema_changed",
+      "provider": "fox",
+      "errorKind": "ProviderSchemaChanged",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": false
+    },
+    {
+      "class": "empty_result",
+      "provider": "yike",
+      "errorKind": "ProviderEmptyResult",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": false
+    },
+    {
+      "class": "service_unavailable",
+      "provider": "yike",
+      "errorKind": "ProviderServiceUnavailable",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": true
+    },
+    {
+      "class": "malformed_payload",
+      "provider": "fox",
+      "errorKind": "ProviderMalformedPayload",
+      "schemaVersion": "controlled-fixture-v1",
+      "reportedAsSuccess": false,
+      "fixtureParserOnly": false,
+      "retryable": false
+    }
+  ],
+  "realProviderParity": false,
+  "fullProviderParity": false,
+  "liveProviderParity": false,
+  "foxYikeParity": false,
+  "externalAccountCovered": false,
+  "releaseParity": false,
+  "releaseReady": false,
+  "fullLegacyParity": false,
+  "checks": [
+    {
+      "name": "fixture_classes",
+      "status": "pass",
+      "details": {
+        "classes": [
+          "session_expired",
+          "auth_required",
+          "rate_limited",
+          "blocked_or_challenged",
+          "schema_changed",
+          "empty_result",
+          "service_unavailable",
+          "malformed_payload"
+        ],
+        "fixtureClassesVerified": true
+      }
+    },
+    {
+      "name": "typed_error_mapping",
+      "status": "pass",
+      "details": {
+        "typedProviderError": true,
+        "mappings": [
+          {
+            "class": "session_expired",
+            "provider": "yike",
+            "errorKind": "ProviderSessionExpired",
+            "userMessage": "Please sign in again to refresh the Yike session.",
+            "retryable": false,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "auth_required",
+            "provider": "fox",
+            "errorKind": "ProviderAuthRequired",
+            "userMessage": "Fox requires account authentication before fetching games.",
+            "retryable": false,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "rate_limited",
+            "provider": "yike",
+            "errorKind": "ProviderRateLimited",
+            "userMessage": "Provider rate limit reached; wait before retrying.",
+            "retryable": true,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "blocked_or_challenged",
+            "provider": "fox",
+            "errorKind": "ProviderBlockedOrChallenged",
+            "userMessage": "Provider returned an anti-bot or HTML challenge and was not imported.",
+            "retryable": false,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "schema_changed",
+            "provider": "fox",
+            "errorKind": "ProviderSchemaChanged",
+            "userMessage": "Provider response schema changed and was rejected.",
+            "retryable": false,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "empty_result",
+            "provider": "yike",
+            "errorKind": "ProviderEmptyResult",
+            "userMessage": "Provider returned no usable game data and was not treated as success.",
+            "retryable": false,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "service_unavailable",
+            "provider": "yike",
+            "errorKind": "ProviderServiceUnavailable",
+            "userMessage": "Provider service is unavailable; retry later.",
+            "retryable": true,
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "malformed_payload",
+            "provider": "fox",
+            "errorKind": "ProviderMalformedPayload",
+            "userMessage": "Provider payload was malformed and was not imported.",
+            "retryable": false,
+            "reportedAsSuccess": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "frontend_display",
+      "status": "pass",
+      "details": {
+        "typedFrontendDisplay": true,
+        "rawPayloadHidden": true,
+        "actionableRecoveryShown": true,
+        "messages": [
+          {
+            "class": "session_expired",
+            "provider": "yike",
+            "errorKind": "ProviderSessionExpired",
+            "text": "Please sign in again to refresh the Yike session.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "auth_required",
+            "provider": "fox",
+            "errorKind": "ProviderAuthRequired",
+            "text": "Fox requires account authentication before fetching games.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "rate_limited",
+            "provider": "yike",
+            "errorKind": "ProviderRateLimited",
+            "text": "Provider rate limit reached; wait before retrying.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "blocked_or_challenged",
+            "provider": "fox",
+            "errorKind": "ProviderBlockedOrChallenged",
+            "text": "Complete the provider challenge manually; the app does not bypass anti-bot checks.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "schema_changed",
+            "provider": "fox",
+            "errorKind": "ProviderSchemaChanged",
+            "text": "Provider response schema changed and was rejected.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "empty_result",
+            "provider": "yike",
+            "errorKind": "ProviderEmptyResult",
+            "text": "Provider returned no game data; no board state was replaced.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "service_unavailable",
+            "provider": "yike",
+            "errorKind": "ProviderServiceUnavailable",
+            "text": "Provider service is unavailable; retry later.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          },
+          {
+            "class": "malformed_payload",
+            "provider": "fox",
+            "errorKind": "ProviderMalformedPayload",
+            "text": "Provider payload was malformed and was not imported.",
+            "ariaLive": "polite",
+            "reportedAsSuccess": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "schema_drift_detection",
+      "status": "pass",
+      "details": {
+        "unknownFieldsWarned": true,
+        "missingRequiredRejected": true,
+        "schemaVersionRecorded": true,
+        "reportedAsSuccess": false
+      }
+    },
+    {
+      "name": "scope_boundaries",
+      "status": "pass",
+      "details": {
+        "boundaries": {
+          "realProviderParity": false,
+          "fullProviderParity": false,
+          "liveProviderParity": false,
+          "foxYikeParity": false,
+          "externalAccountCovered": false,
+          "releaseParity": false,
+          "releaseReady": false,
+          "fullLegacyParity": false
+        }
+      }
+    }
+  ]
+}

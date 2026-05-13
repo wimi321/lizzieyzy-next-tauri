@@ -91,20 +91,26 @@ export async function previewLegacyImportCaptureHelper(
 
 function readboardExternalCaptureFallback(request: ReadboardExternalCaptureRequest, message: string): ReadboardExternalCaptureResult {
   const controlledTarget = request.source === "controlled_local_target_window" || request.controlledLocalTargetWindow || request.controlled_local_target_window;
+  const screenshotRegion = request.source === "arbitrary_screenshot_board_region" || request.boardRegionDetection || request.board_region_detection;
   return {
     status: classifyCaptureStatus(message),
     source: request.source,
     warnings: [
       controlledTarget
         ? "Controlled local target window/screenshot proof did not produce an image preview."
+        : screenshotRegion
+          ? "Scoped screenshot board-region detection did not produce an image preview."
         : "Operator-selected screen/window capture did not produce an image preview.",
       "No SGF was imported and the board was not replaced."
     ],
-    message: `${message} This is a recoverable boundary for the ${controlledTarget ? "controlled target proof" : "external capture MVP"}.`,
+    message: `${message} This is a recoverable boundary for the ${controlledTarget ? "controlled target proof" : screenshotRegion ? "screenshot board-region detection proof" : "external capture MVP"}.`,
     recoverable: true,
     imported: false,
     metadata: request.metadata,
     controlledLocalTargetWindow: request.controlledLocalTargetWindow ?? request.controlled_local_target_window ?? false,
+    arbitraryScreenshot: request.arbitraryScreenshot ?? request.arbitrary_screenshot ?? false,
+    boardRegionDetection: request.boardRegionDetection ?? request.board_region_detection ?? false,
+    boardRegion: request.boardRegion ?? request.board_region ?? null,
     controlled_target: request.controlled_target ?? request.controlledTarget ?? null,
     controlledTarget: request.controlledTarget ?? request.controlled_target ?? null
   };
@@ -115,15 +121,32 @@ function normalizeReadboardExternalCaptureRequest(request: ReadboardExternalCapt
     captureSource: request.source,
     endpoint: request.endpoint ?? null,
     imagePath: request.imagePath ?? request.image_path ?? null,
+    imageBase64: request.imageBase64 ?? request.image_base64 ?? null,
     windowTitle: request.windowTitle ?? request.window_title ?? null,
     processId: request.processId ?? request.process_id ?? null,
     fixtureId: request.fixtureId ?? request.fixture_id ?? null,
     width: request.width ?? null,
     height: request.height ?? null,
     controlledLocalTargetWindow: request.controlledLocalTargetWindow ?? request.controlled_local_target_window ?? false,
+    arbitraryScreenshot: request.arbitraryScreenshot ?? request.arbitrary_screenshot ?? false,
+    boardRegionDetection: request.boardRegionDetection ?? request.board_region_detection ?? false,
+    boardRegion: normalizeBoardRegion(request.boardRegion ?? request.board_region ?? null),
     controlledTarget: normalizeControlledTarget(request.controlledTarget ?? request.controlled_target ?? null),
     timeoutMs: request.timeoutMs ?? request.timeout_ms ?? null,
     metadata: request.metadata
+  };
+}
+
+function normalizeBoardRegion(region: ReadboardExternalCaptureRequest["boardRegion"] | ReadboardExternalCaptureRequest["board_region"]) {
+  if (!region) return null;
+  return {
+    detected: region.detected ?? null,
+    x: region.x ?? null,
+    y: region.y ?? null,
+    width: region.width ?? null,
+    height: region.height ?? null,
+    confidence: region.confidence ?? null,
+    source: region.source ?? null
   };
 }
 
@@ -227,7 +250,7 @@ function legacyImportCaptureHelperFallback(
     imported: false,
     boardReplacement: "none",
     warnings: [
-      isOcr ? "Controlled board image import is scoped to selected/pasted board images; arbitrary screenshots and external capture remain unsupported." : "External window/client capture helper is a recoverable unsupported path.",
+      isOcr ? "Controlled board image import and scoped screenshot board-region detection are preview-only paths; full OCR and external client capture remain unsupported." : "External window/client capture helper is a recoverable unsupported path.",
       "No stale, guessed, or partial board replacement was applied.",
       ...(backendMessage ? [`Backend helper contract unavailable: ${backendMessage}`] : [])
     ],

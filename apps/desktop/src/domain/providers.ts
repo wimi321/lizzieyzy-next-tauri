@@ -117,12 +117,23 @@ export type ReadboardControlledTargetMetadata = {
   image_path?: string | null;
 };
 
+export type ReadboardBoardRegionMetadata = {
+  detected?: boolean | null;
+  x?: number | null;
+  y?: number | null;
+  width?: number | null;
+  height?: number | null;
+  confidence?: number | string | null;
+  source?: string | null;
+};
+
 export type ReadboardExternalCaptureSource =
   | "screen"
   | "window"
   | "local_image"
   | "operator_selected_file"
-  | "controlled_local_target_window";
+  | "controlled_local_target_window"
+  | "arbitrary_screenshot_board_region";
 
 export type ReadboardExternalCaptureStatus = "captured" | "cancelled" | "permission" | "unsupported" | "decode_error" | "error" | string;
 
@@ -131,6 +142,8 @@ export type ReadboardExternalCaptureRequest = {
   endpoint?: string | null;
   image_path?: string | null;
   imagePath?: string | null;
+  image_base64?: string | null;
+  imageBase64?: string | null;
   window_title?: string | null;
   windowTitle?: string | null;
   process_id?: number | null;
@@ -141,6 +154,12 @@ export type ReadboardExternalCaptureRequest = {
   height?: number | null;
   controlledLocalTargetWindow?: boolean;
   controlled_local_target_window?: boolean;
+  arbitraryScreenshot?: boolean;
+  arbitrary_screenshot?: boolean;
+  boardRegionDetection?: boolean;
+  board_region_detection?: boolean;
+  boardRegion?: ReadboardBoardRegionMetadata | null;
+  board_region?: ReadboardBoardRegionMetadata | null;
   controlledTarget?: ReadboardControlledTargetMetadata | null;
   controlled_target?: ReadboardControlledTargetMetadata | null;
   timeout_ms?: number | null;
@@ -174,6 +193,14 @@ export type ReadboardExternalCaptureResult = {
   fixtureId?: string | null;
   controlledLocalTargetWindow?: boolean;
   controlled_local_target_window?: boolean;
+  arbitraryScreenshot?: boolean;
+  arbitrary_screenshot?: boolean;
+  boardRegionDetection?: boolean;
+  board_region_detection?: boolean;
+  boardRegion?: ReadboardBoardRegionMetadata | Record<string, unknown> | null;
+  board_region?: ReadboardBoardRegionMetadata | Record<string, unknown> | null;
+  detectedBoardRegion?: ReadboardBoardRegionMetadata | Record<string, unknown> | null;
+  detected_board_region?: ReadboardBoardRegionMetadata | Record<string, unknown> | null;
   controlledTarget?: ReadboardControlledTargetMetadata | null;
   controlled_target?: ReadboardControlledTargetMetadata | null;
   targetMetadata?: ReadboardControlledTargetMetadata | Record<string, unknown> | null;

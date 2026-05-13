@@ -839,7 +839,8 @@ textarea {
 .provider-grid button,
 .provider-panel > button,
 .provider-readboard > button,
-.provider-controlled-target > button {
+.provider-controlled-target > button,
+.provider-screenshot-region > button {
   min-width: 0;
   height: 32px;
   padding: 6px 8px;
@@ -849,7 +850,8 @@ textarea {
 
 .provider-panel > button,
 .provider-readboard > button,
-.provider-controlled-target > button {
+.provider-controlled-target > button,
+.provider-screenshot-region > button {
   width: 100%;
 }
 
@@ -946,7 +948,8 @@ textarea {
   border-top: 1px solid #e2e8f0;
 }
 
-.provider-controlled-target {
+.provider-controlled-target,
+.provider-screenshot-region {
   display: grid;
   gap: 8px;
   min-width: 0;

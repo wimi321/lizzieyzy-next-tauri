@@ -50,7 +50,7 @@ type FoxFetchInput = {
   sourceId: string | null;
 };
 
-type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64" | "capture_screen" | "capture_window" | "controlled_target";
+type ReadboardPreviewKind = "none" | "protocol" | "image_path" | "image_base64" | "capture_screen" | "capture_window" | "controlled_target" | "screenshot_region";
 
 const providerFetchTimeoutMs = 15_000;
 const readboardTimeoutMs = 5_000;
@@ -99,6 +99,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
   const canPreviewReadboardImage = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
   const canCaptureReadboardExternal = !disabled;
   const canPreviewControlledTarget = !disabled && readboardImagePath.trim().length > 0;
+  const canPreviewScreenshotRegion = !disabled && (readboardImagePath.trim().length > 0 || readboardImageBase64.trim().length > 0);
   const canConfirmReadboardImport = !disabled && readboardSyncResult?.position != null;
   const canImportReadboardSnapshot = canConfirmReadboardImport && readboardImportConfirmed;
   const headerStatus = statuses.fetch !== initialStatuses.fetch
@@ -432,6 +433,96 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
     }
   }
 
+  async function handleReadboardScreenshotRegionPreview() {
+    if (!canPreviewScreenshotRegion) return;
+    setOperationStatus("readboardSync", "Detecting board region in user-provided screenshot...");
+    resetReadboardPreviewState();
+    try {
+      const hasPath = readboardImagePath.trim().length > 0;
+      const imagePath = hasPath ? readboardImagePath.trim() : null;
+      const imageBase64 = hasPath ? null : cleanImageBase64(readboardImageBase64);
+      const capture = await captureReadboardExternal({
+        source: "arbitrary_screenshot_board_region",
+        endpoint: optionalTrimmed(readboardEndpoint),
+        image_path: imagePath,
+        imagePath,
+        image_base64: imageBase64,
+        imageBase64: imageBase64,
+        arbitraryScreenshot: true,
+        arbitrary_screenshot: true,
+        boardRegionDetection: true,
+        board_region_detection: true,
+        timeout_ms: readboardTimeoutMs,
+        metadata: {
+          source: "provider_panel",
+          input: hasPath ? "arbitrary_screenshot_path" : "arbitrary_screenshot_base64",
+          scope: "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity",
+          file_name: readboardImageName
+        }
+      });
+      setReadboardCaptureResult(capture);
+      const status = normalizeCaptureStatus(capture.status);
+      if (status !== "captured") {
+        setReadboardPreviewKind("screenshot_region");
+        setReadboardPreviewError(capture.message ?? capture.errorMessage ?? `Screenshot region detection ${status}; no image preview was imported.`);
+        setOperationStatus("readboardSync", readboardCaptureStatus(capture));
+        return;
+      }
+
+      const directSnapshot = readboardSnapshotFromCapture(capture);
+      if (directSnapshot) {
+        setReadboardSyncResult(directSnapshot);
+        setReadboardPreviewKind("screenshot_region");
+        setReadboardPreviewError("");
+        setOperationStatus("readboardSync", readboardCapturePreviewStatus(capture, directSnapshot));
+        return;
+      }
+
+      const capturedImagePath = capture.image_path ?? capture.imagePath ?? imagePath;
+      const capturedImageBase64 = capture.image_base64 ?? capture.imageBase64 ?? imageBase64;
+      if (!capturedImagePath && !capturedImageBase64) {
+        setReadboardPreviewKind("screenshot_region");
+        setReadboardPreviewError("Screenshot region detection succeeded but did not return image data for readboard preview.");
+        setOperationStatus("readboardSync", "Screenshot region detection returned no preview image; no import performed and the board was not replaced.");
+        return;
+      }
+
+      const preview = await syncReadboardSidecarSnapshot({
+        endpoint: optionalTrimmed(readboardEndpoint),
+        image_path: capturedImagePath,
+        image_base64: capturedImagePath ? null : cleanImageBase64(capturedImageBase64 ?? ""),
+        metadata: {
+          source: "provider_panel",
+          input: hasPath ? "arbitrary_screenshot_path" : "arbitrary_screenshot_base64",
+          capture_status: capture.status,
+          snapshot_id: capture.snapshot_id ?? capture.snapshotId ?? "",
+          snapshot_hash: capture.snapshot_hash ?? capture.snapshotHash ?? capture.hash ?? "",
+          scope: "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity",
+          board_region: readboardBoardRegionSummary(capture)
+        },
+        timeout_ms: readboardTimeoutMs
+      });
+      setReadboardSyncResult(preview);
+      setReadboardPreviewKind("screenshot_region");
+      setReadboardPreviewError("");
+      setOperationStatus("readboardSync", readboardCapturePreviewStatus(capture, preview));
+    } catch (error) {
+      setReadboardCaptureResult({
+        status: normalizeCaptureStatus(errorMessage(error)),
+        source: "arbitrary_screenshot_board_region",
+        warnings: ["Screenshot board-region detection failed recoverably. No SGF was imported and the board was not replaced."],
+        message: errorMessage(error),
+        recoverable: true,
+        imported: false,
+        arbitraryScreenshot: true,
+        boardRegionDetection: true
+      });
+      setReadboardPreviewKind("screenshot_region");
+      setReadboardPreviewError(errorMessage(error));
+      setOperationStatus("readboardSync", `Screenshot region detection failed recoverably: ${errorMessage(error)} No SGF was imported and the board was not replaced.`);
+    }
+  }
+
   async function handleImportReadboardSnapshot() {
     if (!readboardSyncResult?.position || !readboardImportConfirmed) return;
     setOperationStatus("readboardSync", "Importing readboard snapshot...");
@@ -589,6 +680,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
         data-user-confirmed={String(readboardImportConfirmed || readboardReplacementConfirmedByUser)}
         data-can-import-preview={String(canImportReadboardSnapshot)}
         data-controlled-local-target-window={String(readboardPreviewKind === "controlled_target" || readboardCaptureControlledTarget(readboardCaptureResult))}
+        data-arbitrary-screenshot-board-region={String(readboardPreviewKind === "screenshot_region" || readboardCaptureScreenshotRegion(readboardCaptureResult))}
+        data-board-region-detection-scoped={String(readboardPreviewKind === "screenshot_region" || readboardCaptureScreenshotRegion(readboardCaptureResult))}
         data-preview-before-confirmation={String(readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
         data-preview-only-before-confirmation={String(readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
         data-board-replaced-before-confirmation="false"
@@ -607,7 +700,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
           <span title={statuses.readboardProbe}>{statuses.readboardProbe}</span>
         </div>
         <p className="provider-status">
-          Controlled board image import MVP accepts a selected board image, an explicit image path, or pasted image base64 and previews the extracted current position before import. It is not full OCR parity, arbitrary screenshot capture, or external client/window capture.
+          Controlled board image import MVP accepts a selected board image, explicit image path, pasted image base64, or scoped user-provided screenshot region detection and previews the extracted current position before import. It is not full OCR parity or external client/window capture.
+        </p>
+        <p className="provider-status" data-testid="readboard-screenshot-region-scope">
+          Scoped arbitrary screenshot board-region detection is available only for user-provided images. It does not discover target clients, automate external windows, or replace the board without confirmation.
         </p>
         <div
           className="provider-subheader"
@@ -666,6 +762,10 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             <div>
               <dt>Target</dt>
               <dd title={readboardControlledTargetSummary(readboardCaptureResult)}>{readboardControlledTargetSummary(readboardCaptureResult)}</dd>
+            </div>
+            <div>
+              <dt>Region</dt>
+              <dd title={readboardBoardRegionSummary(readboardCaptureResult)}>{readboardBoardRegionSummary(readboardCaptureResult)}</dd>
             </div>
             <div>
               <dt>Fixture</dt>
@@ -847,6 +947,34 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             Preview controlled target
           </button>
         </section>
+        <section
+          className="provider-screenshot-region"
+          data-testid="readboard-screenshot-region-detection"
+          data-arbitrary-screenshot-board-region="true"
+          data-board-region-detection-scoped="true"
+          data-preview-before-confirmation={String(readboardPreviewKind === "screenshot_region" && readboardSyncResult?.position != null && !readboardImportConfirmed && !readboardReplacementObserved)}
+          data-automatic-replacement="false"
+          data-target-client-discovery="false"
+          data-full-ocr-parity="false"
+          data-full-readboard-parity="false"
+          data-release-parity="false"
+        >
+          <div className="provider-subheader">
+            <h4>Arbitrary screenshot board-region detection</h4>
+            <span>scoped preview</span>
+          </div>
+          <p className="provider-status">
+            Uses the image path or base64 above to ask the backend for a board-region/position preview from a user-provided screenshot. Import still requires explicit confirmation.
+          </p>
+          <button
+            type="button"
+            data-testid="readboard-preview-screenshot-region"
+            onClick={() => void handleReadboardScreenshotRegionPreview()}
+            disabled={!canPreviewScreenshotRegion}
+          >
+            Detect board region
+          </button>
+        </section>
         <div className="provider-grid">
           <button data-testid="readboard-preview-image" onClick={() => void handleReadboardImagePreview()} disabled={!canPreviewReadboardImage}>Preview image</button>
           <button data-testid="readboard-import-image-snapshot" onClick={() => void handleImportReadboardSnapshot()} disabled={!canImportReadboardSnapshot}>Import confirmed preview</button>
@@ -891,6 +1019,8 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             data-preview-has-position={String(readboardSyncResult.position != null)}
             data-preview-stone-count={readboardSyncResult.position?.stones.length ?? 0}
             data-controlled-local-target-window={String(readboardPreviewKind === "controlled_target")}
+            data-arbitrary-screenshot-board-region={String(readboardPreviewKind === "screenshot_region")}
+            data-board-region-detection-scoped={String(readboardPreviewKind === "screenshot_region")}
           >
             <div>
               <dt>Snapshot</dt>
@@ -996,7 +1126,7 @@ export function ProviderPanel({ disabled = false, onImport }: Props) {
             testId="legacy-helper-ocr-unsupported"
             title="Controlled board image import"
             status="scoped MVP"
-            detail="Use the controlled board image import fields above. Arbitrary screenshots and full OCR parity remain out of scope."
+            detail="Use the controlled image or screenshot-region fields above. Full OCR parity and external client discovery remain out of scope."
             actionLabel="Show image import scope"
             disabled={disabled}
             onAction={() => void handleLegacyHelperStatus("image_ocr")}
@@ -1311,13 +1441,18 @@ function readboardImagePreviewStatus(result: ReadboardSidecarSyncSnapshotResult)
 function readboardCaptureStatus(result: ReadboardExternalCaptureResult): string {
   const status = normalizeCaptureStatus(result.status);
   if (status === "captured" && readboardCaptureControlledTarget(result)) return "Controlled local target captured; preview is required before import.";
+  if (status === "captured" && readboardCaptureScreenshotRegion(result)) return "Screenshot board region detected; preview is required before import.";
   if (status === "captured") return `Operator-selected ${readboardCaptureSourceLabel(result)} captured; preview is required before import.`;
   return `Capture ${status}: ${result.message ?? result.errorMessage ?? "recoverable; no SGF imported and board not replaced."}`;
 }
 
 function readboardCapturePreviewStatus(result: ReadboardExternalCaptureResult, preview: ReadboardSidecarSyncSnapshotResult): string {
   const source = readboardCaptureSourceLabel(result);
-  const prefix = readboardCaptureControlledTarget(result) ? "Controlled local target" : `Operator-selected ${source} capture`;
+  const prefix = readboardCaptureControlledTarget(result)
+    ? "Controlled local target"
+    : readboardCaptureScreenshotRegion(result)
+      ? "Screenshot board-region detection"
+      : `Operator-selected ${source} capture`;
   if (!preview.position) return `${prefix} preview ${readboardSnapshotId(preview)}: no board position extracted; no import performed.`;
   return `${prefix} preview ${readboardSnapshotId(preview)}: ${preview.position.board_size}x${preview.position.board_size}, ${preview.position.stones.length} stones, ${colorLabel(preview.position.to_play)} to play. Confirm before import.`;
 }
@@ -1366,6 +1501,7 @@ function readboardPreviewSourceLabel(kind: ReadboardPreviewKind): string {
   if (kind === "capture_screen") return "operator-selected screen capture";
   if (kind === "capture_window") return "operator-selected window capture";
   if (kind === "controlled_target") return "controlled target window/screenshot proof";
+  if (kind === "screenshot_region") return "scoped screenshot board-region detection";
   if (kind === "protocol") return "protocol snapshot line";
   return "not reported";
 }
@@ -1385,7 +1521,12 @@ function readboardSnapshotFromCapture(result: ReadboardExternalCaptureResult): R
       sha256: result.sha256 ?? "",
       size: readboardCaptureSize(result) === null ? "" : String(readboardCaptureSize(result)),
       decode: typeof result.decode === "string" ? result.decode : result.decode ? JSON.stringify(result.decode) : "",
-      scope: "operator_selected_capture_mvp_not_full_ocr_or_external_client_capture",
+      scope: readboardCaptureScreenshotRegion(result)
+        ? "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity"
+        : readboardCaptureControlledTarget(result)
+          ? "controlled_target_screenshot_proof_not_full_ocr_or_external_client_parity"
+          : "operator_selected_capture_mvp_not_full_ocr_or_external_client_capture",
+      board_region: readboardBoardRegionSummary(result),
       ...stringifyMetadata(readboardControlledTargetMetadataFromResult(result, null))
     },
     position: result.position,
@@ -1406,6 +1547,7 @@ function normalizeCaptureStatus(value: unknown): string {
 function readboardCaptureSourceLabel(result: ReadboardExternalCaptureResult): string {
   if (result.source === "window") return "window";
   if (result.source === "screen") return "screen";
+  if (result.source === "arbitrary_screenshot_board_region" || readboardCaptureScreenshotRegion(result)) return "screenshot board region";
   if (result.source === "controlled_local_target_window" || readboardCaptureControlledTarget(result)) return "controlled target";
   return String(result.source || "capture");
 }
@@ -1431,6 +1573,35 @@ function readboardCaptureControlledTarget(result: ReadboardExternalCaptureResult
       readboardControlledTargetValue(result, "fixture") ||
       readboardControlledTargetValue(result, "window")
   );
+}
+
+function readboardCaptureScreenshotRegion(result: ReadboardExternalCaptureResult | null): boolean {
+  if (!result) return false;
+  return Boolean(
+    result.source === "arbitrary_screenshot_board_region" ||
+      result.arbitraryScreenshot ||
+      result.arbitrary_screenshot ||
+      result.boardRegionDetection ||
+      result.board_region_detection ||
+      result.boardRegion ||
+      result.board_region ||
+      result.detectedBoardRegion ||
+      result.detected_board_region
+  );
+}
+
+function readboardBoardRegionSummary(result: ReadboardExternalCaptureResult): string {
+  const rawRegion = result.boardRegion ?? result.board_region ?? result.detectedBoardRegion ?? result.detected_board_region;
+  const region = isUnknownRecord(rawRegion) ? rawRegion : {};
+  const x = numberFromUnknown(region.x);
+  const y = numberFromUnknown(region.y);
+  const width = numberFromUnknown(region.width);
+  const height = numberFromUnknown(region.height);
+  const confidence = region.confidence;
+  const detected = region.detected === true || readboardCaptureScreenshotRegion(result);
+  const bounds = x !== null && y !== null && width !== null && height !== null ? `${width}x${height} at ${x},${y}` : detected ? "detected" : "not reported";
+  const confidenceText = confidence === null || confidence === undefined ? "" : `; confidence ${String(confidence)}`;
+  return `${bounds}${confidenceText}`;
 }
 
 function readboardControlledTargetSummary(result: ReadboardExternalCaptureResult): string {

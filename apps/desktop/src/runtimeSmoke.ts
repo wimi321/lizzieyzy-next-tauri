@@ -67,6 +67,7 @@ type RuntimeSmokeCheckName =
   | "readboard_external_capture_mvp"
   | "readboard_operator_capture"
   | "readboard_controlled_target_proof"
+  | "readboard_screenshot_region_detection"
   | "backend_runtime_proof_observed"
   | "runtime_source_observed"
   | "backend_availability_observed"
@@ -126,6 +127,7 @@ type RuntimeSmokeReport = {
   readboardExternalCaptureMvp?: ReadboardExternalCaptureMvpEvidence;
   readboardOperatorCapture?: ReadboardExternalCaptureMvpEvidence;
   readboardTargetWindowScreenshot?: ReadboardExternalCaptureMvpEvidence;
+  readboardScreenshotRegionDetection?: ReadboardExternalCaptureMvpEvidence;
   provider?: ProviderLiveSmokeEvidence;
   webviewDomClick?: WebviewDomClickEvidence;
   installedAppRuntimeProof?: InstalledAppRuntimeProofEvidence;
@@ -133,7 +135,7 @@ type RuntimeSmokeReport = {
 };
 type RuntimeSmokeImportMeta = ImportMeta & { env?: Record<string, string | undefined> };
 type EditableMove = { id: string; color: PlayerColor; vertex: MoveVertex; parentId: string | null };
-type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "readboard-controlled-target-proof" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
+type RuntimeSmokePhase = "full" | "edit-save" | "reopen-verify" | "katago-live" | "katago-live-workflow-cache" | "readboard-live" | "readboard-external-capture-mvp" | "readboard-operator-capture" | "readboard-controlled-target-proof" | "readboard-screenshot-region-detection" | "provider-live" | "webview-dom-click" | "installed-app-runtime-proof" | "installed-app-sgf-workflow" | "installed-app-katago-live-workflow";
 type RuntimeSmokeConfig = {
   enabled: boolean;
   sgfPath: string | null;
@@ -331,12 +333,13 @@ type ReadboardExternalCaptureMvpEvidence = {
     operatorInitiated: boolean;
     userSelectionRequired: boolean;
     selection: null | { x: number; y: number; width: number; height: number };
-    sourceKind: "local_image" | "operator_selected_file" | "controlled_local_target_window";
-    requestedSource: "local_image" | "operator_selected_file" | "controlled_local_target_window";
+    sourceKind: "local_image" | "operator_selected_file" | "controlled_local_target_window" | "arbitrary_screenshot_board_region";
+    requestedSource: "local_image" | "operator_selected_file" | "controlled_local_target_window" | "arbitrary_screenshot_board_region";
     localImageProvided?: true;
     localImageOnly?: true;
     operatorSelectedFileProvided?: true;
     controlledLocalTargetWindow?: true;
+    arbitraryScreenshotBoardRegion?: true;
     fixtureId?: string | null;
     windowTitle?: string | null;
     processId?: number | null;
@@ -355,6 +358,8 @@ type ReadboardExternalCaptureMvpEvidence = {
     boardReplacedOnlyAfterConfirmation: boolean;
     previewConfirmationObserved: boolean;
     boardReplacementObserved: boolean;
+    previewProduced?: boolean;
+    automaticBoardReplacement?: false;
     beforeConfirmation?: {
       userConfirmed: false;
       canImportPreview: false;
@@ -405,12 +410,37 @@ type ReadboardExternalCaptureMvpEvidence = {
     errorKind: string;
     message: string | null;
     status: string;
+    targetClientDiscovery?: false;
+    fullOcrParity?: false;
+    fullReadboardParity?: false;
+    releaseParity?: false;
     artifact: {
       path: string;
       sanitized: true;
       sizeBytes: number;
       sha256: string;
     };
+    rawBackendResult?: Record<string, unknown>;
+  };
+  screenshotRegionDetection?: {
+    scope: "scoped_arbitrary_screenshot_board_region_detection";
+    detectionAttempted: true;
+    backendSupported: boolean;
+    backendStatus: string;
+    boardRegionDetected: boolean;
+    positionPreviewProduced: boolean;
+    automaticReplacement: false;
+    targetClientDiscovery: false;
+    fullOcrParity: false;
+    fullReadboardParity: false;
+    releaseParity: false;
+    artifact?: {
+      path: string;
+      sanitized: true;
+      sizeBytes: number;
+      sha256: string;
+    };
+    region?: Record<string, unknown>;
     rawBackendResult?: Record<string, unknown>;
   };
 };
@@ -621,6 +651,8 @@ export async function runRuntimeSmokeMode(config?: RuntimeSmokeConfig): Promise<
       await runReadboardOperatorCapturePhase(report);
     } else if (resolvedConfig.phase === "readboard-controlled-target-proof") {
       await runReadboardControlledTargetProofPhase(report);
+    } else if (resolvedConfig.phase === "readboard-screenshot-region-detection") {
+      await runReadboardScreenshotRegionDetectionPhase(report);
     } else if (resolvedConfig.phase === "katago-live") {
       await runKataGoLivePhase(report, requireRuntimeSmokeSgfPath(sgfPath), resolvedConfig.katago);
     } else if (resolvedConfig.phase === "katago-live-workflow-cache") {
@@ -1396,6 +1428,8 @@ async function runReadboardExternalCaptureMvpPhase(report: RuntimeSmokeReport) {
       boardReplacedOnlyAfterConfirmation: false,
       previewConfirmationObserved: false,
       boardReplacementObserved: false,
+      previewProduced: false,
+      automaticBoardReplacement: false,
       fullOcrParity: false,
       fullReadboardParity: false,
       targetClientParity: false,
@@ -1951,6 +1985,178 @@ async function runReadboardControlledTargetProofPhase(report: RuntimeSmokeReport
   await check(report, "scope_boundaries_recorded", async () => {
     if (!evidence.previewConfirmation) throw new Error("Readboard controlled target proof boundary evidence was not recorded.");
     return evidence.previewConfirmation;
+  });
+}
+
+async function runReadboardScreenshotRegionDetectionPhase(report: RuntimeSmokeReport) {
+  const endpoint = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ENDPOINT");
+  const imagePath = runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH");
+  if (!imagePath) throw new Error("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_CAPTURE_IMAGE_PATH is required for readboard-screenshot-region-detection.");
+  const evidence: ReadboardExternalCaptureMvpEvidence = {};
+  report.readboardScreenshotRegionDetection = evidence;
+
+  await check(report, "readboard_screenshot_region_detection", async () => {
+    const result = await captureReadboardExternal({
+      source: "arbitrary_screenshot_board_region",
+      endpoint,
+      image_path: imagePath,
+      imagePath,
+      arbitraryScreenshot: true,
+      arbitrary_screenshot: true,
+      boardRegionDetection: true,
+      board_region_detection: true,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_screenshot_region_detection",
+        scope: "scoped_arbitrary_screenshot_board_region_detection_not_full_ocr_or_target_client_parity"
+      }
+    });
+    const stableImagePath = stableReadboardCapturePath(imagePath);
+    const sanitizedBackendResult = sanitizeReadboardEvidenceValue(result as Record<string, unknown>, stableImagePath, imagePath) as Record<string, unknown>;
+    evidence.rawBackendResult = {
+      ...sanitizedBackendResult,
+      backendCommand: "readboard_external_capture",
+      phase: "readboard_screenshot_region_detection",
+      source: "runtime_smoke",
+      captureSource: "arbitrary_screenshot_board_region",
+      boardRegionDetection: true,
+      arbitraryScreenshot: true
+    };
+    const status = normalizeCaptureStatus(result.status);
+    if (status !== "captured") {
+      throw new Error(`Readboard screenshot region detection expected captured backend status, got ${String(result.status || "empty")}.`);
+    }
+    const artifact = summarizeReadboardCaptureArtifact(result as Record<string, unknown>, imagePath);
+    if (!artifact) throw new Error("Readboard screenshot region detection did not produce capture artifact evidence.");
+    const region = readboardScreenshotRegionFromResult(result as Record<string, unknown>);
+    if (Object.keys(region).length === 0) {
+      throw new Error("Readboard screenshot region detection did not return backend boardRegion metadata.");
+    }
+    const hasPosition = isRecord((result as Record<string, unknown>).position);
+    evidence.rawBackendResult = {
+      ...evidence.rawBackendResult,
+      boardRegion: region,
+      detectedBoardRegion: region,
+      artifact: {
+        path: artifact.path,
+        sizeBytes: artifact.sizeBytes,
+        sha256: artifact.sha256,
+        sanitized: artifact.sanitized
+      },
+      artifactPath: artifact.path,
+      artifactSizeBytes: artifact.sizeBytes,
+      artifactSha256: artifact.sha256
+    };
+    evidence.captureArtifact = artifact;
+    evidence.captureSource = {
+      operatorInitiated: false,
+      userSelectionRequired: false,
+      selection: null,
+      sourceKind: "arbitrary_screenshot_board_region",
+      requestedSource: "arbitrary_screenshot_board_region",
+      arbitraryScreenshotBoardRegion: true,
+      selectedScreenRegionCovered: false,
+      externalScreenRegionCovered: false,
+      externalWindowRegionCovered: false,
+      targetClientDiscoveryCovered: false,
+      externalClientCaptureCovered: false
+    };
+    evidence.screenshotRegionDetection = {
+      scope: "scoped_arbitrary_screenshot_board_region_detection",
+      detectionAttempted: true,
+      backendSupported: true,
+      backendStatus: status,
+      boardRegionDetected: Object.keys(region).length > 0 || hasPosition,
+      positionPreviewProduced: hasPosition,
+      automaticReplacement: false,
+      targetClientDiscovery: false,
+      fullOcrParity: false,
+      fullReadboardParity: false,
+      releaseParity: false,
+      artifact,
+      region,
+      rawBackendResult: evidence.rawBackendResult ?? sanitizedBackendResult
+    };
+    const nonBoardImagePath = arbitraryScreenshotNonBoardFixturePath(
+      imagePath,
+      runtimeSmokeEnv("VITE_LIZZIEYZY_RUNTIME_SMOKE_READBOARD_ARBITRARY_NON_BOARD_IMAGE_PATH")
+    );
+    const nonBoardResult = await captureReadboardExternal({
+      source: "arbitrary_screenshot_board_region",
+      endpoint,
+      image_path: nonBoardImagePath,
+      imagePath: nonBoardImagePath,
+      arbitraryScreenshot: true,
+      arbitrary_screenshot: true,
+      boardRegionDetection: true,
+      board_region_detection: true,
+      timeout_ms: 5_000,
+      metadata: {
+        source: "runtime_smoke",
+        phase: "readboard_screenshot_region_detection_failed_decode",
+        scope: "arbitrary_screenshot_non_board_decode_failure_no_preview_or_import",
+        fixture_kind: "non_board"
+      }
+    });
+    const stableNonBoardPath = stableReadboardCapturePath(nonBoardImagePath);
+    const sanitizedNonBoardResult = sanitizeReadboardEvidenceValue(
+      nonBoardResult as Record<string, unknown>,
+      stableNonBoardPath,
+      nonBoardImagePath
+    ) as Record<string, unknown>;
+    evidence.rawFailedDecodeResult = sanitizedNonBoardResult;
+    const nonBoardStatus = normalizeCaptureStatus(nonBoardResult.status);
+    const nonBoardHasPosition = isRecord((nonBoardResult as Record<string, unknown>).position)
+      || isRecord((nonBoardResult as Record<string, unknown>).positionDto)
+      || isRecord((nonBoardResult as Record<string, unknown>).position_dto);
+    if (nonBoardStatus !== "decode_error" || nonBoardHasPosition) {
+      throw new Error(
+        `Readboard screenshot region non-board fixture expected decode_error without position, got status ${String(nonBoardResult.status || "empty")}.`
+      );
+    }
+    const nonBoardArtifact = summarizeReadboardCaptureArtifact(nonBoardResult as Record<string, unknown>, nonBoardImagePath);
+    if (!nonBoardArtifact) throw new Error("Readboard screenshot region non-board fixture did not produce artifact evidence.");
+    evidence.failedDecodeNoReplacement = {
+      fixtureKind: "non_board",
+      decodeAttempted: true,
+      decodeSucceeded: false,
+      previewProduced: false,
+      imported: false,
+      boardReplaced: false,
+      errorKind: nonBoardStatus,
+      message: readStringField(nonBoardResult as Record<string, unknown>, "message")
+        ?? readStringField(nonBoardResult as Record<string, unknown>, "errorMessage")
+        ?? readStringField(nonBoardResult as Record<string, unknown>, "error_message"),
+      status: nonBoardStatus,
+      targetClientDiscovery: false,
+      fullOcrParity: false,
+      fullReadboardParity: false,
+      releaseParity: false,
+      artifact: nonBoardArtifact,
+      rawBackendResult: sanitizedNonBoardResult
+    };
+    evidence.previewConfirmation = {
+      previewOnlyBeforeConfirmation: hasPosition,
+      boardReplacedBeforeConfirmation: false,
+      userConfirmed: false,
+      boardReplacedOnlyAfterConfirmation: false,
+      previewConfirmationObserved: false,
+      boardReplacementObserved: false,
+      previewProduced: hasPosition,
+      automaticBoardReplacement: false,
+      fullOcrParity: false,
+      fullReadboardParity: false,
+      targetClientParity: false,
+      arbitraryOcrParity: false,
+      releaseParity: false
+    };
+    return evidence;
+  });
+
+  await check(report, "scope_boundaries_recorded", async () => {
+    if (!evidence.screenshotRegionDetection) throw new Error("Readboard screenshot region detection boundary evidence was not recorded.");
+    return evidence.screenshotRegionDetection;
   });
 }
 
@@ -3098,6 +3304,7 @@ function normalizeRuntimeSmokePhase(value: string | null | undefined): RuntimeSm
     value === "readboard-external-capture-mvp" ||
     value === "readboard-operator-capture" ||
     value === "readboard-controlled-target-proof" ||
+    value === "readboard-screenshot-region-detection" ||
     value === "provider-live" ||
     value === "webview-dom-click" ||
     value === "installed-app-runtime-proof" ||
@@ -3113,6 +3320,7 @@ function phaseRequiresSgfPath(phase: RuntimeSmokePhase): boolean {
     phase !== "readboard-external-capture-mvp" &&
     phase !== "readboard-operator-capture" &&
     phase !== "readboard-controlled-target-proof" &&
+    phase !== "readboard-screenshot-region-detection" &&
     phase !== "webview-dom-click" &&
     phase !== "installed-app-runtime-proof";
 }
@@ -3502,6 +3710,8 @@ function stableReadboardCapturePath(path: string): string {
   if (normalized === "tests/fixtures/readboard-images/controlled-19-three-stones.ppm") return normalized;
   const targetWindowMatch = /(?:^|\/)(tests\/fixtures\/readboard-screenshots\/target-window[^/]*\.ppm)$/.exec(normalized);
   if (targetWindowMatch) return targetWindowMatch[1];
+  const arbitraryScreenshotMatch = /(?:^|\/)(tests\/fixtures\/readboard-screenshots\/arbitrary-[^/]*\.ppm)$/.exec(normalized);
+  if (arbitraryScreenshotMatch) return arbitraryScreenshotMatch[1];
   if (normalized.endsWith("docs/qa/fixtures/readboard-controlled-board.png")) {
     return "docs/qa/fixtures/readboard-controlled-board.png";
   }
@@ -3509,6 +3719,7 @@ function stableReadboardCapturePath(path: string): string {
   throw new Error(
     "Readboard capture MVP evidence must use tests/fixtures/readboard-images/controlled-19-three-stones.ppm " +
       "or a controlled target fixture under tests/fixtures/readboard-screenshots/target-window*.ppm " +
+      "or a screenshot board-region fixture under tests/fixtures/readboard-screenshots/arbitrary-*.ppm " +
       "or docs/qa/fixtures/readboard-controlled-board.png as the stable artifact path."
   );
 }
@@ -3527,6 +3738,28 @@ function controlledReadboardNonBoardFixturePath(capturedPath: string, configured
     return "tests/fixtures/readboard-screenshots/target-window-non-board.ppm";
   }
   return "tests/fixtures/readboard-screenshots/target-window-non-board.ppm";
+}
+
+function arbitraryScreenshotNonBoardFixturePath(capturedPath: string, configuredPath?: string | null): string {
+  const normalizedCapturedPath = capturedPath.replace(/\\/g, "/").trim();
+  const requestedNonBoardPath = configuredPath?.replace(/\\/g, "/").trim();
+  const fixtureName = requestedNonBoardPath?.split("/").pop() || "arbitrary-non-board.ppm";
+  const absoluteSiblingMatch = /^(.*\/tests\/fixtures\/readboard-screenshots\/)arbitrary-[^/]*\.ppm$/.exec(normalizedCapturedPath);
+  if (absoluteSiblingMatch && (requestedNonBoardPath === undefined || !/^(\/|[A-Za-z]:\/|~\/)/.test(requestedNonBoardPath))) {
+    return `${absoluteSiblingMatch[1]}${fixtureName}`;
+  }
+  if (requestedNonBoardPath) return requestedNonBoardPath;
+  const stablePath = stableReadboardCapturePath(capturedPath);
+  if (stablePath.startsWith("tests/fixtures/readboard-screenshots/")) {
+    return "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm";
+  }
+  return "tests/fixtures/readboard-screenshots/arbitrary-non-board.ppm";
+}
+
+function readboardScreenshotRegionFromResult(result: Record<string, unknown>): Record<string, unknown> {
+  const rawRegion = result.boardRegion ?? result.board_region ?? result.detectedBoardRegion ?? result.detected_board_region;
+  if (isRecord(rawRegion)) return rawRegion;
+  return {};
 }
 
 function sanitizeReadboardEvidenceValue(value: unknown, stablePath: string, inputPath: string): unknown {

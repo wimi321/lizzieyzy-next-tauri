@@ -2196,6 +2196,7 @@ fn readboard_list_capture_targets_with_runner(
 }
 
 #[cfg(test)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn readboard_external_capture_with_runner(
     request: ReadboardExternalCaptureRequestDto,
     screencapture_runner: fn(Duration) -> ReadboardCaptureFileOutcome,
